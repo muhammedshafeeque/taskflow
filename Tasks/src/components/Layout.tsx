@@ -24,6 +24,9 @@ import {
   SunIcon,
   MoonIcon,
   BellIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  LogOutIcon,
 } from './icons/NavigationIcons';
 
 interface NavItem {
@@ -134,6 +137,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       ? 'light'
       : 'dark';
   });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('taskflow_sidebar_collapsed') === 'true';
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('taskflow_sidebar_collapsed', String(sidebarCollapsed));
+    } catch {
+      // ignore
+    }
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (!projectId || !token) {
@@ -208,16 +223,41 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="h-screen min-h-0 flex bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
-      <aside className="w-64 flex flex-col border-r border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] shrink-0">
-        <div className="p-4 border-b border-[color:var(--border-subtle)]">
-          <h1 className="text-xl font-semibold tracking-tight">TaskFlow</h1>
-          {projectId && (
-            <p className="text-xs text-[color:var(--text-muted)] mt-1 truncate" title={project?.name ?? '…'}>
-              {projectLoading ? 'Loading…' : project?.name ?? '…'}
-            </p>
+      <aside
+        className={`flex flex-col border-r border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] shrink-0 transition-[width] duration-200 ease-in-out ${
+          sidebarCollapsed ? 'w-16' : 'w-64'
+        }`}
+      >
+        <div className="p-4 border-b border-[color:var(--border-subtle)] flex items-center gap-2 min-h-[4.5rem]">
+          {sidebarCollapsed ? (
+            <span className="text-lg font-semibold tracking-tight flex-1 text-center" title="TaskFlow">
+              TF
+            </span>
+          ) : (
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl font-semibold tracking-tight">TaskFlow</h1>
+              {projectId && (
+                <p className="text-xs text-[color:var(--text-muted)] mt-1 truncate" title={project?.name ?? '…'}>
+                  {projectLoading ? 'Loading…' : project?.name ?? '…'}
+                </p>
+              )}
+            </div>
           )}
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed((c) => !c)}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-[color:var(--text-muted)] border border-[color:var(--border-subtle)] hover:bg-[color:var(--bg-elevated)] hover:text-[color:var(--text-primary)] transition"
+          >
+            {sidebarCollapsed ? (
+              <ChevronRightIcon className="w-4 h-4" />
+            ) : (
+              <ChevronLeftIcon className="w-4 h-4" />
+            )}
+          </button>
         </div>
-        <nav className="flex-1 p-3 space-y-0.5">
+        <nav className="flex-1 p-3 space-y-0.5 overflow-x-hidden">
           {nav.map((item, i) => {
             const isProjectsLink = item.to === '/projects';
             const useEnd = 'end' in item ? (item as { end?: boolean }).end : isProjectsLink;
@@ -226,34 +266,46 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 key={item.to + item.label}
                 to={item.to}
                 end={useEnd}
+                title={sidebarCollapsed ? item.label : undefined}
                 className={({ isActive }) => {
                   const active =
                     isProjectsLink ? isActive : isActive || (projectId && location.pathname.startsWith(item.to));
                   return `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition animation-delay-${
                     (i + 1) * 100
                   } animate-fade-in hover-elevated ${
+                    sidebarCollapsed ? 'justify-center px-0 py-2.5' : ''
+                  } ${
                     active
                       ? 'bg-[color:var(--bg-elevated)] text-[color:var(--text-primary)] border border-[color:var(--border-subtle)]'
                       : 'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-surface)]'
                   }`;
                 }}
               >
-                <span className="w-4 h-4 flex items-center justify-center">{item.icon}</span>
-                {item.label}
+                <span className="w-5 h-5 flex shrink-0 items-center justify-center">{item.icon}</span>
+                {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
               </NavLink>
             );
           })}
         </nav>
-        <div className="p-3 border-t border-[color:var(--border-subtle)]">
-          <div className="px-3 py-2 text-[color:var(--text-muted)] text-xs truncate" title={user?.email}>
-            {user?.name}
-          </div>
+        <div className={`p-3 border-t border-[color:var(--border-subtle)] space-y-2 ${sidebarCollapsed ? 'flex flex-col items-center' : ''}`}>
+          {!sidebarCollapsed && (
+            <div className="px-3 py-2 text-[color:var(--text-muted)] text-xs truncate" title={user?.email}>
+              {user?.name}
+            </div>
+          )}
           <button
             type="button"
             onClick={handleLogout}
-            className="w-full mt-1 px-3 py-1.5 rounded-md text-xs text-[color:var(--text-muted)] border border-transparent hover:border-[color:var(--border-subtle)] hover:bg-[color:var(--bg-surface)] transition"
+            title="Sign out"
+            className={`flex items-center justify-center rounded-md text-[color:var(--text-muted)] border border-transparent hover:border-[color:var(--border-subtle)] hover:bg-[color:var(--bg-surface)] transition ${
+              sidebarCollapsed ? 'w-full py-2 px-0' : 'w-full px-3 py-1.5 text-xs'
+            }`}
           >
-            Sign out
+            {sidebarCollapsed ? (
+              <LogOutIcon className="w-5 h-5" aria-hidden />
+            ) : (
+              'Sign out'
+            )}
           </button>
         </div>
       </aside>
