@@ -237,6 +237,10 @@ export default function IssueDetail() {
     await updateIssue({ description });
   }
 
+  async function updateTitle(title: string) {
+    await updateIssue({ title });
+  }
+
   function addLabel() {
     if (!newLabel.trim() || !issue) return;
     const labels = issue.labels ?? [];
@@ -305,6 +309,7 @@ export default function IssueDetail() {
                 getTypeMeta={getTypeMeta}
                 getPriorityMeta={getPriorityMeta}
                 getStatusMeta={getStatusMeta}
+                onUpdateTitle={updateTitle}
               />
               <TaskDescription issue={issue} onUpdateDescription={updateDescription} />
               <TaskSubtasks

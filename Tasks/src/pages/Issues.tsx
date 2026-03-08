@@ -231,12 +231,12 @@ export default function Issues() {
   const hasActiveFilters = Boolean(
     filters.status.length || filters.assignee.length || filters.reporter.length ||
     filters.type.length || filters.priority.length || filters.labels.length ||
-    filters.storyPoints.length || filters.hasStoryPoints === false
+    filters.storyPoints.length || filters.hasStoryPoints === false || filters.hasEstimate === false || filters.hasEstimate === true
   );
   const activeFilterCount =
     filters.status.length + filters.assignee.length + filters.reporter.length +
     filters.type.length + filters.priority.length + filters.labels.length +
-    filters.storyPoints.length + (filters.hasStoryPoints === false ? 1 : 0);
+    filters.storyPoints.length + (filters.hasStoryPoints === false ? 1 : 0) + (filters.hasEstimate === false ? 1 : 0) + (filters.hasEstimate === true ? 1 : 0);
   const allLabels = useMemo(() => [...new Set(issues.flatMap((i) => i.labels || []))].sort(), [issues]);
   const limit = 25;
 
@@ -246,7 +246,7 @@ export default function Issues() {
     if (useJql) {
       return { token: token!, page: p.page, limit: viewMode === 'kanban' ? 200 : 20, jql };
     }
-    const params: { page: number; limit: number; token: string; project: string; status?: string; assignee?: string; reporter?: string; type?: string; priority?: string; labels?: string; storyPoints?: string; hasStoryPoints?: string } = {
+    const params: { page: number; limit: number; token: string; project: string; status?: string; assignee?: string; reporter?: string; type?: string; priority?: string; labels?: string; storyPoints?: string; hasStoryPoints?: string; hasEstimate?: string } = {
       ...p,
       limit: viewMode === 'kanban' ? 100 : limit,
       token: token!,
@@ -262,6 +262,8 @@ export default function Issues() {
       if (filters.labels.length) params.labels = filters.labels.join(',');
       if (filters.storyPoints.length) params.storyPoints = filters.storyPoints.join(',');
       if (filters.hasStoryPoints === false) params.hasStoryPoints = 'false';
+      if (filters.hasEstimate === false) params.hasEstimate = 'false';
+      if (filters.hasEstimate === true) params.hasEstimate = 'true';
     }
     if (quickFilter === 'my' && user?.id) params.assignee = user.id;
     return params;

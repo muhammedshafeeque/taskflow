@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { Issue } from '../issues/issue.model';
 import { ProjectMember } from '../projects/projectMember.model';
 import { User } from '../auth/user.model';
+import { WorkLog } from '../workLogs/workLog.model';
 
 export interface WorkloadEntry {
   userId: string;
@@ -78,10 +79,99 @@ export interface EstimatesByAssignee {
   totalMinutes: number;
 }
 
+const DONE_STATUSES = ['Done', 'Closed', 'Resolved'];
+
+export interface ProjectDeliveryEstimate {
+  remainingEstimateMinutes: number;
+  loggedMinutesOnDone: number;
+  burnRatePerDay: number;
+  expectedDeliveryDate: string | null;
+}
+
 export interface EstimatesStats {
   totalMinutes: number;
   byProject: EstimatesByProject[];
   byAssignee: EstimatesByAssignee[];
+  remainingEstimateMinutes?: number;
+  loggedMinutesOnDone?: number;
+  burnRatePerDay?: number;
+  expectedDeliveryDate?: string | null;
+  unestimatedIssuesCount?: number;
+}
+
+export async function getProjectDeliveryEstimate(
+  projectId: string,
+  userId: string
+): Promise<ProjectDeliveryEstimate> {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const isMember = await ProjectMember.exists({ user: userObjectId, project: projectId });
+  if (!isMember) {
+    return {
+      remainingEstimateMinutes: 0,
+      loggedMinutesOnDone: 0,
+      burnRatePerDay: 0,
+      expectedDeliveryDate: null,
+    };
+  }
+  const projectObjectId = new mongoose.Types.ObjectId(projectId);
+
+  const [remainingResult, loggedResult] = await Promise.all([
+    Issue.aggregate<{ total: number }>([
+      {
+        $match: {
+          project: projectObjectId,
+          status: { $nin: DONE_STATUSES },
+          timeEstimateMinutes: { $exists: true, $gt: 0 },
+        },
+      },
+      { $group: { _id: null, total: { $sum: '$timeEstimateMinutes' } } },
+    ]),
+    WorkLog.aggregate<{ totalMinutes: number; minDate: Date; maxDate: Date }>([
+      { $lookup: { from: 'issues', localField: 'issue', foreignField: '_id', as: 'issueDoc' } },
+      { $unwind: '$issueDoc' },
+      {
+        $match: {
+          'issueDoc.project': projectObjectId,
+          'issueDoc.status': { $in: DONE_STATUSES },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalMinutes: { $sum: '$minutesSpent' },
+          minDate: { $min: '$date' },
+          maxDate: { $max: '$date' },
+        },
+      },
+    ]),
+  ]);
+
+  const remainingEstimateMinutes = remainingResult[0]?.total ?? 0;
+  const loggedRow = loggedResult[0];
+  const loggedMinutesOnDone = loggedRow?.totalMinutes ?? 0;
+  const minDate = loggedRow?.minDate ? new Date(loggedRow.minDate) : null;
+  const maxDate = loggedRow?.maxDate ? new Date(loggedRow.maxDate) : null;
+
+  let burnRatePerDay = 0;
+  if (loggedMinutesOnDone > 0 && minDate && maxDate) {
+    const daysDiff = Math.max(1, Math.ceil((maxDate.getTime() - minDate.getTime()) / (24 * 60 * 60 * 1000)));
+    burnRatePerDay = loggedMinutesOnDone / daysDiff;
+  }
+
+  let expectedDeliveryDate: string | null = null;
+  if (remainingEstimateMinutes > 0 && burnRatePerDay > 0) {
+    const daysToAdd = Math.ceil(remainingEstimateMinutes / burnRatePerDay);
+    const delivery = new Date();
+    delivery.setDate(delivery.getDate() + daysToAdd);
+    expectedDeliveryDate = delivery.toISOString().slice(0, 10);
+  }
+
+  return {
+    remainingEstimateMinutes,
+    loggedMinutesOnDone,
+    burnRatePerDay,
+    expectedDeliveryDate,
+  };
 }
 
 export async function getEstimatesStats(userId: string, projectId?: string): Promise<EstimatesStats> {
@@ -132,7 +222,28 @@ export async function getEstimatesStats(userId: string, projectId?: string): Pro
 
   const totalMinutes = byProject.reduce((sum, p) => sum + p.totalMinutes, 0);
 
-  return { totalMinutes, byProject, byAssignee };
+  const result: EstimatesStats = { totalMinutes, byProject, byAssignee };
+
+  if (projectId) {
+    const [delivery, unestimatedCount] = await Promise.all([
+      getProjectDeliveryEstimate(projectId, userId),
+      Issue.countDocuments({
+        project: new mongoose.Types.ObjectId(projectId),
+        $or: [
+          { timeEstimateMinutes: { $exists: false } },
+          { timeEstimateMinutes: null },
+          { timeEstimateMinutes: { $lte: 0 } },
+        ],
+      }),
+    ]);
+    result.remainingEstimateMinutes = delivery.remainingEstimateMinutes;
+    result.loggedMinutesOnDone = delivery.loggedMinutesOnDone;
+    result.burnRatePerDay = delivery.burnRatePerDay;
+    result.expectedDeliveryDate = delivery.expectedDeliveryDate;
+    result.unestimatedIssuesCount = unestimatedCount;
+  }
+
+  return result;
 }
 
 export interface DashboardStats {

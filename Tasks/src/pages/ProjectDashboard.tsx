@@ -2,9 +2,10 @@ import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { issuesApi, boardsApi, sprintsApi, projectsApi } from '../lib/api';
+import { issuesApi, boardsApi, sprintsApi, projectsApi, dashboardApi, type EstimatesResponse } from '../lib/api';
 import MetricCard from '../components/MetricCard';
 import SectionCard from '../components/SectionCard';
+import { formatMinutes } from '../components/issue/WorkLogInput';
 
 const DEFAULT_STATUSES = ['Backlog', 'Todo', 'In Progress', 'Done'];
 const STATUS_COLORS: string[] = ['#4f46e5', '#06b6d4', '#22c55e', '#f97316', '#e11d48', '#8b5cf6'];
@@ -20,7 +21,20 @@ export default function ProjectDashboard() {
   const [countsLoading, setCountsLoading] = useState(false);
   const [canManageSettings, setCanManageSettings] = useState(false);
   const [statusData, setStatusData] = useState<Array<{ name: string; value: number }>>([]);
+  const [statusList, setStatusList] = useState<string[]>(DEFAULT_STATUSES);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [estimates, setEstimates] = useState<EstimatesResponse | null>(null);
+  const [estimatesLoading, setEstimatesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!token || !projectId) return;
+    setEstimatesLoading(true);
+    dashboardApi.getEstimates(token, projectId).then((res) => {
+      setEstimatesLoading(false);
+      if (res.success && res.data) setEstimates(res.data);
+      else setEstimates(null);
+    });
+  }, [token, projectId]);
 
   useEffect(() => {
     if (!token || !projectId) return;
@@ -63,6 +77,7 @@ export default function ProjectDashboard() {
         projRes.data.statuses && projRes.data.statuses.length
           ? projRes.data.statuses.map((s) => s.name)
           : DEFAULT_STATUSES;
+      setStatusList(statuses);
 
       Promise.all(
         statuses.map((statusName) =>
@@ -87,6 +102,9 @@ export default function ProjectDashboard() {
     statusData.find((d) => d.name.toLowerCase() === 'done')?.value ?? 0;
   const openCount = totalIssuesFromChart - doneCount;
   const base = `/projects/${projectId}`;
+  const openStatuses = statusList.filter((s) => s.toLowerCase() !== 'done').map(encodeURIComponent).join(',');
+  const cardLinkClass =
+    'block rounded-2xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] hover:bg-[color:var(--bg-elevated)] hover:border-[color:var(--border-subtle)] transition hover-elevated';
   return (
     <div className="p-8 animate-fade-in">
       <div className="w-full px-4 sm:px-6 lg:px-8">
@@ -101,25 +119,83 @@ export default function ProjectDashboard() {
             description="High-level snapshot of this project."
           >
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-              <MetricCard
-                title="Issues"
-                value={counts.issues || totalIssuesFromChart}
-                loading={countsLoading}
-              />
-              <MetricCard title="Boards" value={counts.boards} loading={countsLoading} />
-              <MetricCard title="Sprints" value={counts.sprints} loading={countsLoading} />
-              <MetricCard
-                title="Open"
-                value={openCount}
-                helperText="Not yet done"
-                loading={countsLoading}
-              />
-              <MetricCard
-                title="Done"
-                value={doneCount}
-                helperText="Completed issues"
-                loading={countsLoading}
-              />
+              <Link to={`${base}/issues`} className={cardLinkClass}>
+                <MetricCard
+                  title="Issues"
+                  value={counts.issues || totalIssuesFromChart}
+                  loading={countsLoading}
+                />
+              </Link>
+              <Link to={`${base}/boards`} className={cardLinkClass}>
+                <MetricCard title="Boards" value={counts.boards} loading={countsLoading} />
+              </Link>
+              <Link to={`${base}/sprints`} className={cardLinkClass}>
+                <MetricCard title="Sprints" value={counts.sprints} loading={countsLoading} />
+              </Link>
+              <Link
+                to={openStatuses ? `${base}/issues?status=${openStatuses}` : `${base}/issues`}
+                className={cardLinkClass}
+              >
+                <MetricCard
+                  title="Open"
+                  value={openCount}
+                  helperText="Not yet done"
+                  loading={countsLoading}
+                />
+              </Link>
+              <Link to={`${base}/issues?status=Done`} className={cardLinkClass}>
+                <MetricCard
+                  title="Done"
+                  value={doneCount}
+                  helperText="Completed issues"
+                  loading={countsLoading}
+                />
+              </Link>
+              <Link to={`${base}/issues?hasEstimate=true`} className={cardLinkClass}>
+                <MetricCard
+                  title="Total estimate"
+                  value={estimates ? formatMinutes(estimates.totalMinutes) : '—'}
+                  loading={estimatesLoading}
+                />
+              </Link>
+              <Link to={`${base}/issues?hasEstimate=true`} className={cardLinkClass}>
+                <MetricCard
+                  title="Expected delivery"
+                  value={
+                    estimates?.expectedDeliveryDate
+                      ? new Date(estimates.expectedDeliveryDate + 'T12:00:00').toLocaleDateString(undefined, {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                        })
+                      : '—'
+                  }
+                  helperText={
+                    !estimatesLoading && estimates && !estimates.expectedDeliveryDate
+                      ? 'Log time on completed tasks to see estimate'
+                      : undefined
+                  }
+                  loading={estimatesLoading}
+                />
+              </Link>
+              <Link
+                to={`${base}/issues?hasEstimate=false`}
+                className={`${cardLinkClass} px-4 py-3`}
+              >
+                <p className="text-[11px] text-[color:var(--text-muted)] mb-1 uppercase tracking-wide">
+                  No estimate
+                </p>
+                {estimatesLoading ? (
+                  <div className="mt-1 h-5 w-16 rounded-full skeleton" />
+                ) : (
+                  <p className="text-lg font-semibold text-[color:var(--text-primary)]">
+                    {estimates?.unestimatedIssuesCount ?? '—'}
+                  </p>
+                )}
+                <p className="text-[11px] text-[color:var(--text-muted)] mt-0.5">
+                  Issues without time estimate
+                </p>
+              </Link>
             </div>
           </SectionCard>
 

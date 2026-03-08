@@ -213,13 +213,14 @@ function serializeNode(node: JSONNode): string {
             .replace(/\n/g, ' ');
           return cellText;
         });
-        lines.push('| ' + cells.join(' | ') + ' |');
-        if (isFirstRow && cells.length > 0) {
+        if (cells.length === 0) continue;
+        lines.push('| ' + cells.map((cell) => (cell === '' ? ' ' : cell)).join(' | ') + ' |');
+        if (isFirstRow) {
           lines.push('| ' + cells.map(() => '---').join(' | ') + ' |');
           isFirstRow = false;
         }
       }
-      return lines.join('\n');
+      return lines.length > 0 ? lines.join('\n') : '';
     }
     case 'tableRow':
     case 'tableHeader':

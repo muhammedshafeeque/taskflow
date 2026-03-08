@@ -102,6 +102,7 @@ export interface ListIssuesFilters {
   labels?: string | string[];
   storyPoints?: string | string[];
   hasStoryPoints?: boolean;
+  hasEstimate?: boolean;
   fixVersion?: string;
 }
 
@@ -151,6 +152,32 @@ export async function findAll(
     const rest = { ...filter };
     Object.keys(filter).forEach((k) => delete (filter as Record<string, unknown>)[k]);
     (filter as Record<string, unknown>).$and = [rest, noStoryPoints];
+  }
+  if (filters.hasEstimate === false) {
+    const noEstimate = {
+      $or: [
+        { timeEstimateMinutes: { $exists: false } },
+        { timeEstimateMinutes: null },
+        { timeEstimateMinutes: { $lte: 0 } },
+      ],
+    };
+    const current = { ...filter };
+    const existingAnd = (filter as Record<string, unknown>).$and as unknown[] | undefined;
+    const andClauses = existingAnd ? [...existingAnd] : [current];
+    andClauses.push(noEstimate);
+    Object.keys(filter).forEach((k) => delete (filter as Record<string, unknown>)[k]);
+    (filter as Record<string, unknown>).$and = andClauses;
+  }
+  if (filters.hasEstimate === true) {
+    const hasEstimate = {
+      timeEstimateMinutes: { $exists: true, $ne: null, $gt: 0 },
+    };
+    const current = { ...filter };
+    const existingAnd = (filter as Record<string, unknown>).$and as unknown[] | undefined;
+    const andClauses = existingAnd ? [...existingAnd] : [current];
+    andClauses.push(hasEstimate);
+    Object.keys(filter).forEach((k) => delete (filter as Record<string, unknown>)[k]);
+    (filter as Record<string, unknown>).$and = andClauses;
   }
   if (filters.fixVersion !== undefined && filters.fixVersion !== '') {
     filter.fixVersion = filters.fixVersion;
@@ -643,6 +670,7 @@ export function queryToFilters(query: ListIssuesQuery): ListIssuesFilters {
     labels: query.labels,
     storyPoints: query.storyPoints,
     hasStoryPoints: query.hasStoryPoints === 'false' ? false : undefined,
+    hasEstimate: query.hasEstimate === 'true' ? true : query.hasEstimate === 'false' ? false : undefined,
     fixVersion: query.fixVersion,
   };
 }

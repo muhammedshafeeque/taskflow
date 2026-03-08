@@ -79,6 +79,7 @@ export const exportIssuesQuerySchema = z.object({
     labels: z.union([z.string(), z.array(z.string())]).optional(),
     storyPoints: z.union([z.string(), z.array(z.string())]).optional(),
     hasStoryPoints: z.enum(['true', 'false']).optional(),
+    hasEstimate: z.enum(['true', 'false']).optional(),
     fixVersion: z.string().optional(),
   }),
 });
@@ -97,6 +98,7 @@ export const listIssuesQuerySchema = z.object({
     labels: z.union([z.string(), z.array(z.string())]).optional(),
     storyPoints: z.union([z.string(), z.array(z.string())]).optional(),
     hasStoryPoints: z.enum(['true', 'false']).optional(),
+    hasEstimate: z.enum(['true', 'false']).optional(),
     fixVersion: z.string().optional(),
   }),
 });

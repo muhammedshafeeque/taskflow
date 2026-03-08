@@ -79,7 +79,7 @@ function CommentBody({ body }: { body: string }) {
   }
 
   return (
-    <div className="prose prose-invert prose-sm max-w-none break-words [&_img]:max-w-full [&_img]:rounded-lg [&_img]:border [&_img]:border-[color:var(--border-subtle)]">
+    <div className="prose prose-invert prose-sm max-w-none break-words [&_img]:max-w-full [&_img]:rounded-lg [&_img]:border [&_img]:border-[color:var(--border-subtle)] [&_table]:border-collapse [&_table]:w-full [&_table]:my-3 [&_table]:text-sm [&_th]:border [&_th]:border-[color:var(--border-subtle)] [&_th]:bg-[color:var(--bg-elevated)] [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-[color:var(--border-subtle)] [&_td]:px-2 [&_td]:py-1.5 [&_tr]:border-b [&_tr]:border-[color:var(--border-subtle)]">
       {parts.map((part, i) =>
         part.type === 'video' ? (
           <VideoEmbed key={i} url={part.content} />
@@ -90,6 +90,24 @@ function CommentBody({ body }: { body: string }) {
             components={{
               img: ({ src, alt }) => (
                 <img src={src} alt={alt || 'image'} className="max-w-full rounded-lg border border-[color:var(--border-subtle)] my-1" />
+              ),
+              table: ({ children }) => (
+                <div className="my-3 overflow-x-auto rounded-lg border border-[color:var(--border-subtle)]">
+                  <table className="w-full border-collapse text-sm">{children}</table>
+                </div>
+              ),
+              thead: ({ children }) => <thead className="bg-[color:var(--bg-elevated)]">{children}</thead>,
+              tbody: ({ children }) => <tbody>{children}</tbody>,
+              tr: ({ children }) => <tr className="border-b border-[color:var(--border-subtle)]">{children}</tr>,
+              th: ({ children }) => (
+                <th className="border border-[color:var(--border-subtle)] px-2 py-1.5 text-left font-semibold text-[color:var(--text-primary)]">
+                  {children}
+                </th>
+              ),
+              td: ({ children }) => (
+                <td className="border border-[color:var(--border-subtle)] px-2 py-1.5 text-[color:var(--text-primary)]">
+                  {children}
+                </td>
               ),
             }}
           >

@@ -571,11 +571,22 @@ export const dashboardApi = {
       token
     ),
   getEstimates: (token: string, projectId?: string) =>
-    api.get<{ totalMinutes: number; byProject: Array<{ projectId: string; projectName: string; totalMinutes: number }>; byAssignee: Array<{ userId: string; userName: string; totalMinutes: number }> }>(
+    api.get<EstimatesResponse>(
       projectId ? `/dashboard/estimates?projectId=${encodeURIComponent(projectId)}` : '/dashboard/estimates',
       token
     ),
 };
+
+export interface EstimatesResponse {
+  totalMinutes: number;
+  byProject: Array<{ projectId: string; projectName: string; totalMinutes: number }>;
+  byAssignee: Array<{ userId: string; userName: string; totalMinutes: number }>;
+  remainingEstimateMinutes?: number;
+  loggedMinutesOnDone?: number;
+  burnRatePerDay?: number;
+  expectedDeliveryDate?: string | null;
+  unestimatedIssuesCount?: number;
+}
 
 /* Users */
 export interface User {

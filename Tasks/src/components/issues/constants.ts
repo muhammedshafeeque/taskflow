@@ -15,6 +15,7 @@ export const PARAM_REPORTER = 'reporter';
 export const PARAM_LABELS = 'labels';
 export const PARAM_STORY_POINTS = 'storyPoints';
 export const PARAM_HAS_STORY_POINTS = 'hasStoryPoints';
+export const PARAM_HAS_ESTIMATE = 'hasEstimate';
 export const PARAM_CREATE = 'create';
 export const PARAM_PARENT = 'parent';
 export const PARAM_JQL = 'jql';
@@ -71,6 +72,7 @@ export type FiltersShape = {
   labels: string[];
   storyPoints: string[];
   hasStoryPoints?: boolean;
+  hasEstimate?: boolean;
 };
 
 export function parseFiltersFromSearchParams(searchParams: URLSearchParams): {
@@ -93,6 +95,7 @@ export function parseFiltersFromSearchParams(searchParams: URLSearchParams): {
   const pageStr = searchParams.get(PARAM_PAGE);
   const page = Math.max(1, parseInt(pageStr ?? '1', 10) || 1);
   const hasSP = searchParams.get(PARAM_HAS_STORY_POINTS);
+  const hasEst = searchParams.get(PARAM_HAS_ESTIMATE);
   const jql = searchParams.get(PARAM_JQL) ?? '';
   return {
     filters: {
@@ -105,6 +108,7 @@ export function parseFiltersFromSearchParams(searchParams: URLSearchParams): {
       labels: getList(PARAM_LABELS),
       storyPoints: getList(PARAM_STORY_POINTS),
       hasStoryPoints: hasSP === 'false' ? false : hasSP === 'true' ? true : undefined,
+      hasEstimate: hasEst === 'false' ? false : hasEst === 'true' ? true : undefined,
     },
     quickFilter,
     viewMode,
@@ -135,5 +139,7 @@ export function buildSearchParams(opts: {
   if (opts.filters.storyPoints.length) p.set(PARAM_STORY_POINTS, opts.filters.storyPoints.join(','));
   if (opts.filters.hasStoryPoints === false) p.set(PARAM_HAS_STORY_POINTS, 'false');
   if (opts.filters.hasStoryPoints === true) p.set(PARAM_HAS_STORY_POINTS, 'true');
+  if (opts.filters.hasEstimate === false) p.set(PARAM_HAS_ESTIMATE, 'false');
+  if (opts.filters.hasEstimate === true) p.set(PARAM_HAS_ESTIMATE, 'true');
   return p;
 }
