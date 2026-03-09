@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { EditIcon } from '../components/icons/NavigationIcons';
 import {
@@ -237,6 +237,7 @@ function TimesheetDetailsModal({
 }
 
 export default function Timesheet() {
+  const { projectId } = useParams<{ projectId?: string }>();
   const { token, user } = useAuth();
   const [data, setData] = useState<TimesheetResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -257,7 +258,10 @@ export default function Timesheet() {
 
   const refreshData = () => {
     if (!token) return;
-    timesheetApi.getGlobal(startDate, endDate, token).then((res) => {
+    const fetch = projectId
+      ? timesheetApi.getProject(projectId, startDate, endDate, token)
+      : timesheetApi.getGlobal(startDate, endDate, token);
+    fetch.then((res) => {
       if (res.success && res.data) setData(res.data);
     });
   };
@@ -274,15 +278,17 @@ export default function Timesheet() {
     if (!token) return;
     setLoading(true);
     setError(null);
-    timesheetApi
-      .getGlobal(startDate, endDate, token)
+    const fetch = projectId
+      ? timesheetApi.getProject(projectId, startDate, endDate, token)
+      : timesheetApi.getGlobal(startDate, endDate, token);
+    fetch
       .then((res) => {
         if (res.success && res.data) setData(res.data);
         else setError(res.message || 'Failed to load timesheet');
       })
       .catch(() => setError('Failed to load timesheet'))
       .finally(() => setLoading(false));
-  }, [token, startDate, endDate]);
+  }, [token, projectId, startDate, endDate]);
 
   const dateColumns = useMemo(() => {
     const start = new Date(startDate);
@@ -302,7 +308,9 @@ export default function Timesheet() {
         <div>
           <h1 className="text-xl font-semibold text-[color:var(--text-primary)]">Timesheet</h1>
           <p className="text-xs text-[color:var(--text-muted)] mt-1">
-            See time logged by team members per day across all your projects.
+            {projectId
+              ? 'Time logged by team members per day in this project.'
+              : 'See time logged by team members per day across all your projects.'}
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-3">

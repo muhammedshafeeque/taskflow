@@ -13,6 +13,7 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../contexts/NotificationsContext';
 import { boardsApi, issuesApi, projectsApi, type Board, type Issue, type Project, getIssueKey } from '../lib/api';
 import { MetaBadge } from '../components/MetaBadge';
 import { WatchButton } from '../components/issue';
@@ -126,6 +127,7 @@ export default function Boards() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { token } = useAuth();
+  const { subscribeProject } = useNotifications();
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
@@ -150,6 +152,25 @@ export default function Boards() {
       return;
     }
   }, [projectId, navigate]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    return subscribeProject(projectId, () => {
+      if (token && projectId) {
+        boardsApi.list(1, 10, projectId, token).then((res) => {
+          if (res.success && res.data) setBoards(res.data.data);
+        });
+      }
+      if (token && selectedBoard) {
+        const pid = typeof selectedBoard.project === 'object' ? selectedBoard.project._id : projectId;
+        if (pid) {
+          issuesApi.list({ page: 1, limit: 100, token, project: pid }).then((res) => {
+            if (res.success && res.data) setBoardIssues(res.data.data);
+          });
+        }
+      }
+    });
+  }, [projectId, subscribeProject, token, selectedBoard]);
 
   useEffect(() => {
     if (!token || !projectId) return;

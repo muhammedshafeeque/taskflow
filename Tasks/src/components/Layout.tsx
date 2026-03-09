@@ -53,6 +53,7 @@ function buildGlobalNav(user: { mustChangePassword?: boolean; permissions?: stri
     { to: '/inbox', label: 'Inbox', icon: <InboxIcon /> },
     { to: '/projects', label: 'Projects', icon: <ProjectsIcon /> },
     { to: '/issues', label: 'All Issues', icon: <IssuesIcon /> },
+    { to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon /> },
     { to: '/workload', label: 'Workload', icon: <TimesheetIcon /> },
     { to: '/estimates', label: 'Estimates', icon: <TimesheetIcon /> },
     { to: '/portfolio', label: 'Portfolio', icon: <ProjectsIcon /> },
@@ -68,7 +69,6 @@ function buildGlobalNav(user: { mustChangePassword?: boolean; permissions?: stri
     nav.push({ to: '/reports', label: 'Reports', icon: <SettingsIcon /> });
   }
   if (perms.includes('issues:view')) {
-    nav.push({ to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon /> });
     nav.push({ to: '/cost-usage', label: 'Cost report', icon: <TimesheetIcon /> });
   }
   if (perms.includes('users:list') || perms.includes('users:invite')) {
@@ -93,7 +93,7 @@ const PROJECT_NAV_ITEMS: { to: string; label: string; icon: ReactNode; permissio
   { to: '/gantt', label: 'Gantt', icon: <GanttIcon />, permission: 'issues:view' },
   { to: '/roadmap', label: 'Roadmap', icon: <GanttIcon />, permission: 'roadmaps:view' },
   { to: '/versions', label: 'Versions', icon: <VersionsIcon />, permission: 'versions:view' },
-  { to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon />, permission: 'issues:view', global: true },
+  { to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon />, permission: 'project:view' },
   { to: '/settings', label: 'Settings', icon: <SettingsIcon />, permission: 'settings:manage' },
   { to: '/test-cases', label: 'Test cases', icon: <TestCasesIcon />, permission: 'testManagement:view' },
   { to: '/test-plans', label: 'Test plans', icon: <TestCasesIcon />, permission: 'testManagement:view' },

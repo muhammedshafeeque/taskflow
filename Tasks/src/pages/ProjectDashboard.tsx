@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../contexts/NotificationsContext';
 import { useEffect, useState, useMemo } from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Area, AreaChart } from 'recharts';
 import { issuesApi, boardsApi, sprintsApi, projectsApi, dashboardApi, type EstimatesResponse, type ProjectMetricsResponse } from '../lib/api';
@@ -14,6 +15,8 @@ const TYPE_COLORS: string[] = ['#8b5cf6', '#06b6d4', '#22c55e', '#f59e0b', '#ef4
 export default function ProjectDashboard() {
   const { projectId } = useParams<{ projectId: string }>();
   const { token } = useAuth();
+  const { subscribeProject } = useNotifications();
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [counts, setCounts] = useState<{ issues: number; boards: number; sprints: number }>({
     issues: 0,
     boards: 0,
@@ -30,6 +33,11 @@ export default function ProjectDashboard() {
   const [metricsLoading, setMetricsLoading] = useState(false);
 
   useEffect(() => {
+    if (!projectId) return;
+    return subscribeProject(projectId, () => setRefreshTrigger((t) => t + 1));
+  }, [projectId, subscribeProject]);
+
+  useEffect(() => {
     if (!token || !projectId) return;
     setEstimatesLoading(true);
     dashboardApi.getEstimates(token, projectId).then((res) => {
@@ -37,7 +45,7 @@ export default function ProjectDashboard() {
       if (res.success && res.data) setEstimates(res.data);
       else setEstimates(null);
     });
-  }, [token, projectId]);
+  }, [token, projectId, refreshTrigger]);
 
   useEffect(() => {
     if (!token || !projectId) return;
@@ -47,7 +55,7 @@ export default function ProjectDashboard() {
       if (res.success && res.data) setMetrics(res.data);
       else setMetrics(null);
     });
-  }, [token, projectId]);
+  }, [token, projectId, refreshTrigger]);
 
   useEffect(() => {
     if (!token || !projectId) return;
@@ -65,7 +73,7 @@ export default function ProjectDashboard() {
     ])
       .then(([issues, boards, sprints]) => setCounts({ issues, boards, sprints }))
       .finally(() => setCountsLoading(false));
-  }, [token, projectId]);
+  }, [token, projectId, refreshTrigger]);
 
   useEffect(() => {
     if (!token || !projectId) return;
@@ -75,7 +83,7 @@ export default function ProjectDashboard() {
         setCanManageSettings(perms.includes('settings:manage'));
       }
     });
-  }, [token, projectId]);
+  }, [token, projectId, refreshTrigger]);
 
   useEffect(() => {
     if (!token || !projectId) return;
@@ -106,7 +114,7 @@ export default function ProjectDashboard() {
         })
         .finally(() => setStatusLoading(false));
     });
-  }, [token, projectId]);
+  }, [token, projectId, refreshTrigger]);
 
   if (!projectId) return null;
 

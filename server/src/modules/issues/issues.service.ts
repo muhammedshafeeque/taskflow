@@ -8,7 +8,7 @@ import type { CreateIssueBody, UpdateIssueBody, ListIssuesQuery } from './issue.
 import type { PaginationOptions, PaginatedResult } from '../projects/projects.service';
 import { parseJql } from './jqlParser';
 import { sendPushToUser } from '../../services/push.service';
-import { notifyPush } from '../../websocket';
+import { notifyPush, notifyProjectRefresh } from '../../websocket';
 import { env } from '../../config/env';
 
 const DEFAULT_STATUS = 'Backlog';
@@ -88,6 +88,7 @@ export async function create(
     milestone: input.milestone ?? undefined,
   });
   await issueHistoryService.recordCreated(String(doc._id), reporterId);
+  if (projectId) notifyProjectRefresh(String(projectId));
   return doc.toObject();
 }
 
@@ -381,6 +382,7 @@ export async function update(
     const projectId = (issue.project as { _id?: unknown })?._id
       ? String((issue.project as { _id: unknown })._id)
       : String(issue.project);
+    notifyProjectRefresh(projectId);
     const issueKey = issueWithKey.key ?? '?';
     const issueUrl = `${env.appUrl}/projects/${projectId}/issues/${encodeURIComponent(issueKey)}`;
 
@@ -426,7 +428,11 @@ export async function update(
 }
 
 export async function remove(id: string): Promise<boolean> {
+  const issue = await Issue.findById(id).select('project').lean();
   const result = await Issue.findByIdAndDelete(id);
+  if (result != null && issue?.project) {
+    notifyProjectRefresh(String(issue.project));
+  }
   return result != null;
 }
 
@@ -437,7 +443,7 @@ export async function updateBacklogOrder(issueIds: string[], userId: string): Pr
   if (projectIds.length === 0) return { updated: 0, errors: ['Access denied'] };
 
   const issues = await Issue.find({ _id: { $in: issueIds }, project: { $in: projectIds } })
-    .select('_id')
+    .select('_id project')
     .lean();
   const accessibleIds = new Set(issues.map((i) => String(i._id)));
   const inaccessible = issueIds.filter((id) => !accessibleIds.has(id));
@@ -452,6 +458,8 @@ export async function updateBacklogOrder(issueIds: string[], userId: string): Pr
     },
   }));
   const result = await Issue.bulkWrite(bulkOps);
+  const affectedProjectIds = [...new Set(issues.map((i) => String(i.project)))];
+  for (const pid of affectedProjectIds) notifyProjectRefresh(pid);
   return { updated: result.modifiedCount + result.upsertedCount, errors: [] };
 }
 
@@ -472,10 +480,10 @@ export async function bulkUpdate(
 ): Promise<{ updated: number; errors: string[] }> {
   if (issueIds.length === 0) return { updated: 0, errors: [] };
   const userObjectId = new mongoose.Types.ObjectId(userId);
-  const projectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
-  if (projectIds.length === 0) return { updated: 0, errors: ['Access denied'] };
+  const allowedProjectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
+  if (allowedProjectIds.length === 0) return { updated: 0, errors: ['Access denied'] };
 
-  const issues = await Issue.find({ _id: { $in: issueIds }, project: { $in: projectIds } })
+  const issues = await Issue.find({ _id: { $in: issueIds }, project: { $in: allowedProjectIds } })
     .select('_id project')
     .lean();
   const accessibleIds = issues.map((i) => String(i._id));
@@ -525,17 +533,19 @@ export async function bulkUpdate(
     }
   }
 
+  const affectedProjectIds = [...new Set(issues.map((i) => String(i.project)))];
+  for (const pid of affectedProjectIds) notifyProjectRefresh(pid);
   return { updated, errors: [] };
 }
 
 export async function bulkDelete(issueIds: string[], userId: string): Promise<{ deleted: number; errors: string[] }> {
   if (issueIds.length === 0) return { deleted: 0, errors: [] };
   const userObjectId = new mongoose.Types.ObjectId(userId);
-  const projectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
-  if (projectIds.length === 0) return { deleted: 0, errors: ['Access denied'] };
+  const allowedProjectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
+  if (allowedProjectIds.length === 0) return { deleted: 0, errors: ['Access denied'] };
 
-  const issues = await Issue.find({ _id: { $in: issueIds }, project: { $in: projectIds } })
-    .select('_id')
+  const issues = await Issue.find({ _id: { $in: issueIds }, project: { $in: allowedProjectIds } })
+    .select('_id project')
     .lean();
   const accessibleIds = issues.map((i) => String(i._id));
   const inaccessible = issueIds.filter((id) => !accessibleIds.includes(id));
@@ -544,6 +554,8 @@ export async function bulkDelete(issueIds: string[], userId: string): Promise<{ 
   }
 
   const result = await Issue.deleteMany({ _id: { $in: issueIds } });
+  const affectedProjectIds = [...new Set(issues.map((i) => String(i.project)))];
+  for (const pid of affectedProjectIds) notifyProjectRefresh(pid);
   return { deleted: result.deletedCount, errors: [] };
 }
 

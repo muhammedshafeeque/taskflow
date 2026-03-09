@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import { WorkLog, type IWorkLog } from './workLog.model';
 import { ProjectMember } from '../projects/projectMember.model';
+import { Issue } from '../issues/issue.model';
+import { notifyProjectRefresh } from '../../websocket';
 
 export interface PaginationOptions {
   page?: number;
@@ -32,6 +34,8 @@ export async function create(
   const populated = await WorkLog.findById(doc._id)
     .populate('author', 'name email')
     .lean();
+  const issue = await Issue.findById(issueId).select('project').lean();
+  if (issue?.project) notifyProjectRefresh(String(issue.project));
   return populated ?? doc.toObject();
 }
 
@@ -76,6 +80,10 @@ export async function update(
     .populate('author', 'name email')
     .lean();
 
+  if (workLog) {
+    const issue = await Issue.findById(issueId).select('project').lean();
+    if (issue?.project) notifyProjectRefresh(String(issue.project));
+  }
   return workLog ?? null;
 }
 
@@ -89,6 +97,10 @@ export async function remove(
     issue: issueId,
     author: authorId,
   });
+  if (result != null) {
+    const issue = await Issue.findById(issueId).select('project').lean();
+    if (issue?.project) notifyProjectRefresh(String(issue.project));
+  }
   return result != null;
 }
 

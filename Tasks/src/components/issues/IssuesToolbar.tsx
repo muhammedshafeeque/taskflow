@@ -18,6 +18,8 @@ interface IssuesToolbarProps {
   projectId: string | undefined;
   token: string | null;
   jql: string;
+  canSaveFilter: boolean;
+  onSaveFilterClick: () => void;
 }
 
 export function IssuesToolbar({
@@ -35,30 +37,35 @@ export function IssuesToolbar({
   projectId,
   token,
   jql,
+  canSaveFilter,
+  onSaveFilterClick,
 }: IssuesToolbarProps) {
   return (
     <div className="flex items-center justify-between mb-6">
       <h1 className="text-xl font-semibold">Issues</h1>
       <div className="flex items-center gap-2">
-        <div className="flex rounded-lg border border-[color:var(--border-subtle)] overflow-hidden bg-[color:var(--bg-surface)]">
+        <div className="flex rounded-lg border border-[color:var(--border-subtle)] overflow-hidden bg-[color:var(--bg-surface)]" role="group" aria-label="View mode">
           <button
             type="button"
             onClick={() => updateUrl({ viewMode: 'table' })}
-            className={`px-3 py-1.5 text-xs ${viewMode === 'table' ? 'bg-[color:var(--bg-page)] text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'}`}
+            title="View: Table"
+            className={`px-4 py-2 text-xs ${viewMode === 'table' ? 'bg-[color:var(--bg-page)] text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'}`}
           >
             Table
           </button>
           <button
             type="button"
             onClick={() => updateUrl({ viewMode: 'list' })}
-            className={`px-3 py-1.5 text-xs ${viewMode === 'list' ? 'bg-[color:var(--bg-page)] text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'}`}
+            title="View: List"
+            className={`px-4 py-2 text-xs ${viewMode === 'list' ? 'bg-[color:var(--bg-page)] text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'}`}
           >
             List
           </button>
           <button
             type="button"
             onClick={() => updateUrl({ viewMode: 'kanban' })}
-            className={`px-3 py-1.5 text-xs ${viewMode === 'kanban' ? 'bg-[color:var(--bg-page)] text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'}`}
+            title="View: Kanban"
+            className={`px-4 py-2 text-xs ${viewMode === 'kanban' ? 'bg-[color:var(--bg-page)] text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'}`}
           >
             Kanban
           </button>
@@ -91,6 +98,21 @@ export function IssuesToolbar({
                 {activeFilterCount}
               </span>
             )}
+          </button>
+        </div>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={onSaveFilterClick}
+            disabled={!canSaveFilter}
+            title={canSaveFilter ? 'Save current filters as a named filter' : 'Apply filters first to save'}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs transition ${
+              canSaveFilter
+                ? 'bg-[color:var(--bg-surface)] border-[color:var(--border-subtle)] text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)]'
+                : 'bg-[color:var(--bg-surface)] border-[color:var(--border-subtle)] text-[color:var(--text-muted)] cursor-not-allowed opacity-60'
+            }`}
+          >
+            Save filter
           </button>
         </div>
         <div className="relative">

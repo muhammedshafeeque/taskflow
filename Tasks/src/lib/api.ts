@@ -1039,6 +1039,11 @@ export const timesheetApi = {
     const q = new URLSearchParams({ startDate, endDate }).toString();
     return api.get<TimesheetResult>(`/timesheet?${q}`, token);
   },
+  /** Project-specific timesheet for a single project. */
+  getProject: (projectId: string, startDate: string, endDate: string, token: string) => {
+    const q = new URLSearchParams({ startDate, endDate }).toString();
+    return api.get<TimesheetResult>(`/projects/${projectId}/timesheet?${q}`, token);
+  },
   /** Work logs for a specific user and date. */
   getDetails: (userId: string, date: string, token: string) => {
     const q = new URLSearchParams({ userId, date }).toString();

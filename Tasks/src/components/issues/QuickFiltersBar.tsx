@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import type { QuickFilterValue } from './constants';
 
 export interface SavedFilter {
@@ -27,6 +28,8 @@ interface QuickFiltersBarProps {
   savedFiltersError: string | null;
   applySavedFilter: (sf: SavedFilter) => void;
   removeSavedFilter: (id: string) => void;
+  /** When there are no saved filters, clicking "Saved" can open the filter modal or save dialog. */
+  onSavedEmptyClick?: () => void;
 }
 
 export function QuickFiltersBar({
@@ -37,7 +40,22 @@ export function QuickFiltersBar({
   savedFiltersError,
   applySavedFilter,
   removeSavedFilter,
+  onSavedEmptyClick,
 }: QuickFiltersBarProps) {
+  const [savedDropdownOpen, setSavedDropdownOpen] = useState(false);
+  const savedDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!savedDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (savedDropdownRef.current && !savedDropdownRef.current.contains(e.target as Node)) {
+        setSavedDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [savedDropdownOpen]);
+
   return (
     <div className="flex flex-wrap items-center gap-3 mb-4 py-3 border-b border-[color:var(--border-subtle)]">
       <span className="text-[11px] font-semibold text-[color:var(--text-muted)] uppercase tracking-wider">Quick filters</span>
@@ -76,42 +94,64 @@ export function QuickFiltersBar({
           All issues
         </button>
       </div>
-      {(savedFiltersLoading || savedFilters.length > 0 || savedFiltersError) ? (
-        <>
-          <span className="text-[11px] font-semibold text-[color:var(--text-muted)] uppercase tracking-wider ml-2">Saved</span>
-          {savedFiltersError && (
-            <span className="text-xs text-red-500 ml-1">{savedFiltersError}</span>
-          )}
-          {savedFiltersLoading ? (
-            <span className="text-xs text-[color:var(--text-muted)] ml-1">Loading…</span>
-          ) : (
-            <div className="flex flex-wrap gap-2">
+
+      <span className="text-[11px] font-semibold text-[color:var(--text-muted)] uppercase tracking-wider shrink-0 ml-1">Saved</span>
+      {savedFiltersError && (
+        <span className="text-xs text-red-500">{savedFiltersError}</span>
+      )}
+      {savedFiltersLoading ? (
+        <span className="text-xs text-[color:var(--text-muted)]">Loading…</span>
+      ) : savedFilters.length > 0 ? (
+        <div className="relative" ref={savedDropdownRef}>
+          <button
+            type="button"
+            onClick={() => setSavedDropdownOpen((o) => !o)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] text-xs hover:bg-[color:var(--bg-page)]"
+          >
+            Saved ({savedFilters.length}) <span className="text-[10px]">{savedDropdownOpen ? '▲' : '▼'}</span>
+          </button>
+          {savedDropdownOpen && (
+            <div className="absolute left-0 top-full z-20 mt-1 py-1 min-w-[180px] rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-xl max-h-64 overflow-y-auto">
               {savedFilters.map((sf) => (
-                <span
+                <div
                   key={sf.id}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] text-xs border border-[color:var(--border-subtle)]"
+                  className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-[color:var(--bg-page)] group"
                 >
                   <button
                     type="button"
-                    onClick={() => applySavedFilter(sf)}
-                    className="hover:text-white font-medium"
+                    onClick={() => {
+                      applySavedFilter(sf);
+                      setSavedDropdownOpen(false);
+                    }}
+                    className="flex-1 text-left text-xs text-[color:var(--text-primary)] font-medium truncate"
                   >
                     {sf.name}
                   </button>
                   <button
                     type="button"
-                    onClick={() => removeSavedFilter(sf.id)}
-                    className="text-[color:var(--text-muted)] hover:text-red-500 text-lg leading-none"
-                    aria-label="Remove saved filter"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeSavedFilter(sf.id);
+                    }}
+                    className="text-[color:var(--text-muted)] hover:text-red-500 text-sm leading-none opacity-0 group-hover:opacity-100 transition"
+                    aria-label={`Remove ${sf.name}`}
                   >
                     ×
                   </button>
-                </span>
+                </div>
               ))}
             </div>
           )}
-        </>
-      ) : null}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onSavedEmptyClick}
+          className="text-xs text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] underline"
+        >
+          No saved filters — open Filter to save current view
+        </button>
+      )}
     </div>
   );
 }

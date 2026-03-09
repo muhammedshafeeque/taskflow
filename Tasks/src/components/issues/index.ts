@@ -1,4 +1,5 @@
 export * from './constants';
+export { ActiveFilterChips } from './ActiveFilterChips';
 export { KanbanColumn } from './KanbanColumn';
 export { KanbanCard } from './KanbanCard';
 export { QuickFiltersBar, type SavedFilter } from './QuickFiltersBar';

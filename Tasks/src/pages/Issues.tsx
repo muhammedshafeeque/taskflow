@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   PointerSensor,
@@ -8,6 +9,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../contexts/NotificationsContext';
 import {
   issuesApi,
   usersApi,
@@ -42,6 +44,7 @@ import {
 import {
   QuickFiltersBar,
   IssuesToolbar,
+  ActiveFilterChips,
   JqlSearchPanel,
   BulkEditBar,
   IssuesTableView,
@@ -79,6 +82,8 @@ export default function Issues() {
   };
 
   const { token, user } = useAuth();
+  const { subscribeProject } = useNotifications();
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [project, setProject] = useState<Project | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [total, setTotal] = useState(0);
@@ -103,6 +108,8 @@ export default function Issues() {
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [saveFilterDialogOpen, setSaveFilterDialogOpen] = useState(false);
+  const [saveFilterDialogName, setSaveFilterDialogName] = useState('');
   const [saveFilterName, setSaveFilterName] = useState('');
   const [openFilterDropdown, setOpenFilterDropdown] = useState<'status' | 'type' | 'priority' | 'assignee' | 'reporter' | 'labels' | 'storyPoints' | 'project' | null>(null);
   const [confirmDeleteIssue, setConfirmDeleteIssue] = useState<Issue | null>(null);
@@ -240,6 +247,12 @@ export default function Issues() {
   const allLabels = useMemo(() => [...new Set(issues.flatMap((i) => i.labels || []))].sort(), [issues]);
   const limit = 25;
 
+  /** Status names considered "done"/closed — open issues exclude these. */
+  function isDoneStatusName(name: string): boolean {
+    const l = (name ?? '').trim().toLowerCase();
+    return l === 'done' || l === 'closed' || l === 'clossed' || l === 'resolved' || l.includes('completed');
+  }
+
   const useJql = Boolean(jql.trim());
 
   function buildListParams(p: { page: number }) {
@@ -252,7 +265,10 @@ export default function Issues() {
       token: token!,
       project: projectId!,
     };
-    if (quickFilter === 'open') params.status = 'Todo';
+    if (quickFilter === 'open' || quickFilter === 'my') {
+      const openStatuses = statusList.filter((s) => !isDoneStatusName(String(s)));
+      if (openStatuses.length > 0) params.status = openStatuses.join(',');
+    }
     else {
       if (filters.status.length) params.status = filters.status.join(',');
       if (filters.assignee.length) params.assignee = filters.assignee.join(',');
@@ -364,6 +380,11 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
   }, [jql]);
 
   useEffect(() => {
+    if (!projectId) return;
+    return subscribeProject(projectId, () => setRefreshTrigger((t) => t + 1));
+  }, [projectId, subscribeProject]);
+
+  useEffect(() => {
     if (!token || !projectId) return;
     setLoading(true);
     setJqlError(null);
@@ -378,7 +399,7 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
         setJqlError(res.message ?? 'JQL query failed');
       }
     });
-  }, [token, projectId, searchParams.toString()]);
+  }, [token, projectId, searchParams.toString(), refreshTrigger]);
 
   useEffect(() => {
     if (!token || issues.length === 0) return;
@@ -655,6 +676,7 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
           savedFiltersError={savedFiltersError}
           applySavedFilter={applySavedFilter}
           removeSavedFilter={removeSavedFilter}
+          onSavedEmptyClick={() => setFiltersOpen(true)}
         />
 
         <IssuesToolbar
@@ -672,6 +694,8 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
           projectId={projectId}
           token={token}
           jql={jql}
+          canSaveFilter={hasActiveFilters || quickFilter !== 'all' || Boolean(jql?.trim())}
+          onSaveFilterClick={() => setSaveFilterDialogOpen(true)}
         />
 
         <JqlSearchPanel
@@ -686,6 +710,14 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
           updateUrl={updateUrl}
           projects={project ? [{ key: project.key, name: project.name }] : []}
           onSaveAsFilter={() => setFiltersOpen(true)}
+        />
+
+        <ActiveFilterChips
+          filters={filters}
+          quickFilter={quickFilter}
+          updateUrl={updateUrl}
+          users={users}
+          onOpenFilterModal={() => setFiltersOpen(true)}
         />
 
         <div className="space-y-4">
@@ -877,6 +909,61 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
         onConfirm={handleBulkDelete}
         onCancel={() => setConfirmBulkDelete(false)}
       />
+
+      {saveFilterDialogOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4"
+            onClick={() => { setSaveFilterDialogOpen(false); setSaveFilterDialogName(''); }}
+          >
+            <div
+              className="w-full max-w-sm bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] rounded-2xl p-6 shadow-xl animate-scale-in"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-sm font-semibold text-[color:var(--text-primary)] mb-3">Save filter</h2>
+              <p className="text-xs text-[color:var(--text-muted)] mb-3">
+                Save the current filters and view as a named filter for quick access.
+              </p>
+              <input
+                type="text"
+                placeholder="Filter name"
+                value={saveFilterDialogName}
+                onChange={(e) => setSaveFilterDialogName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (saveFilterDialogName.trim()) saveCurrentFilter(saveFilterDialogName.trim());
+                    setSaveFilterDialogOpen(false);
+                    setSaveFilterDialogName('');
+                  }
+                }}
+                className="w-full px-3 py-2 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-sm placeholder-[color:var(--text-muted)] mb-4"
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setSaveFilterDialogOpen(false); setSaveFilterDialogName(''); }}
+                  className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (saveFilterDialogName.trim()) saveCurrentFilter(saveFilterDialogName.trim());
+                    setSaveFilterDialogOpen(false);
+                    setSaveFilterDialogName('');
+                  }}
+                  disabled={!saveFilterDialogName.trim()}
+                  className="px-3 py-1.5 rounded-md bg-[color:var(--accent)] text-xs text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

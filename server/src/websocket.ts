@@ -31,7 +31,24 @@ export function initWebSocket(server: HttpServer): void {
   io.on('connection', (socket: Socket) => {
     const userId = (socket as Socket & { userId?: string }).userId;
     if (userId) socket.join(userId);
+
+    socket.on('subscribe:project', (projectId: string) => {
+      if (projectId && typeof projectId === 'string') {
+        socket.join(`project:${projectId}`);
+      }
+    });
+
+    socket.on('unsubscribe:project', (projectId: string) => {
+      if (projectId && typeof projectId === 'string') {
+        socket.leave(`project:${projectId}`);
+      }
+    });
   });
+}
+
+/** Notify all clients subscribed to a project to refresh (e.g. dashboard, kanban). */
+export function notifyProjectRefresh(projectId: string): void {
+  if (io) io.to(`project:${projectId}`).emit('project:refresh', { projectId });
 }
 
 export function notifyInboxNew(userId: string, message: Record<string, unknown>): void {

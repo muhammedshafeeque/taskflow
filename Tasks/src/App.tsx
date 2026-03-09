@@ -86,6 +86,7 @@ function AppRoutes() {
           <Route path="test-plans/:planId/cycles/:cycleId/run" element={<TestCycleRun />} />
           <Route path="traceability" element={<Traceability />} />
           <Route path="defect-metrics" element={<DefectMetrics />} />
+          <Route path="timesheet" element={<Timesheet />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -39,7 +39,7 @@ router.delete('/:id/invitations/:invitationId', requireProjectPermission('projec
 router.get('/:id', ...idParamHandler, asyncHandler(getProjectById));
 router.patch('/:id', ...idParamHandler, requireProjectPermission('project:edit'), ...updateProjectHandler);
 router.post('/:id/versions/release', releaseVersionHandler);
-router.get('/:id/timesheet', ...idParamHandler, requireProjectPermission('issues:view'), ...timesheetHandler);
+router.get('/:id/timesheet', ...idParamHandler, requireProjectPermission('project:view'), ...timesheetHandler);
 router.use('/:id/milestones', idParamHandler[0], milestonesRoutes);
 router.use('/:id/roadmaps', idParamHandler[0], roadmapsRoutes);
 router.use('/:id/test-cases', idParamHandler[0], testCasesRoutes);

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -28,6 +29,8 @@ interface NotificationsContextValue {
   dismissInboxToast: () => void;
   /** Dismiss the push toast. */
   dismissPushToast: () => void;
+  /** Subscribe to project:refresh for a project. Returns unsubscribe. */
+  subscribeProject: (projectId: string, onRefresh: () => void) => () => void;
 }
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
@@ -42,6 +45,8 @@ export function NotificationsProvider({
   const [inboxVersion, setInboxVersion] = useState(0);
   const [latestInboxMessage, setLatestInboxMessage] = useState<Record<string, unknown> | null>(null);
   const [latestPushNotification, setLatestPushNotification] = useState<PushNotificationPayload | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const projectCallbacksRef = useRef<Map<string, () => void>>(new Map());
 
   const dismissInboxToast = useCallback(() => {
     setLatestInboxMessage(null);
@@ -51,12 +56,23 @@ export function NotificationsProvider({
     setLatestPushNotification(null);
   }, []);
 
+  const subscribeProject = useCallback((projectId: string, onRefresh: () => void) => {
+    projectCallbacksRef.current.set(projectId, onRefresh);
+    const socket = socketRef.current;
+    if (socket?.connected) socket.emit('subscribe:project', projectId);
+    return () => {
+      projectCallbacksRef.current.delete(projectId);
+      if (socketRef.current?.connected) socketRef.current.emit('unsubscribe:project', projectId);
+    };
+  }, []);
+
   useEffect(() => {
     if (!token) return;
     const socket: Socket = io(WS_URL, {
       auth: { token },
       path: '/socket.io',
     });
+    socketRef.current = socket;
     socket.on('inbox:new', (payload: Record<string, unknown>) => {
       setLatestInboxMessage(payload);
       setInboxVersion((v) => v + 1);
@@ -64,9 +80,22 @@ export function NotificationsProvider({
     socket.on('notification:push', (payload: PushNotificationPayload) => {
       setLatestPushNotification(payload);
     });
+    socket.on('project:refresh', (payload: { projectId?: string }) => {
+      const pid = payload?.projectId;
+      if (pid && typeof pid === 'string') {
+        const cb = projectCallbacksRef.current.get(pid);
+        if (cb) cb();
+      }
+    });
+    socket.on('connect', () => {
+      for (const projectId of projectCallbacksRef.current.keys()) {
+        socket.emit('subscribe:project', projectId);
+      }
+    });
     return () => {
       socket.removeAllListeners();
       socket.disconnect();
+      socketRef.current = null;
     };
   }, [token]);
 
@@ -77,8 +106,9 @@ export function NotificationsProvider({
       latestPushNotification,
       dismissInboxToast,
       dismissPushToast,
+      subscribeProject,
     }),
-    [inboxVersion, latestInboxMessage, latestPushNotification, dismissInboxToast, dismissPushToast]
+    [inboxVersion, latestInboxMessage, latestPushNotification, dismissInboxToast, dismissPushToast, subscribeProject]
   );
 
   return (
@@ -97,6 +127,7 @@ export function useNotifications() {
       latestPushNotification: null,
       dismissInboxToast: () => {},
       dismissPushToast: () => {},
+      subscribeProject: () => () => {},
     }
   );
 }

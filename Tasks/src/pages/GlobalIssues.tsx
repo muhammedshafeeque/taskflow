@@ -195,6 +195,11 @@ export default function GlobalIssues() {
   const allLabels = useMemo(() => [...new Set(issues.flatMap((i) => i.labels || []))].sort(), [issues]);
   const limit = 25;
 
+  function isDoneStatusName(name: string): boolean {
+    const l = (name ?? '').trim().toLowerCase();
+    return l === 'done' || l === 'closed' || l === 'clossed' || l === 'resolved' || l.includes('completed');
+  }
+
   const useJql = Boolean(jql.trim());
 
   function buildListParams(p: { page: number }): Record<string, string | number> & { token: string } {
@@ -207,7 +212,10 @@ export default function GlobalIssues() {
       token: token!,
     };
     if (filters.project.length) params.project = filters.project.join(',');
-    if (quickFilter === 'open') params.status = 'Todo';
+    if (quickFilter === 'open' || quickFilter === 'my') {
+      const openStatuses = statusList.filter((s) => !isDoneStatusName(String(s)));
+      if (openStatuses.length > 0) params.status = openStatuses.join(',');
+    }
     else {
       if (filters.status.length) params.status = filters.status.join(',');
       if (filters.assignee.length) params.assignee = filters.assignee.join(',');
