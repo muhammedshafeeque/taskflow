@@ -265,7 +265,11 @@ Serve the `Tasks/dist` folder with a static server (e.g. Nginx, Vercel, Netlify)
 
 ## 📄 License
 
-ISC
+This project is licensed under the [GNU General Public License v3.0](LICENSE) (GPL-3.0). See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute.
+
+## Contributors
+
+See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the contributor list and how to add yourself.
 
 ---
 
