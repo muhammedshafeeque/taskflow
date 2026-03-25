@@ -55,6 +55,10 @@ export function notifyInboxNew(userId: string, message: Record<string, unknown>)
   if (io) io.to(userId).emit('inbox:new', message);
 }
 
+export function notifyInAppNotification(userId: string, notification: Record<string, unknown>): void {
+  if (io) io.to(userId).emit('notification:new', notification);
+}
+
 export function notifyPush(
   userId: string,
   payload: { title: string; body?: string; url?: string; data?: Record<string, unknown> }

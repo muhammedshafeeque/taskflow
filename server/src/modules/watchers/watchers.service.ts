@@ -5,8 +5,8 @@ import { ProjectMember } from '../projects/projectMember.model';
 import { User } from '../auth/user.model';
 import { ApiError } from '../../utils/ApiError';
 import { env } from '../../config/env';
-import * as inboxService from '../inbox/inbox.service';
 import * as emailService from '../../services/email.service';
+import * as notificationsService from '../notifications/notifications.service';
 
 async function ensureUserCanAccessIssue(userId: string, issueId: string): Promise<void> {
   const issue = await Issue.findById(issueId).select('project').lean();
@@ -94,11 +94,18 @@ export async function notifyWatchers(
   const metaWithUrl = { ...params.meta, url: issueUrl };
 
   for (const toUser of toNotify) {
-    await inboxService.createMessage({
+    const mappedType =
+      params.type === 'comment_added'
+        ? 'watch_comment'
+        : params.type === 'status_changed'
+          ? 'watch_status'
+          : 'watch_field';
+    await notificationsService.createNotification({
       toUser,
-      type: params.type,
+      type: mappedType as any,
       title: params.title,
       body: params.body ?? '',
+      url: issueUrl,
       meta: metaWithUrl,
     });
   }

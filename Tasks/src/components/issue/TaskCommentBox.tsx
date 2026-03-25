@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { uploadFile } from '../../lib/api';
 import { BubbleMenu, EditorContent, useEditor, type Editor } from '@tiptap/react';
@@ -9,12 +9,14 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
+import Mention from '@tiptap/extension-mention';
 import { Node, mergeAttributes } from '@tiptap/core';
 
 interface TaskCommentBoxProps {
   onSubmit: (body: string) => void;
   submitting: boolean;
   placeholder?: string;
+  mentionUsers?: Array<{ _id: string; name: string; email: string }>;
 }
 
 const FORMAT_BUTTONS = [
@@ -191,6 +193,14 @@ function serializeNode(node: JSONNode): string {
       if (!url) return '';
       return `[video](${url})`;
     }
+    case 'mention': {
+      const attrs = node.attrs || {};
+      const id = (attrs.id as string) || '';
+      const label = (attrs.label as string) || '';
+      if (!id || !/^[a-fA-F0-9]{24}$/.test(id)) return '';
+      const name = label.trim() || 'User';
+      return `@[${name}](${id})`;
+    }
     case 'attachmentBlock': {
       const attrs = node.attrs || {};
       const url = (attrs.url as string) || '';
@@ -241,39 +251,182 @@ export default function TaskCommentBox({
   onSubmit,
   submitting,
   placeholder = 'Add a comment…',
+  mentionUsers = [],
 }: TaskCommentBoxProps) {
   const { token } = useAuth();
   const [uploading, setUploading] = useState(false);
+  const mentionUsersRef = useRef<Array<{ _id: string; name: string; email: string }>>([]);
+  useEffect(() => {
+    mentionUsersRef.current = mentionUsers;
+  }, [mentionUsers]);
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        codeBlock: false,
-      }),
-      Image.configure({
-        inline: false,
-      }),
-      Placeholder.configure({
-        placeholder,
-      }),
-      Table.configure({
-        resizable: false,
-        HTMLAttributes: {
-          class: 'border-collapse w-full my-2 text-sm [&_th]:border [&_th]:border-[color:var(--border-subtle)] [&_th]:bg-[color:var(--bg-elevated)] [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_td]:border [&_td]:border-[color:var(--border-subtle)] [&_td]:px-2 [&_td]:py-1.5',
+  const mentionSuggestion = {
+    items: ({ query }: { query: string }) => {
+      const users = mentionUsersRef.current || [];
+      if (users.length === 0) return [];
+      const qRaw = (query || '').trim();
+      const q = qRaw.replace(/^@/, '').toLowerCase().trim();
+      const qTight = q.replace(/\s+/g, '');
+      if (!q) return users;
+      const filtered = users
+        .filter((u) => {
+          const name = (u.name || '').toLowerCase();
+          const email = (u.email || '').toLowerCase();
+          if (name.includes(q) || email.includes(q)) return true;
+          const nameTight = name.replace(/\s+/g, '');
+          const emailTight = email.replace(/\s+/g, '');
+          return nameTight.includes(qTight) || emailTight.includes(qTight);
+        })
+        .slice(0, 50);
+      return filtered.length ? filtered : users;
+    },
+    render: () => {
+      let root: HTMLDivElement | null = null;
+      let selectedIndex = 0;
+      let items: Array<{ _id: string; name: string; email: string }> = [];
+      let command: ((p: { id: string; label: string }) => void) | null = null;
+
+      function mount() {
+        if (root) return;
+        root = document.createElement('div');
+        root.style.position = 'absolute';
+        root.style.zIndex = '1000';
+        document.body.appendChild(root);
+      }
+
+      function unmount() {
+        if (root) root.remove();
+        root = null;
+      }
+
+      function position(clientRect?: DOMRect) {
+        if (!root || !clientRect) return;
+        root.style.left = `${clientRect.left}px`;
+        root.style.top = `${clientRect.bottom + 6}px`;
+      }
+
+      function renderList() {
+        if (!root) return;
+        root.innerHTML = '';
+        const box = document.createElement('div');
+        box.className =
+          'w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl overflow-hidden';
+        const listEl = document.createElement('div');
+        listEl.className = 'max-h-60 overflow-auto p-1';
+
+        if (items.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'px-3 py-2 text-xs text-[color:var(--text-muted)]';
+          empty.textContent = (mentionUsersRef.current || []).length === 0 ? 'Loading users…' : 'No matches';
+          listEl.appendChild(empty);
+        } else {
+          items.forEach((u, i) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className =
+              'w-full text-left px-3 py-2 rounded-lg transition flex flex-col gap-0.5 hover:bg-[color:var(--bg-surface)]';
+            if (i === selectedIndex) btn.className += ' bg-[color:var(--bg-surface)]';
+            const name = document.createElement('div');
+            name.className = 'text-xs font-medium text-[color:var(--text-primary)] truncate';
+            name.textContent = u.name;
+            const email = document.createElement('div');
+            email.className = 'text-[11px] text-[color:var(--text-muted)] truncate';
+            email.textContent = u.email;
+            btn.append(name, email);
+            btn.addEventListener('mousedown', (e) => e.preventDefault());
+            btn.addEventListener('click', () => command?.({ id: u._id, label: u.name }));
+            listEl.appendChild(btn);
+          });
+        }
+
+        box.appendChild(listEl);
+        root.appendChild(box);
+      }
+
+      return {
+        onStart: (props: any) => {
+          mount();
+          items = props.items ?? [];
+          selectedIndex = 0;
+          command = props.command;
+          renderList();
+          position(props.clientRect?.());
         },
-      }),
-      TableRow,
-      TableHeader,
-      TableCell,
-      VideoBlock,
-      AttachmentBlock,
-    ],
-    editorProps: {
-      attributes: {
-        class:
-          'min-h-[96px] px-4 py-3 bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] text-sm leading-relaxed outline-none',
-      },
-      handleDrop(_view, event) {
+        onUpdate: (props: any) => {
+          items = props.items ?? [];
+          selectedIndex = 0;
+          command = props.command;
+          renderList();
+          position(props.clientRect?.());
+        },
+        onKeyDown: (props: any) => {
+          if (props.event.key === 'Escape') {
+            unmount();
+            return true;
+          }
+          if (props.event.key === 'ArrowDown') {
+            selectedIndex = Math.min(items.length - 1, selectedIndex + 1);
+            renderList();
+            return true;
+          }
+          if (props.event.key === 'ArrowUp') {
+            selectedIndex = Math.max(0, selectedIndex - 1);
+            renderList();
+            return true;
+          }
+          if (props.event.key === 'Enter') {
+            const item = items[selectedIndex];
+            if (item) {
+              props.command({ id: item._id, label: item.name });
+              return true;
+            }
+          }
+          return false;
+        },
+        onExit: () => {
+          unmount();
+        },
+      };
+    },
+  };
+
+  const editor = useEditor(
+    {
+      extensions: [
+        StarterKit.configure({
+          codeBlock: false,
+        }),
+        Mention.configure({
+          HTMLAttributes: {
+            class:
+              'inline-flex items-center rounded-md bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] px-2 py-0.5 text-xs text-[color:var(--text-primary)] font-medium',
+          },
+          suggestion: mentionSuggestion as any,
+        }),
+        Image.configure({
+          inline: false,
+        }),
+        Placeholder.configure({
+          placeholder,
+        }),
+        Table.configure({
+          resizable: false,
+          HTMLAttributes: {
+            class: 'border-collapse w-full my-2 text-sm [&_th]:border [&_th]:border-[color:var(--border-subtle)] [&_th]:bg-[color:var(--bg-elevated)] [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_td]:border [&_td]:border-[color:var(--border-subtle)] [&_td]:px-2 [&_td]:py-1.5',
+          },
+        }),
+        TableRow,
+        TableHeader,
+        TableCell,
+        VideoBlock,
+        AttachmentBlock,
+      ],
+      editorProps: {
+        attributes: {
+          class:
+            'min-h-[96px] px-4 py-3 bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] text-sm leading-relaxed outline-none',
+        },
+        handleDrop(_view, event) {
         const dt = event.dataTransfer;
         const files = dt?.files;
         if (!files || files.length === 0) return false;
@@ -322,8 +475,10 @@ export default function TaskCommentBox({
         })();
         return true;
       },
+      },
     },
-  });
+    []
+  );
 
   const handleInsertTable = () => {
     editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();

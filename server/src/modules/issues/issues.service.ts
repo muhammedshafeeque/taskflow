@@ -10,6 +10,8 @@ import { parseJql } from './jqlParser';
 import { sendPushToUser } from '../../services/push.service';
 import { notifyPush, notifyProjectRefresh } from '../../websocket';
 import { env } from '../../config/env';
+import * as notificationsService from '../notifications/notifications.service';
+import * as watchersService from '../watchers/watchers.service';
 
 const DEFAULT_STATUS = 'Backlog';
 const DEFAULT_DONE_STATUSES = ['Done', 'Closed', 'Resolved'];
@@ -396,9 +398,64 @@ export async function update(
           url: issueUrl,
           data: { type: 'issue_assigned', issueId: id, issueKey, projectId },
         };
+        notificationsService.createNotification({
+          toUser: newAssigneeId,
+          type: 'issue_assigned',
+          title: payload.title,
+          body: payload.body,
+          url: issueUrl,
+          meta: payload.data,
+        }).catch(() => {});
         sendPushToUser(newAssigneeId, payload).catch((err) => console.error('Push failed:', err));
         notifyPush(newAssigneeId, payload);
       }
+    }
+
+    // Unassignment: notify old assignee (if any) when cleared.
+    if (assigneeChange && !assigneeChange.toValue && assigneeChange.fromValue) {
+      const oldAssigneeId = String(assigneeChange.fromValue);
+      if (oldAssigneeId && oldAssigneeId !== authorId) {
+        const payload = {
+          title: 'Issue unassigned from you',
+          body: `${issueKey}: ${(issue.title as string) ?? ''}`,
+          url: issueUrl,
+          data: { type: 'issue_unassigned', issueId: id, issueKey, projectId },
+        };
+        notificationsService.createNotification({
+          toUser: oldAssigneeId,
+          type: 'issue_unassigned',
+          title: payload.title,
+          body: payload.body,
+          url: issueUrl,
+          meta: payload.data,
+        }).catch(() => {});
+        sendPushToUser(oldAssigneeId, payload).catch((err) => console.error('Push failed:', err));
+        notifyPush(oldAssigneeId, payload);
+      }
+    }
+
+    // Notify watchers for status/field changes (in-app, not inbox)
+    const statusChange2 = changes.find((c) => c.field === 'status');
+    if (statusChange2?.toValue && String(statusChange2.toValue) !== String(statusChange2.fromValue)) {
+      watchersService.notifyWatchers(id, authorId, {
+        type: 'status_changed',
+        title: `Status changed: ${issueKey}`,
+        body: `${String(statusChange2.fromValue ?? '—')} → ${String(statusChange2.toValue)}`,
+        meta: { issueId: id, issueKey, projectId },
+      }).catch(() => {});
+    }
+    const otherFieldChanges = changes.filter((c) => c.field !== 'status');
+    if (otherFieldChanges.length > 0) {
+      const summary = otherFieldChanges
+        .slice(0, 4)
+        .map((c) => `${c.field}`)
+        .join(', ');
+      watchersService.notifyWatchers(id, authorId, {
+        type: 'field_changed',
+        title: `Updated: ${issueKey}`,
+        body: summary,
+        meta: { issueId: id, issueKey, projectId },
+      }).catch(() => {});
     }
 
     const statusChange = changes.find((c) => c.field === 'status');

@@ -97,7 +97,7 @@ export default function Inbox() {
   const mustChange = user?.mustChangePassword ?? false;
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 w-full">
       <h1 className="text-base font-semibold text-[color:var(--text-primary)] mb-4">Inbox</h1>
       {mustChange && (
         <div className="mb-4 p-3 rounded-lg bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] text-[color:var(--text-muted)] text-xs leading-relaxed">
@@ -110,8 +110,8 @@ export default function Inbox() {
       ) : messages.length === 0 ? (
         <p className="text-[color:var(--text-muted)] text-xs">No messages.</p>
       ) : (
-        <div className="flex gap-6">
-          <ul className="flex-1 min-w-0 space-y-2">
+        <div className="flex flex-col lg:flex-row gap-6 w-full">
+          <ul className="w-full lg:w-[42%] min-w-0 space-y-2">
             {messages.map((m) => (
               <li
                 key={m._id}
@@ -155,7 +155,7 @@ export default function Inbox() {
           </ul>
 
           {selectedMessage && (
-            <div className="w-full max-w-md shrink-0 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-hidden flex flex-col max-h-[calc(100vh-12rem)]">
+            <div className="w-full lg:flex-1 min-w-0 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-hidden flex flex-col lg:sticky lg:top-6 max-h-[calc(100vh-12rem)]">
               <div className="p-3 border-b border-[color:var(--border-subtle)] flex items-center justify-between shrink-0">
                 <button
                   type="button"

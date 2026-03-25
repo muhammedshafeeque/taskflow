@@ -54,6 +54,21 @@ export const updateProfileSchema = z.object({
   }),
 });
 
+export const microsoftSsoSchema = z.object({
+  body: z.object({
+    code: z.string().min(1),
+    redirectUri: z.string().url().optional(),
+  }),
+});
+
+export const microsoftSsoAuthorizeUrlQuerySchema = z.object({
+  query: z.object({
+    redirectUri: z.string().url().optional(),
+  }),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>['body'];
 export type LoginInput = z.infer<typeof loginSchema>['body'];
 export type RefreshInput = z.infer<typeof refreshSchema>['body'];
+export type MicrosoftSsoInput = z.infer<typeof microsoftSsoSchema>['body'];
+export type MicrosoftSsoAuthorizeUrlQuery = z.infer<typeof microsoftSsoAuthorizeUrlQuerySchema>['query'];

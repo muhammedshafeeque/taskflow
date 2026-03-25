@@ -13,6 +13,8 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
   updateProfileSchema,
+  microsoftSsoSchema,
+  microsoftSsoAuthorizeUrlQuerySchema,
 } from './auth.validation';
 import * as authService from './auth.service';
 
@@ -66,6 +68,26 @@ export async function resetPassword(req: import('express').Request, res: Respons
   res.status(200).json({ success: true, data: { user } });
 }
 
+export async function microsoftSso(req: Request, res: Response): Promise<void> {
+  const result = await authService.microsoftSso(req.body);
+  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress;
+  logAudit({
+    userId: result.user.id,
+    action: 'login_sso_microsoft',
+    resourceType: 'auth',
+    meta: { email: result.user.email },
+    ip,
+  });
+  analyticsService.logEvent(result.user.id, 'login_sso_microsoft', 'auth').catch(() => {});
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function microsoftSsoAuthorizeUrl(req: Request, res: Response): Promise<void> {
+  const redirectUri = (req.query as { redirectUri?: string }).redirectUri;
+  const result = await authService.microsoftSsoAuthorizeUrl({ redirectUri });
+  res.status(200).json({ success: true, data: result });
+}
+
 export const registerHandler = [
   validate(registerSchema.shape.body, 'body'),
   asyncHandler(register),
@@ -101,4 +123,14 @@ export const forgotPasswordHandler = [
 export const resetPasswordHandler = [
   validate(resetPasswordSchema.shape.body, 'body'),
   asyncHandler(resetPassword),
+];
+
+export const microsoftSsoHandler = [
+  validate(microsoftSsoSchema.shape.body, 'body'),
+  asyncHandler(microsoftSso),
+];
+
+export const microsoftSsoAuthorizeUrlHandler = [
+  validate(microsoftSsoAuthorizeUrlQuerySchema.shape.query, 'query'),
+  asyncHandler(microsoftSsoAuthorizeUrl),
 ];

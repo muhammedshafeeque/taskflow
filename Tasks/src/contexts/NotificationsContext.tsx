@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { WS_URL } from '../lib/api';
+import { WS_URL, notificationsApi, type InAppNotification } from '../lib/api';
 
 export interface PushNotificationPayload {
   title: string;
@@ -25,6 +25,11 @@ interface NotificationsContextValue {
   latestInboxMessage: Record<string, unknown> | null;
   /** Latest push notification (from notification:push event). */
   latestPushNotification: PushNotificationPayload | null;
+  /** In-app notifications (persisted). */
+  notifications: InAppNotification[];
+  unreadCount: number;
+  markRead: (id: string) => Promise<void>;
+  markAllRead: () => Promise<void>;
   /** Dismiss the inbox toast. */
   dismissInboxToast: () => void;
   /** Dismiss the push toast. */
@@ -45,6 +50,8 @@ export function NotificationsProvider({
   const [inboxVersion, setInboxVersion] = useState(0);
   const [latestInboxMessage, setLatestInboxMessage] = useState<Record<string, unknown> | null>(null);
   const [latestPushNotification, setLatestPushNotification] = useState<PushNotificationPayload | null>(null);
+  const [notifications, setNotifications] = useState<InAppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const socketRef = useRef<Socket | null>(null);
   const projectCallbacksRef = useRef<Map<string, () => void>>(new Map());
 
@@ -66,8 +73,33 @@ export function NotificationsProvider({
     };
   }, []);
 
+  const markRead = useCallback(async (id: string) => {
+    if (!token) return;
+    const res = await notificationsApi.markRead(id, token);
+    if (res.success && res.data) {
+      setNotifications((prev) => prev.map((n) => (n._id === id ? { ...n, readAt: res.data!.readAt ?? new Date().toISOString() } : n)));
+      setUnreadCount((c) => Math.max(0, c - 1));
+    }
+  }, [token]);
+
+  const markAllRead = useCallback(async () => {
+    if (!token) return;
+    const res = await notificationsApi.markAllRead(token);
+    if (res.success) {
+      setNotifications((prev) => prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() })));
+      setUnreadCount(0);
+    }
+  }, [token]);
+
   useEffect(() => {
     if (!token) return;
+    // initial load
+    notificationsApi.unreadCount(token).then((res) => {
+      if (res.success && res.data) setUnreadCount(res.data.unread ?? 0);
+    });
+    notificationsApi.list({ page: 1, limit: 20 }, token).then((res) => {
+      if (res.success && res.data?.data) setNotifications(res.data.data);
+    });
     const socket: Socket = io(WS_URL, {
       auth: { token },
       path: '/socket.io',
@@ -79,6 +111,10 @@ export function NotificationsProvider({
     });
     socket.on('notification:push', (payload: PushNotificationPayload) => {
       setLatestPushNotification(payload);
+    });
+    socket.on('notification:new', (payload: InAppNotification) => {
+      setNotifications((prev) => [payload, ...prev].slice(0, 50));
+      setUnreadCount((c) => c + 1);
     });
     socket.on('project:refresh', (payload: { projectId?: string }) => {
       const pid = payload?.projectId;
@@ -104,11 +140,15 @@ export function NotificationsProvider({
       inboxVersion,
       latestInboxMessage,
       latestPushNotification,
+      notifications,
+      unreadCount,
+      markRead,
+      markAllRead,
       dismissInboxToast,
       dismissPushToast,
       subscribeProject,
     }),
-    [inboxVersion, latestInboxMessage, latestPushNotification, dismissInboxToast, dismissPushToast, subscribeProject]
+    [inboxVersion, latestInboxMessage, latestPushNotification, notifications, unreadCount, markRead, markAllRead, dismissInboxToast, dismissPushToast, subscribeProject]
   );
 
   return (
@@ -125,6 +165,10 @@ export function useNotifications() {
       inboxVersion: 0,
       latestInboxMessage: null,
       latestPushNotification: null,
+      notifications: [],
+      unreadCount: 0,
+      markRead: async () => {},
+      markAllRead: async () => {},
       dismissInboxToast: () => {},
       dismissPushToast: () => {},
       subscribeProject: () => () => {},
