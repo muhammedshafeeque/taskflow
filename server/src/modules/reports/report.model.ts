@@ -1,6 +1,12 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export type ReportType = 'issues_by_status' | 'issues_by_assignee' | 'workload' | 'defects';
+export type ReportType =
+  | 'issues_by_status'
+  | 'issues_by_type'
+  | 'issues_by_priority'
+  | 'issues_by_assignee'
+  | 'workload'
+  | 'defects';
 
 export interface IReportConfig {
   filters?: Record<string, unknown>;
@@ -25,7 +31,14 @@ const reportSchema = new Schema<IReport>(
     name: { type: String, required: true },
     type: {
       type: String,
-      enum: ['issues_by_status', 'issues_by_assignee', 'workload', 'defects'],
+      enum: [
+        'issues_by_status',
+        'issues_by_type',
+        'issues_by_priority',
+        'issues_by_assignee',
+        'workload',
+        'defects',
+      ],
       required: true,
     },
     config: {

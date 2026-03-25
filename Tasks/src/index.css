@@ -64,6 +64,20 @@
     min-height: 100%;
     height: 100%;
   }
+
+  /* Kanban: main horizontal scroll uses top synced bar; hide duplicate bottom bar */
+  .kanban-scroll-main {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .kanban-scroll-main::-webkit-scrollbar {
+    display: none;
+  }
+
+  .kanban-scroll-top {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-subtle) transparent;
+  }
 }
 
 /* Custom animations */

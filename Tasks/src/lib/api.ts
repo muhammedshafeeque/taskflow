@@ -449,7 +449,32 @@ export const testPlansApi = {
     api.patch(`/projects/${projectId}/test-plans/${planId}/cycles/${cycleId}/runs/${testCaseId}`, body, token),
 };
 
-export type ReportType = 'issues_by_status' | 'issues_by_assignee' | 'workload' | 'defects';
+export type ReportType =
+  | 'issues_by_status'
+  | 'issues_by_type'
+  | 'issues_by_priority'
+  | 'issues_by_assignee'
+  | 'workload'
+  | 'defects';
+
+/** Sentinel for unassigned assignee in report filters (must match server `REPORT_UNASSIGNED`). */
+export const REPORT_FILTER_UNASSIGNED = '__unassigned__';
+
+export interface ReportFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  dateField?: 'createdAt' | 'updatedAt';
+  statuses?: string[];
+  priorities?: string[];
+  types?: string[];
+  assigneeIds?: string[];
+}
+
+export interface ReportConfig {
+  filters?: ReportFilters;
+  groupBy?: string;
+  chartType?: 'bar' | 'pie' | 'table';
+}
 
 export interface Report {
   _id: string;
@@ -457,7 +482,7 @@ export interface Report {
   project?: { _id: string; name: string; key: string };
   name: string;
   type: ReportType;
-  config?: { filters?: Record<string, unknown>; groupBy?: string; chartType?: 'bar' | 'pie' | 'table' };
+  config?: ReportConfig;
   createdAt: string;
   updatedAt: string;
 }

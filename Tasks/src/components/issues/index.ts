@@ -2,6 +2,8 @@ export * from './constants';
 export { ActiveFilterChips } from './ActiveFilterChips';
 export { KanbanColumn } from './KanbanColumn';
 export { KanbanCard } from './KanbanCard';
+export { KanbanScrollArea } from './KanbanScrollArea';
+export { KanbanDragPreview } from './KanbanDragPreview';
 export { QuickFiltersBar, type SavedFilter } from './QuickFiltersBar';
 export { IssuesToolbar } from './IssuesToolbar';
 export { JqlSearchPanel } from './JqlSearchPanel';

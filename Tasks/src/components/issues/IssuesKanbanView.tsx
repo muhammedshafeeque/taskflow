@@ -1,6 +1,9 @@
-import { DndContext, type DragEndEvent } from '@dnd-kit/core';
+import { useState } from 'react';
+import { DndContext, DragOverlay, pointerWithin, type DragEndEvent } from '@dnd-kit/core';
 import { KanbanColumn } from './KanbanColumn';
 import { KanbanCard } from './KanbanCard';
+import { KanbanScrollArea } from './KanbanScrollArea';
+import { KanbanDragPreview } from './KanbanDragPreview';
 import type { Issue } from '../../lib/api';
 
 type MetaGetter = (name: string) => { icon?: string; color?: string } | undefined;
@@ -17,7 +20,7 @@ interface IssuesKanbanViewProps {
   setConfirmDeleteIssue: (issue: Issue | null) => void;
   kanbanUpdatingId: string | null;
   kanbanError: string | null;
-  handleKanbanDragEnd: (ev: DragEndEvent) => void;
+  handleKanbanDragEnd: (ev: DragEndEvent) => void | Promise<void>;
   kanbanSensors: ReturnType<typeof import('@dnd-kit/core').useSensors>;
   watchingStatus: Record<string, boolean>;
   watchingLoadingId: string | null;
@@ -42,13 +45,27 @@ export function IssuesKanbanView({
   watchingLoadingId,
   handleToggleWatch,
 }: IssuesKanbanViewProps) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const activeIssue = activeId ? issues.find((i) => i._id === activeId) : undefined;
+
+  async function handleDragEnd(ev: DragEndEvent) {
+    setActiveId(null);
+    await handleKanbanDragEnd(ev);
+  }
+
   return (
     <div className="space-y-2">
       {kanbanError && (
         <p className="text-sm text-red-400" role="alert">{kanbanError}</p>
       )}
-      <DndContext sensors={kanbanSensors} onDragEnd={handleKanbanDragEnd}>
-        <div className="flex gap-4 overflow-x-auto pb-4 -mx-1">
+      <DndContext
+        sensors={kanbanSensors}
+        collisionDetection={pointerWithin}
+        onDragStart={({ active }) => setActiveId(String(active.id))}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveId(null)}
+      >
+        <KanbanScrollArea>
           {statusList.map((status) => {
             const columnIssues = issues.filter((i) => i.status === status);
             return (
@@ -72,7 +89,12 @@ export function IssuesKanbanView({
               </KanbanColumn>
             );
           })}
-        </div>
+        </KanbanScrollArea>
+        <DragOverlay dropAnimation={null}>
+          {activeIssue ? (
+            <KanbanDragPreview issueKey={getIssueKey(activeIssue)} title={activeIssue.title} />
+          ) : null}
+        </DragOverlay>
       </DndContext>
     </div>
   );

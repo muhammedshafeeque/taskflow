@@ -4,14 +4,20 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   reportsApi,
   projectsApi,
+  usersApi,
   type Report,
   type ReportType,
   type ReportExecuteResult,
+  type ReportFilters,
+  type User,
+  REPORT_FILTER_UNASSIGNED,
 } from '../lib/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const REPORT_TYPES: { value: ReportType; label: string }[] = [
   { value: 'issues_by_status', label: 'Issues by status' },
+  { value: 'issues_by_type', label: 'Issues by type' },
+  { value: 'issues_by_priority', label: 'Issues by priority' },
   { value: 'issues_by_assignee', label: 'Issues by assignee' },
   { value: 'workload', label: 'Workload' },
   { value: 'defects', label: 'Defects' },
@@ -25,6 +31,57 @@ const CHART_TYPES = [
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
+const FILTER_STATUSES = ['Backlog', 'Todo', 'In Progress', 'Done'];
+const FILTER_TYPES = ['Task', 'Bug', 'Story', 'Epic'];
+const FILTER_PRIORITIES = ['Lowest', 'Low', 'Medium', 'High', 'Highest'];
+
+function buildReportFiltersFromForm(
+  filterDateFrom: string,
+  filterDateTo: string,
+  filterDateField: 'createdAt' | 'updatedAt',
+  filterStatuses: string[],
+  filterPriorities: string[],
+  filterTypes: string[],
+  filterAssigneeIds: string[]
+): ReportFilters | undefined {
+  const f: ReportFilters = {};
+  const df = filterDateFrom.trim();
+  const dt = filterDateTo.trim();
+  if (df) f.dateFrom = df;
+  if (dt) f.dateTo = dt;
+  if (df || dt) f.dateField = filterDateField;
+  if (filterStatuses.length) f.statuses = filterStatuses;
+  if (filterPriorities.length) f.priorities = filterPriorities;
+  if (filterTypes.length) f.types = filterTypes;
+  if (filterAssigneeIds.length) f.assigneeIds = filterAssigneeIds;
+  if (
+    !f.dateFrom &&
+    !f.dateTo &&
+    !f.statuses?.length &&
+    !f.priorities?.length &&
+    !f.types?.length &&
+    !f.assigneeIds?.length
+  ) {
+    return undefined;
+  }
+  return f;
+}
+
+function formatReportSummary(r: Report): string {
+  const parts: string[] = [];
+  if (r.project?.name) parts.push(r.project.name);
+  const f = r.config?.filters;
+  if (!f) return parts.join(' · ');
+  if (f.dateFrom || f.dateTo) {
+    parts.push(`${f.dateFrom ?? '…'} → ${f.dateTo ?? '…'}`);
+  }
+  if (f.statuses?.length) parts.push(`${f.statuses.length} status${f.statuses.length !== 1 ? 'es' : ''}`);
+  if (f.priorities?.length) parts.push(`${f.priorities.length} priorities`);
+  if (f.types?.length) parts.push(`${f.types.length} types`);
+  if (f.assigneeIds?.length) parts.push(`${f.assigneeIds.length} assignee filter${f.assigneeIds.length !== 1 ? 's' : ''}`);
+  return parts.join(' · ');
+}
+
 export default function ReportsPage() {
   const { token, user } = useAuth();
   const [reports, setReports] = useState<Report[]>([]);
@@ -35,10 +92,43 @@ export default function ReportsPage() {
   const [newType, setNewType] = useState<ReportType>('issues_by_status');
   const [newProject, setNewProject] = useState<string>('');
   const [newChartType, setNewChartType] = useState<'bar' | 'pie' | 'table'>('bar');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterDateField, setFilterDateField] = useState<'createdAt' | 'updatedAt'>('updatedAt');
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
+  const [filterPriorities, setFilterPriorities] = useState<string[]>([]);
+  const [filterTypes, setFilterTypes] = useState<string[]>([]);
+  const [filterAssigneeIds, setFilterAssigneeIds] = useState<string[]>([]);
+  const [filterUsers, setFilterUsers] = useState<User[]>([]);
+  const [createError, setCreateError] = useState('');
   const [saving, setSaving] = useState(false);
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [result, setResult] = useState<ReportExecuteResult | null>(null);
+  const [executeError, setExecuteError] = useState('');
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!showCreate || !token) return;
+    usersApi.list(1, 200, token).then((res) => {
+      if (res.success && res.data?.data) setFilterUsers(res.data.data);
+    });
+  }, [token, showCreate]);
+
+  useEffect(() => {
+    if (!showCreate) return;
+    setNewName('');
+    setNewType('issues_by_status');
+    setNewProject('');
+    setNewChartType('bar');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+    setFilterDateField('updatedAt');
+    setFilterStatuses([]);
+    setFilterPriorities([]);
+    setFilterTypes([]);
+    setFilterAssigneeIds([]);
+    setCreateError('');
+  }, [showCreate]);
 
   useEffect(() => {
     if (!token) return;
@@ -59,20 +149,34 @@ export default function ReportsPage() {
     e.preventDefault();
     if (!token || !newName.trim()) return;
     setSaving(true);
+    setCreateError('');
+    const filters = buildReportFiltersFromForm(
+      filterDateFrom,
+      filterDateTo,
+      filterDateField,
+      filterStatuses,
+      filterPriorities,
+      filterTypes,
+      filterAssigneeIds
+    );
     const res = await reportsApi.create(
       {
         name: newName.trim(),
         type: newType,
         project: newProject || undefined,
-        config: { chartType: newChartType },
+        config: {
+          chartType: newChartType,
+          ...(filters ? { filters } : {}),
+        },
       },
       token
     );
     setSaving(false);
     if (res.success && res.data) {
       setReports((prev) => [res.data!, ...prev]);
-      setNewName('');
       setShowCreate(false);
+    } else {
+      setCreateError((res as { message?: string }).message ?? 'Could not create report');
     }
   }
 
@@ -84,6 +188,7 @@ export default function ReportsPage() {
       if (selectedReportId === r._id) {
         setSelectedReportId(null);
         setResult(null);
+        setExecuteError('');
       }
     }
   }
@@ -92,10 +197,15 @@ export default function ReportsPage() {
     if (!token) return;
     setExecutingId(r._id);
     setSelectedReportId(r._id);
+    setExecuteError('');
     const res = await reportsApi.execute(r._id, token);
     setExecutingId(null);
-    if (res.success && res.data) setResult(res.data);
-    else setResult(null);
+    if (res.success && res.data) {
+      setResult(res.data);
+    } else {
+      setResult(null);
+      setExecuteError((res as { message?: string }).message ?? 'Could not run report');
+    }
   }
 
   if (user?.permissions && !user.permissions.includes('reports:view')) {
@@ -178,6 +288,105 @@ export default function ReportsPage() {
                 ))}
               </select>
             </div>
+
+            <div className="border-t border-[color:var(--border-subtle)] pt-4 mt-2">
+              <h3 className="text-xs font-semibold text-[color:var(--text-primary)] mb-3">Filters (optional)</h3>
+              <p className="text-[11px] text-[color:var(--text-muted)] mb-4">
+                Narrow results by date, status, priority, type, or assignee. Hold Cmd (Mac) or Ctrl (Windows) to select multiple values.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
+                <div>
+                  <label className="block text-xs text-[color:var(--text-muted)] mb-1">Date from</label>
+                  <input
+                    type="date"
+                    value={filterDateFrom}
+                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                    className="px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[color:var(--text-muted)] mb-1">Date to</label>
+                  <input
+                    type="date"
+                    value={filterDateTo}
+                    onChange={(e) => setFilterDateTo(e.target.value)}
+                    className="px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm w-full"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-[color:var(--text-muted)] mb-1">Apply date range to</label>
+                  <select
+                    value={filterDateField}
+                    onChange={(e) => setFilterDateField(e.target.value as 'createdAt' | 'updatedAt')}
+                    className="px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm w-full max-w-md"
+                  >
+                    <option value="updatedAt">Updated at</option>
+                    <option value="createdAt">Created at</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-[color:var(--text-muted)] mb-1">Statuses</label>
+                  <select
+                    multiple
+                    size={5}
+                    value={filterStatuses}
+                    onChange={(e) => setFilterStatuses(Array.from(e.target.selectedOptions, (o) => o.value))}
+                    className="px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm w-full min-h-[120px]"
+                  >
+                    {FILTER_STATUSES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-[color:var(--text-muted)] mb-1">Priorities</label>
+                  <select
+                    multiple
+                    size={5}
+                    value={filterPriorities}
+                    onChange={(e) => setFilterPriorities(Array.from(e.target.selectedOptions, (o) => o.value))}
+                    className="px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm w-full min-h-[120px]"
+                  >
+                    {FILTER_PRIORITIES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-[color:var(--text-muted)] mb-1">Issue types</label>
+                  <select
+                    multiple
+                    size={5}
+                    value={filterTypes}
+                    onChange={(e) => setFilterTypes(Array.from(e.target.selectedOptions, (o) => o.value))}
+                    className="px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm w-full min-h-[120px]"
+                  >
+                    {FILTER_TYPES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-[color:var(--text-muted)] mb-1">Assignees</label>
+                  <select
+                    multiple
+                    size={6}
+                    value={filterAssigneeIds}
+                    onChange={(e) => setFilterAssigneeIds(Array.from(e.target.selectedOptions, (o) => o.value))}
+                    className="px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm w-full min-h-[140px]"
+                  >
+                    <option value={REPORT_FILTER_UNASSIGNED}>Unassigned</option>
+                    {filterUsers.map((u) => (
+                      <option key={u._id} value={u._id}>{u.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {createError && (
+              <p className="text-sm text-red-400" role="alert">{createError}</p>
+            )}
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -227,6 +436,11 @@ export default function ReportsPage() {
                         {r.name}
                       </button>
                       <span className="text-xs text-[color:var(--text-muted)]">{r.type}</span>
+                      {formatReportSummary(r) && (
+                        <span className="text-[10px] text-[color:var(--text-muted)]/90 block mt-0.5 line-clamp-2 leading-snug">
+                          {formatReportSummary(r)}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button
@@ -261,9 +475,12 @@ export default function ReportsPage() {
             <h2 className="text-sm font-semibold text-[color:var(--text-primary)]">Report result</h2>
           </div>
           <div className="p-6 overflow-auto">
+            {executeError && (
+              <p className="text-sm text-red-400 mb-4" role="alert">{executeError}</p>
+            )}
             {!result ? (
               <div className="text-[color:var(--text-muted)] text-sm py-8 text-center">
-                Select a report and click Run to view results.
+                {executeError ? 'Fix the error above or pick another report.' : 'Select a report and click Run to view results.'}
               </div>
             ) : result.type === 'defects' ? (
               <div className="space-y-6">

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Link } from 'react-router-dom';
 import type { IssueLink, IssueLinkType } from '../../lib/api';
 import { issuesApi, getIssueKey } from '../../lib/api';
@@ -19,13 +19,20 @@ interface TaskIssueLinksProps {
   onLinksChange: () => void;
 }
 
-export default function TaskIssueLinks({
+export type TaskIssueLinksHandle = {
+  openLinkModal: () => void;
+};
+
+const TaskIssueLinks = forwardRef<TaskIssueLinksHandle, TaskIssueLinksProps>(function TaskIssueLinks(
+  {
   issueId,
   projectId,
   links,
   token,
   onLinksChange,
-}: TaskIssueLinksProps) {
+},
+  ref
+) {
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<import('../../lib/api').Issue[]>([]);
@@ -50,6 +57,17 @@ export default function TaskIssueLinks({
     }, 300);
     return () => clearTimeout(t);
   }, [searchQuery, token, issueId]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openLinkModal: () => {
+        if (!token) return;
+        setLinkModalOpen(true);
+      },
+    }),
+    [token]
+  );
 
   async function handleAddLink() {
     if (!token || !selectedIssue) return;
@@ -81,23 +99,23 @@ export default function TaskIssueLinks({
   }
 
   return (
-    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-[color:var(--text-muted)] uppercase tracking-wider">
+    <div className="rounded-xl border border-[color:var(--border-subtle)]/90 bg-[color:var(--bg-surface)] p-4 shadow-sm">
+      <div className="flex items-center justify-between mb-2.5">
+        <h3 className="text-[10px] font-semibold text-[color:var(--text-muted)] uppercase tracking-[0.1em]">
           Links
         </h3>
         {token && (
           <button
             type="button"
             onClick={() => setLinkModalOpen(true)}
-            className="text-[11px] text-[color:var(--accent)] hover:underline font-medium"
+            className="text-xs font-medium px-3 py-1.5 rounded-lg text-[color:var(--accent)] hover:bg-[color:var(--accent)]/10 transition-colors"
           >
             Link issue
           </button>
         )}
       </div>
       {links.length === 0 ? (
-        <p className="text-xs text-[color:var(--text-muted)]">No links yet.</p>
+        <p className="text-sm text-[color:var(--text-muted)] py-1">No links yet.</p>
       ) : (
         <ul className="space-y-2">
           {links.map((link) => (
@@ -211,4 +229,6 @@ export default function TaskIssueLinks({
       )}
     </div>
   );
-}
+});
+
+export default TaskIssueLinks;

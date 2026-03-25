@@ -115,7 +115,7 @@ function InlineSelect<T extends string>({
       type="button"
       onClick={() => !disabled && setEditing(true)}
       disabled={disabled}
-      className={`w-full text-left px-3 py-2 rounded-md min-h-[36px] text-xs transition-colors hover:bg-[color:var(--bg-surface)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 focus:ring-inset ${className}`}
+      className={`w-full text-left px-3 py-1.5 rounded-md min-h-[34px] text-xs transition-colors hover:bg-[color:var(--bg-surface)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 focus:ring-inset ${className}`}
     >
       {renderOption ? renderOption({ value, label }) : <span className="text-[color:var(--text-primary)]">{label}</span>}
     </button>
@@ -294,11 +294,11 @@ export default function TaskDetailsSidebar({
   const recentLogs = workLogs.slice(0, 3);
 
   return (
-    <aside className="lg:order-none order-first w-full lg:max-w-[320px]">
-      <div className="sticky top-6 max-h-[calc(100vh-5rem)] overflow-y-auto space-y-4 pr-1">
-        <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-hidden">
+    <aside className="lg:order-none order-first w-full lg:max-w-[340px]">
+      <div className="sticky top-6 max-h-[calc(100vh-5rem)] overflow-y-auto space-y-4 pr-1 [scrollbar-width:thin] [scrollbar-color:var(--border-subtle)_transparent]">
+        <div className="rounded-xl border border-[color:var(--border-subtle)]/90 bg-[color:var(--bg-surface)] overflow-hidden shadow-sm">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
-            <span className="text-xs font-semibold text-[color:var(--text-primary)]">Details</span>
+            <span className="text-xs font-semibold tracking-tight text-[color:var(--text-primary)]">Details</span>
             <button
               type="button"
               onClick={onDelete}
@@ -312,7 +312,7 @@ export default function TaskDetailsSidebar({
           <div className="divide-y divide-[color:var(--border-subtle)]/70">
             {/* Status */}
             <div className="px-4 py-3">
-              <label className="flex items-center gap-1.5 text-[11px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider mb-2">
+              <label className="flex items-center gap-1.5 text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-[0.08em] mb-1.5">
                 {(() => {
                   const meta = getStatusMeta(issue.status);
                   return (
@@ -352,9 +352,9 @@ export default function TaskDetailsSidebar({
             </div>
 
             {/* Type & Priority */}
-            <div className="px-4 py-3 grid grid-cols-2 gap-3">
+            <div className="px-4 py-3 grid grid-cols-2 gap-2.5">
               <div>
-                <label className="flex items-center gap-1.5 text-[11px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider mb-2">
+                <label className="flex items-center gap-1.5 text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider mb-1.5">
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: getTypeMeta(issue.type)?.color ?? 'rgb(100 116 139)' }} aria-hidden />
                   Type
                 </label>
@@ -379,7 +379,7 @@ export default function TaskDetailsSidebar({
                 />
               </div>
               <div>
-                <label className="flex items-center gap-1.5 text-[11px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider mb-2">
+                <label className="flex items-center gap-1.5 text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider mb-1.5">
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: getPriorityMeta(issue.priority)?.color ?? 'rgb(251 191 36)' }} aria-hidden />
                   Priority
                 </label>
@@ -406,11 +406,11 @@ export default function TaskDetailsSidebar({
             </div>
 
             {/* People */}
-            <div className="px-4 py-3 space-y-3">
-              <label className="block text-[11px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+            <div className="px-4 py-3 space-y-2">
+              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
                 People
               </label>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div>
                   <span className="block text-[10px] text-[color:var(--text-muted)] mb-1">Assignee</span>
                   <InlineSelect
@@ -447,8 +447,8 @@ export default function TaskDetailsSidebar({
             </div>
 
             {/* Watchers */}
-            <div className="px-4 py-3 space-y-3">
-              <label className="block text-[11px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+            <div className="px-4 py-3 space-y-2">
+              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
                 Watchers
               </label>
               <div className="flex items-center gap-2 flex-wrap">
@@ -484,8 +484,8 @@ export default function TaskDetailsSidebar({
             </div>
 
             {/* Dates */}
-            <div className="px-4 py-3 space-y-3">
-              <label className="block text-[11px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+            <div className="px-4 py-3 space-y-2">
+              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
                 Dates
               </label>
               <div className="grid grid-cols-2 gap-2">
@@ -509,8 +509,8 @@ export default function TaskDetailsSidebar({
             </div>
 
             {/* Versions */}
-            <div className="px-4 py-3 space-y-3">
-              <label className="block text-[11px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+            <div className="px-4 py-3 space-y-2">
+              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
                 Versions
               </label>
               {project?.versions && project.versions.length > 0 ? (
@@ -555,8 +555,8 @@ export default function TaskDetailsSidebar({
             </div>
 
             {/* Estimate */}
-            <div className="px-4 py-3 space-y-3">
-              <label className="block text-[11px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+            <div className="px-4 py-3 space-y-2">
+              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
                 Estimate
               </label>
               <InlineEstimate
@@ -570,8 +570,8 @@ export default function TaskDetailsSidebar({
             </div>
 
             {/* Time logged */}
-            <div className="px-4 py-3 space-y-3">
-              <label className="block text-[11px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+            <div className="px-4 py-3 space-y-2">
+              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
                 Time logged
               </label>
               <button
@@ -635,7 +635,7 @@ export default function TaskDetailsSidebar({
 
             {/* Labels */}
             <div className="px-4 py-3">
-              <label className="block text-[11px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider mb-2">
+              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider mb-1.5">
                 Labels
               </label>
               <div className="flex flex-wrap gap-1.5 mb-2">

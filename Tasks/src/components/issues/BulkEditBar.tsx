@@ -24,7 +24,7 @@ export function BulkEditBar({
           onClick={() => {
             setBulkModal('edit');
           }}
-          className="px-2 py-1 rounded text-xs bg-[color:var(--accent)] text-white font-medium hover:opacity-90"
+          className="px-2 py-1 rounded text-xs font-medium border border-[color:var(--accent)] text-[color:var(--accent)] bg-transparent hover:bg-[color:var(--accent)]/10"
         >
           Bulk edit
         </button>

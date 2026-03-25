@@ -72,9 +72,9 @@ export default function TaskDescription({ issue, onUpdateDescription }: TaskDesc
 
   if (editing && onUpdateDescription) {
     return (
-      <section className="mb-8">
+      <section>
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xs font-semibold text-[color:var(--text-muted)] uppercase tracking-wider">
+          <h2 className="text-[10px] font-semibold text-[color:var(--text-muted)] uppercase tracking-[0.1em]">
             Description
           </h2>
           <div className="flex items-center gap-2">
@@ -107,9 +107,9 @@ export default function TaskDescription({ issue, onUpdateDescription }: TaskDesc
   }
 
   return (
-    <section className="mb-8">
+    <section>
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-xs font-semibold text-[color:var(--text-muted)] uppercase tracking-wider">
+        <h2 className="text-[10px] font-semibold text-[color:var(--text-muted)] uppercase tracking-[0.1em]">
           Description
         </h2>
         {onUpdateDescription && (
@@ -119,17 +119,17 @@ export default function TaskDescription({ issue, onUpdateDescription }: TaskDesc
               setEditValue(issue.description ?? '');
               setEditing(true);
             }}
-            className="text-xs text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition-colors"
+            className="text-xs font-medium px-3 py-1.5 rounded-lg text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-elevated)] transition-colors"
           >
             Edit
           </button>
         )}
       </div>
-      <div className="rounded-xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] p-4">
+      <div className="rounded-xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)]/90 p-4 shadow-sm">
         {issue.description ? (
           <DescriptionBody body={issue.description} />
         ) : (
-          <p className="text-xs text-[color:var(--text-muted)] italic">
+          <p className="text-sm text-[color:var(--text-muted)] italic">
             {onUpdateDescription ? 'Add a description…' : 'No description.'}
           </p>
         )}

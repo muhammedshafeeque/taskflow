@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   DndContext,
+  DragOverlay,
+  pointerWithin,
   type DragEndEvent,
   PointerSensor,
   KeyboardSensor,
@@ -17,6 +19,7 @@ import { useNotifications } from '../contexts/NotificationsContext';
 import { boardsApi, issuesApi, projectsApi, type Board, type Issue, type Project, getIssueKey } from '../lib/api';
 import { MetaBadge } from '../components/MetaBadge';
 import { WatchButton } from '../components/issue';
+import { KanbanScrollArea, KanbanDragPreview } from '../components/issues';
 
 function BoardColumn({
   statusId,
@@ -142,6 +145,7 @@ export default function Boards() {
   const [boardIssues, setBoardIssues] = useState<Issue[]>([]);
   const [boardUpdatingId, setBoardUpdatingId] = useState<string | null>(null);
   const [boardError, setBoardError] = useState<string | null>(null);
+  const [boardDragId, setBoardDragId] = useState<string | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [watchingStatus, setWatchingStatus] = useState<Record<string, boolean>>({});
   const [watchingLoadingId, setWatchingLoadingId] = useState<string | null>(null);
@@ -242,6 +246,8 @@ export default function Boards() {
     return acc;
   }, {});
 
+  const boardDragIssue = boardDragId ? boardIssues.find((i) => i._id === boardDragId) : undefined;
+
   const getTypeMeta = (name: string) => project?.issueTypes?.find((t) => t.name === name);
   const getPriorityMeta = (name: string) => project?.priorities?.find((p) => p.name === name);
   const getStatusMeta = (name: string) => project?.statuses?.find((s) => s.name === name);
@@ -328,8 +334,17 @@ export default function Boards() {
                 {boardError}
               </p>
             )}
-            <DndContext sensors={boardSensors} onDragEnd={handleBoardDragEnd}>
-              <div className="flex gap-4 overflow-x-auto pb-4">
+            <DndContext
+              sensors={boardSensors}
+              collisionDetection={pointerWithin}
+              onDragStart={({ active }) => setBoardDragId(String(active.id))}
+              onDragEnd={async (ev) => {
+                setBoardDragId(null);
+                await handleBoardDragEnd(ev);
+              }}
+              onDragCancel={() => setBoardDragId(null)}
+            >
+              <KanbanScrollArea>
                 {columns.map((col) => {
                   const colIssues = issuesByStatus[col.statusId] ?? [];
                   return (
@@ -357,7 +372,15 @@ export default function Boards() {
                     </BoardColumn>
                   );
                 })}
-              </div>
+              </KanbanScrollArea>
+              <DragOverlay dropAnimation={null}>
+                {boardDragIssue ? (
+                  <KanbanDragPreview
+                    issueKey={getIssueKey(boardDragIssue)}
+                    title={boardDragIssue.title}
+                  />
+                ) : null}
+              </DragOverlay>
             </DndContext>
           </div>
         ) : (

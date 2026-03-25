@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, forwardRef, useImperativeHandle } from 'react';
 import type { Attachment } from '../../lib/api';
 import { uploadFile, attachmentsApi } from '../../lib/api';
 
@@ -31,14 +31,32 @@ interface TaskAttachmentsProps {
   onAttachmentsChange: () => void;
 }
 
-export default function TaskAttachments({
+export type TaskAttachmentsHandle = {
+  openFilePicker: () => void;
+};
+
+const TaskAttachments = forwardRef<TaskAttachmentsHandle, TaskAttachmentsProps>(function TaskAttachments(
+  {
   issueId,
   attachments,
   currentUserId,
   token,
   onAttachmentsChange,
-}: TaskAttachmentsProps) {
+},
+  ref
+) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openFilePicker: () => {
+        if (!token) return;
+        fileInputRef.current?.click();
+      },
+    }),
+    [token]
+  );
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -73,9 +91,9 @@ export default function TaskAttachments({
     currentUserId && a.uploadedBy && typeof a.uploadedBy === 'object' && a.uploadedBy._id === currentUserId;
 
   return (
-    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-[color:var(--text-muted)] uppercase tracking-wider">
+    <div className="rounded-xl border border-[color:var(--border-subtle)]/90 bg-[color:var(--bg-surface)] p-4 shadow-sm">
+      <div className="flex items-center justify-between mb-2.5">
+        <h3 className="text-[10px] font-semibold text-[color:var(--text-muted)] uppercase tracking-[0.1em]">
           Attachments
         </h3>
         {token && (
@@ -89,7 +107,7 @@ export default function TaskAttachments({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="text-[11px] text-[color:var(--accent)] hover:underline font-medium"
+              className="text-xs font-medium px-3 py-1.5 rounded-lg text-[color:var(--accent)] hover:bg-[color:var(--accent)]/10 transition-colors"
             >
               Add attachment
             </button>
@@ -97,7 +115,7 @@ export default function TaskAttachments({
         )}
       </div>
       {attachments.length === 0 ? (
-        <p className="text-xs text-[color:var(--text-muted)]">No attachments yet.</p>
+        <p className="text-sm text-[color:var(--text-muted)] py-1">No attachments yet.</p>
       ) : (
         <ul className="space-y-3">
           {attachments.map((a) => (
@@ -177,4 +195,6 @@ export default function TaskAttachments({
       )}
     </div>
   );
-}
+});
+
+export default TaskAttachments;

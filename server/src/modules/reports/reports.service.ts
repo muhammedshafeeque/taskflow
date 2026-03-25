@@ -1,10 +1,18 @@
-import mongoose from 'mongoose';
 import { Report } from './report.model';
-import { ProjectMember } from '../projects/projectMember.model';
+import { Issue } from '../issues/issue.model';
 import { ApiError } from '../../utils/ApiError';
 import * as dashboardService from '../dashboard/dashboard.service';
+import { buildIssueMatch, parseReportFilters, type ReportFilters } from './reportFilters';
 
-export type ReportType = 'issues_by_status' | 'issues_by_assignee' | 'workload' | 'defects';
+export type ReportType =
+  | 'issues_by_status'
+  | 'issues_by_type'
+  | 'issues_by_priority'
+  | 'issues_by_assignee'
+  | 'workload'
+  | 'defects';
+
+export type { ReportFilters } from './reportFilters';
 
 export interface ReportConfig {
   filters?: Record<string, unknown>;
@@ -12,6 +20,25 @@ export interface ReportConfig {
   chartType?: 'bar' | 'pie' | 'table';
 }
 
+async function groupIssuesByField(
+  userId: string,
+  projectId: string | undefined,
+  filters: ReportFilters,
+  field: 'status' | 'type' | 'priority'
+): Promise<Record<string, number>> {
+  const match = await buildIssueMatch(userId, projectId, filters);
+  if (!match) return {};
+  const aggregationResult = await Issue.aggregate<{ _id: string | null; count: number }>([
+    { $match: match },
+    { $group: { _id: `$${field}`, count: { $sum: 1 } } },
+  ]);
+  const out: Record<string, number> = {};
+  for (const row of aggregationResult) {
+    const key = row._id != null && row._id !== '' ? String(row._id) : 'Unknown';
+    out[key] = row.count;
+  }
+  return out;
+}
 
 export async function listReports(userId: string): Promise<unknown[]> {
   const list = await Report.find({ user: userId })
@@ -63,19 +90,38 @@ export async function executeReport(reportId: string, userId: string): Promise<u
 
   const projectId = report.project ? String(report.project) : undefined;
   const config = (report.config ?? {}) as ReportConfig;
+  const filters = parseReportFilters(config.filters);
 
   switch (report.type) {
     case 'issues_by_status': {
-      const stats = await dashboardService.getStatsForUser(userId);
+      const issuesByStatus = await groupIssuesByField(userId, projectId, filters, 'status');
       return {
         type: 'issues_by_status',
-        data: stats.issuesByStatus,
-        labels: Object.keys(stats.issuesByStatus),
-        values: Object.values(stats.issuesByStatus),
+        data: issuesByStatus,
+        labels: Object.keys(issuesByStatus),
+        values: Object.values(issuesByStatus),
+      };
+    }
+    case 'issues_by_type': {
+      const byType = await groupIssuesByField(userId, projectId, filters, 'type');
+      return {
+        type: 'issues_by_type',
+        data: byType,
+        labels: Object.keys(byType),
+        values: Object.values(byType),
+      };
+    }
+    case 'issues_by_priority': {
+      const byPriority = await groupIssuesByField(userId, projectId, filters, 'priority');
+      return {
+        type: 'issues_by_priority',
+        data: byPriority,
+        labels: Object.keys(byPriority),
+        values: Object.values(byPriority),
       };
     }
     case 'issues_by_assignee': {
-      const workload = await dashboardService.getWorkloadStats(userId, projectId);
+      const workload = await dashboardService.getWorkloadStats(userId, projectId, filters);
       return {
         type: 'issues_by_assignee',
         data: workload.entries,
@@ -84,7 +130,7 @@ export async function executeReport(reportId: string, userId: string): Promise<u
       };
     }
     case 'workload': {
-      const workload = await dashboardService.getWorkloadStats(userId, projectId);
+      const workload = await dashboardService.getWorkloadStats(userId, projectId, filters);
       return {
         type: 'workload',
         data: workload.entries,
@@ -93,7 +139,7 @@ export async function executeReport(reportId: string, userId: string): Promise<u
       };
     }
     case 'defects': {
-      const defects = await dashboardService.getDefectMetrics(userId, projectId);
+      const defects = await dashboardService.getDefectMetrics(userId, projectId, filters);
       const byStatus = defects.byStatus;
       const byPriority = defects.byPriority;
       return {

@@ -4,6 +4,8 @@ import { IssueHistory } from '../issues/issueHistory.model';
 import { ProjectMember } from '../projects/projectMember.model';
 import { User } from '../auth/user.model';
 import { WorkLog } from '../workLogs/workLog.model';
+import type { ReportFilters } from '../reports/reportFilters';
+import { buildIssueMatch } from '../reports/reportFilters';
 
 export interface WorkloadEntry {
   userId: string;
@@ -18,18 +20,9 @@ export interface WorkloadStats {
   entries: WorkloadEntry[];
 }
 
-export async function getWorkloadStats(userId: string, projectId?: string): Promise<WorkloadStats> {
-  const userObjectId = new mongoose.Types.ObjectId(userId);
-  let projectIds: mongoose.Types.ObjectId[];
-  if (projectId) {
-    const isMember = await ProjectMember.exists({ user: userObjectId, project: projectId });
-    if (!isMember) return { entries: [] };
-    projectIds = [new mongoose.Types.ObjectId(projectId)];
-  } else {
-    const ids = await ProjectMember.find({ user: userObjectId }).distinct('project');
-    projectIds = ids.map((id) => new mongoose.Types.ObjectId(id));
-  }
-  if (projectIds.length === 0) return { entries: [] };
+export async function getWorkloadStats(userId: string, projectId?: string, filters?: ReportFilters): Promise<WorkloadStats> {
+  const match = await buildIssueMatch(userId, projectId, filters ?? {});
+  if (!match) return { entries: [] };
 
   const agg = await Issue.aggregate<{
     _id: mongoose.Types.ObjectId | null;
@@ -38,7 +31,7 @@ export async function getWorkloadStats(userId: string, projectId?: string): Prom
     doneCount: number;
     storyPoints: number;
   }>([
-    { $match: { project: { $in: projectIds } } },
+    { $match: match },
     {
       $group: {
         _id: '$assignee',
@@ -603,20 +596,11 @@ export interface DefectMetrics {
   defectDensity?: number;
 }
 
-export async function getDefectMetrics(userId: string, projectId?: string): Promise<DefectMetrics> {
-  const userObjectId = new mongoose.Types.ObjectId(userId);
-  let projectIds: mongoose.Types.ObjectId[];
-  if (projectId) {
-    const isMember = await ProjectMember.exists({ user: userObjectId, project: projectId });
-    if (!isMember) return { totalBugs: 0, openBugs: 0, closedBugs: 0, byStatus: {}, byPriority: {} };
-    projectIds = [new mongoose.Types.ObjectId(projectId)];
-  } else {
-    const ids = await ProjectMember.find({ user: userObjectId }).distinct('project');
-    projectIds = ids.map((id) => new mongoose.Types.ObjectId(id));
-  }
-  if (projectIds.length === 0) return { totalBugs: 0, openBugs: 0, closedBugs: 0, byStatus: {}, byPriority: {} };
+export async function getDefectMetrics(userId: string, projectId?: string, filters?: ReportFilters): Promise<DefectMetrics> {
+  const match = await buildIssueMatch(userId, projectId, filters ?? {});
+  if (!match) return { totalBugs: 0, openBugs: 0, closedBugs: 0, byStatus: {}, byPriority: {} };
 
-  const allIssues = await Issue.find({ project: { $in: projectIds } })
+  const allIssues = await Issue.find(match)
     .select('type status priority storyPoints')
     .lean();
 

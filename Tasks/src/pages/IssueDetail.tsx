@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -26,6 +26,8 @@ import {
   TaskDetailsSidebar,
   WorkLogInput,
 } from '../components/issue';
+import type { TaskIssueLinksHandle } from '../components/issue/TaskIssueLinks';
+import type { TaskAttachmentsHandle } from '../components/issue/TaskAttachments';
 
 const DEFAULT_STATUSES = ['Backlog', 'Todo', 'In Progress', 'Done'];
 const DEFAULT_TYPES = ['Task', 'Bug', 'Story', 'Epic'];
@@ -35,6 +37,8 @@ export default function IssueDetail() {
   const { projectId, ticketId } = useParams<{ projectId?: string; ticketId: string }>();
   const navigate = useNavigate();
   const { token, user } = useAuth();
+  const issueLinksRef = useRef<TaskIssueLinksHandle>(null);
+  const attachmentsRef = useRef<TaskAttachmentsHandle>(null);
   const [issue, setIssue] = useState<Issue | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -294,7 +298,7 @@ export default function IssueDetail() {
   return (
     <div className="h-full flex flex-col animate-fade-in">
       <div className="flex-1 overflow-auto">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
+        <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-5 lg:px-6 xl:px-8 py-5 sm:py-6">
           <TaskBreadcrumb
             projectId={projectId}
             projectName={projectName}
@@ -302,10 +306,15 @@ export default function IssueDetail() {
             onDelete={() => setConfirmDelete(true)}
           />
 
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8">
-            <div className="min-w-0">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(260px,340px)] gap-6 lg:gap-8">
+            <div className="min-w-0 space-y-5 sm:space-y-6">
               <TaskHeader
                 issue={issue}
+                issueId={issue._id}
+                projectId={projectId}
+                canLinkAndAttach={!!token}
+                onOpenLinkModal={() => issueLinksRef.current?.openLinkModal()}
+                onAttach={() => attachmentsRef.current?.openFilePicker()}
                 getTypeMeta={getTypeMeta}
                 getPriorityMeta={getPriorityMeta}
                 getStatusMeta={getStatusMeta}
@@ -319,6 +328,7 @@ export default function IssueDetail() {
                 getStatusMeta={getStatusMeta}
               />
               <TaskIssueLinks
+                ref={issueLinksRef}
                 issueId={issue._id}
                 projectId={projectId}
                 links={links}
@@ -326,6 +336,7 @@ export default function IssueDetail() {
                 onLinksChange={refreshLinks}
               />
               <TaskAttachments
+                ref={attachmentsRef}
                 issueId={issue._id}
                 attachments={attachments}
                 currentUserId={user?.id}
