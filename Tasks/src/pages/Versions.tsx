@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../contexts/AuthContext';
@@ -47,6 +48,7 @@ function ReleaseNotesContent({ notes, projectId, contentRef }: { notes: string; 
   return (
     <div ref={contentRef} className="release-notes-markdown text-[color:var(--text-primary)] text-[14px] leading-relaxed">
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => <h1 className="text-lg font-semibold text-[color:var(--text-primary)] mt-6 mb-2 first:mt-0 border-b border-[color:var(--border-subtle)] pb-2">{children}</h1>,
           h2: ({ children }) => <h2 className="text-sm font-semibold text-[color:var(--text-primary)] mt-5 mb-2">{children}</h2>,
@@ -125,6 +127,7 @@ export default function Versions() {
   const [releaseModalSubmitting, setReleaseModalSubmitting] = useState(false);
 
   const releaseNotesContentRef = useRef<HTMLDivElement>(null);
+  const releaseNotesExportRef = useRef<HTMLDivElement>(null);
   const environments = project?.environments ?? [];
 
   useEffect(() => {
@@ -344,10 +347,25 @@ export default function Versions() {
   }
 
   async function downloadReleaseNotesAsImage() {
-    const el = releaseNotesContentRef.current;
+    const el = releaseNotesExportRef.current ?? releaseNotesContentRef.current;
     if (!el || !releaseNotesModal) return;
     try {
-      const canvas = await html2canvas(el, { backgroundColor: '#1e293b', scale: 2 });
+      try {
+        // Ensure webfonts are ready before capturing.
+        await (document as unknown as { fonts?: { ready?: Promise<void> } }).fonts?.ready;
+      } catch {
+        // ignore
+      }
+      const computedBg = typeof window !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue('--bg-elevated').trim() : '';
+      const backgroundColor = computedBg ? `color-mix(in srgb, ${computedBg} 100%, transparent)` : '#0b1220';
+      const canvas = await html2canvas(el, {
+        backgroundColor,
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        scrollX: 0,
+        scrollY: 0,
+      });
       const link = document.createElement('a');
       link.download = `release-notes-${releaseNotesModal.versionName.replace(/\s+/g, '-')}-${releaseNotesModal.envName}.png`;
       link.href = canvas.toDataURL('image/png');
@@ -358,10 +376,24 @@ export default function Versions() {
   }
 
   async function downloadReleaseNotesAsPdf() {
-    const el = releaseNotesContentRef.current;
+    const el = releaseNotesExportRef.current ?? releaseNotesContentRef.current;
     if (!el || !releaseNotesModal) return;
     try {
-      const canvas = await html2canvas(el, { backgroundColor: '#1e293b', scale: 2 });
+      try {
+        await (document as unknown as { fonts?: { ready?: Promise<void> } }).fonts?.ready;
+      } catch {
+        // ignore
+      }
+      const computedBg = typeof window !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue('--bg-elevated').trim() : '';
+      const backgroundColor = computedBg ? `color-mix(in srgb, ${computedBg} 100%, transparent)` : '#0b1220';
+      const canvas = await html2canvas(el, {
+        backgroundColor,
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        scrollX: 0,
+        scrollY: 0,
+      });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageW = pdf.internal.pageSize.getWidth();
@@ -388,7 +420,7 @@ export default function Versions() {
   }
 
   function copyReleaseNotesAsHtml() {
-    const el = releaseNotesContentRef.current;
+    const el = releaseNotesExportRef.current ?? releaseNotesContentRef.current;
     if (!el || !releaseNotesModal) return;
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Release notes ${releaseNotesModal.versionName}</title></head><body>${el.innerHTML}</body></html>`;
     navigator.clipboard.writeText(html).catch(() => {});
@@ -783,7 +815,29 @@ export default function Versions() {
             <p className="px-5 py-2 text-xs text-[color:var(--text-muted)] border-b border-[color:var(--border-subtle)]">{releaseNotesModal.updatedCount} issue(s) updated.</p>
           )}
           <div className="p-5 overflow-auto flex-1 min-h-0">
-            <ReleaseNotesContent notes={releaseNotesModal.notes} projectId={projectId ?? ''} contentRef={releaseNotesContentRef} />
+            <div
+              ref={releaseNotesExportRef}
+              className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-hidden"
+            >
+              <div className="px-6 py-5 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="text-sm font-semibold text-[color:var(--text-primary)] truncate">
+                    {project?.name ?? 'Project'}
+                  </span>
+                  <span className="text-xs text-[color:var(--text-muted)]">Release notes</span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[color:var(--text-muted)]">
+                  <span className="text-[color:var(--text-primary)] font-medium">{releaseNotesModal.versionName}</span>
+                  <span>→</span>
+                  <span className="text-[color:var(--text-primary)] font-medium">{releaseNotesModal.envName}</span>
+                  <span className="opacity-70">·</span>
+                  <span>{new Date().toLocaleString()}</span>
+                </div>
+              </div>
+              <div className="px-6 py-5">
+                <ReleaseNotesContent notes={releaseNotesModal.notes} projectId={projectId ?? ''} contentRef={releaseNotesContentRef} />
+              </div>
+            </div>
           </div>
           <div className="p-5 border-t border-[color:var(--border-subtle)] shrink-0 flex flex-wrap items-center gap-2">
             <button type="button" onClick={downloadReleaseNotesAsImage} className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-xs text-[color:var(--text-primary)] font-medium hover:bg-[color:var(--bg-surface)] transition">

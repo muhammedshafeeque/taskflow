@@ -32,7 +32,7 @@ router.use(authMiddleware);
 router.get('/', asyncHandler(getProjects));
 router.post('/', requirePermission('projects:create'), createProjectHandler);
 router.get('/:id/my-permissions', ...idParamHandler, asyncHandler(getMyPermissions));
-router.get('/:id/members', ...idParamHandler, requireProjectPermission('project:manageMembers'), asyncHandler(getMembers));
+router.get('/:id/members', ...idParamHandler, requireProjectPermission('project:view'), asyncHandler(getMembers));
 router.get('/:id/invitations', ...idParamHandler, requireProjectPermission('project:manageMembers'), asyncHandler(getInvitations));
 router.post('/:id/invite', ...idParamHandler, requireProjectPermission('project:manageMembers'), inviteToProjectHandler);
 router.delete('/:id/invitations/:invitationId', requireProjectPermission('project:manageMembers'), ...cancelInvitationParamHandler);

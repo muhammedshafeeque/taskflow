@@ -11,6 +11,7 @@ import * as inboxService from '../inbox/inbox.service';
 import { sendProjectInviteEmail } from '../../services/email.service';
 import { sendPushToUser } from '../../services/push.service';
 import { env } from '../../config/env';
+import * as notificationsService from '../notifications/notifications.service';
 
 const PROJECT_MEMBER_ROLE_NAME = 'Project Member';
 
@@ -178,6 +179,14 @@ export async function acceptInvitation(invitationId: string, userId: string): Pr
     body: acceptanceBody,
     meta: { projectId, inviteeId, invitationId },
   });
+  notificationsService.createNotification({
+    toUser: inviterId,
+    type: 'invitation_accepted',
+    title: acceptanceTitle,
+    body: acceptanceBody,
+    url: `${env.appUrl}/projects/${projectId}/settings`,
+    meta: { projectId, inviteeId, invitationId },
+  }).catch(() => {});
 
   const superAdminRole = await Role.findOne({ name: 'Super Admin' }).select('_id').lean();
   if (superAdminRole) {
@@ -194,6 +203,14 @@ export async function acceptInvitation(invitationId: string, userId: string): Pr
         body: superAdminBody,
         meta: { projectId, inviteeId, invitationId },
       });
+      notificationsService.createNotification({
+        toUser: toUserId,
+        type: 'invitation_accepted',
+        title: acceptanceTitle,
+        body: superAdminBody,
+        url: `${env.appUrl}/projects/${projectId}/settings`,
+        meta: { projectId, inviteeId, invitationId },
+      }).catch(() => {});
     }
   }
 

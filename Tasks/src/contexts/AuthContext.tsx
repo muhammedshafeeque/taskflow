@@ -18,6 +18,7 @@ interface AuthContextValue {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  microsoftSso: (code: string, redirectUri?: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
   updateUser: (user: AuthUser) => void;
 }
@@ -76,9 +77,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const microsoftSso = useCallback(async (code: string, redirectUri?: string) => {
+    const res = await authApi.microsoftSso(code, redirectUri);
+    if (!res.success || !res.data) {
+      return { ok: false, error: (res as { message?: string }).message ?? 'SSO login failed' };
+    }
+    setUser(res.data.user);
+    setToken(res.data.tokens.accessToken);
+    localStorage.setItem(ACCESS_KEY, res.data.tokens.accessToken);
+    localStorage.setItem(REFRESH_KEY, res.data.tokens.refreshToken);
+    localStorage.setItem(USER_KEY, JSON.stringify(res.data.user));
+    return { ok: true };
+  }, []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ user, token, loading, login, logout, updateUser }),
-    [user, token, loading, login, logout, updateUser]
+    () => ({ user, token, loading, login, microsoftSso, logout, updateUser }),
+    [user, token, loading, login, microsoftSso, logout, updateUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

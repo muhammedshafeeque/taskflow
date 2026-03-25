@@ -11,6 +11,7 @@ interface TaskActivityCommentsProps {
   comments: Comment[];
   onAddComment: (body: string) => void;
   submittingComment: boolean;
+  mentionUsers?: Array<{ _id: string; name: string; email: string }>;
   workLogs: WorkLog[];
   currentUserId?: string;
   onAddWorkLog: (payload: { minutesSpent: number; date: string; description?: string }) => void;
@@ -25,6 +26,7 @@ export default function TaskActivityComments({
   comments,
   onAddComment,
   submittingComment,
+  mentionUsers,
   workLogs,
   currentUserId,
   onAddWorkLog,
@@ -82,6 +84,7 @@ export default function TaskActivityComments({
             <TaskCommentBox
               onSubmit={onAddComment}
               submitting={submittingComment}
+              mentionUsers={mentionUsers}
               placeholder="Add a comment… (supports **bold**, *italic*, `code`, images, videos)"
             />
             <ul className="space-y-4 mt-6">

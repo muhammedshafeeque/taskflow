@@ -17,7 +17,7 @@ export default function SectionCard({
 }: SectionCardProps) {
   return (
     <section
-      className={`rounded-2xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] p-5 ${className}`}
+      className={`min-w-0 rounded-2xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] p-5 ${className}`}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>

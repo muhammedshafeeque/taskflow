@@ -2,6 +2,19 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Comment } from '../../lib/api';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+function resolveMediaUrl(url: string): string {
+  const base = API_BASE.replace(/\/api\/?$/, '') || 'http://localhost:5000';
+  if (!url) return url;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  // Uploaded files are stored as /api/uploads/<file>
+  if (url.startsWith('/api/')) return `${base}${url}`;
+  if (url.startsWith('/uploads/')) return `${base}/api${url}`;
+  if (url.startsWith('/')) return `${base}${url}`;
+  return url;
+}
+
 function relativeTime(s: string | undefined) {
   if (!s) return '';
   const d = new Date(s);
@@ -18,6 +31,7 @@ function relativeTime(s: string | undefined) {
 }
 
 export function VideoEmbed({ url }: { url: string }) {
+  const resolved = resolveMediaUrl(url);
   if (url.includes('youtube.com') || url.includes('youtu.be')) {
     const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?/]+)/);
     const vid = match ? match[1] : url.split('/').pop() || '';
@@ -52,7 +66,7 @@ export function VideoEmbed({ url }: { url: string }) {
   }
   return (
     <div className="my-2 rounded-lg overflow-hidden border border-[color:var(--border-subtle)]">
-      <video controls className="w-full max-w-lg" src={url}>
+      <video controls className="w-full max-w-lg" src={resolved} playsInline preload="metadata">
         Your browser does not support the video tag.
       </video>
     </div>
@@ -61,14 +75,15 @@ export function VideoEmbed({ url }: { url: string }) {
 
 function CommentBody({ body }: { body: string }) {
   const parts: { type: 'text' | 'video'; content: string }[] = [];
-  const videoRegex = /\[video\]\((https?:\/\/[^)]+)\)/g;
+  // Support both absolute (https://...) and relative (/api/uploads/...) URLs.
+  const videoRegex = /\[video\]\(([^)\s]+)\)/g;
   let lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = videoRegex.exec(body)) !== null) {
     if (m.index > lastIndex) {
       parts.push({ type: 'text', content: body.slice(lastIndex, m.index) });
     }
-    parts.push({ type: 'video', content: m[1] });
+    parts.push({ type: 'video', content: m[1].trim() });
     lastIndex = m.index + m[0].length;
   }
   if (lastIndex < body.length) {
@@ -89,7 +104,40 @@ function CommentBody({ body }: { body: string }) {
             remarkPlugins={[remarkGfm]}
             components={{
               img: ({ src, alt }) => (
-                <img src={src} alt={alt || 'image'} className="max-w-full rounded-lg border border-[color:var(--border-subtle)] my-1" />
+                <img
+                  src={resolveMediaUrl(src || '')}
+                  alt={alt || 'image'}
+                  className="max-w-full rounded-lg border border-[color:var(--border-subtle)] my-1"
+                />
+              ),
+              a: ({ href, children }) => (
+                (() => {
+                  const rawHref = href || '';
+                  const isMentionId = /^[a-fA-F0-9]{24}$/.test(rawHref);
+                  if (isMentionId) {
+                    const name =
+                      typeof children === 'string'
+                        ? children
+                        : Array.isArray(children) && children.every((c) => typeof c === 'string')
+                          ? children.join('')
+                          : 'User';
+                    return (
+                      <span className="inline-flex items-center rounded-md bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] px-2 py-0.5 text-xs text-[color:var(--text-primary)] font-medium">
+                        @{String(name).trim() || 'User'}
+                      </span>
+                    );
+                  }
+                  return (
+                    <a
+                      href={resolveMediaUrl(rawHref)}
+                      className="text-[color:var(--text-primary)] hover:underline"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {children}
+                    </a>
+                  );
+                })()
               ),
               table: ({ children }) => (
                 <div className="my-3 overflow-x-auto rounded-lg border border-[color:var(--border-subtle)]">

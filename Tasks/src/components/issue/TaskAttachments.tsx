@@ -15,6 +15,14 @@ function getDownloadUrl(url: string): string {
   return url.startsWith('http') ? url : `${base}${url}`;
 }
 
+function isImage(mimeType?: string | null) {
+  return typeof mimeType === 'string' && mimeType.toLowerCase().startsWith('image/');
+}
+
+function isVideo(mimeType?: string | null) {
+  return typeof mimeType === 'string' && mimeType.toLowerCase().startsWith('video/');
+}
+
 interface TaskAttachmentsProps {
   issueId: string;
   attachments: Attachment[];
@@ -91,33 +99,78 @@ export default function TaskAttachments({
       {attachments.length === 0 ? (
         <p className="text-xs text-[color:var(--text-muted)]">No attachments yet.</p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="space-y-3">
           {attachments.map((a) => (
-            <li
-              key={a._id}
-              className="flex items-center justify-between gap-2 py-1.5 px-2 rounded-md hover:bg-[color:var(--bg-page)] group"
-            >
-              <a
-                href={getDownloadUrl(a.url)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 min-w-0 text-xs text-[color:var(--accent)] hover:underline truncate"
-              >
-                {a.originalName}
-              </a>
-              <span className="text-[10px] text-[color:var(--text-muted)] shrink-0">
-                {formatSize(a.size)}
-              </span>
-              {canDelete(a) && (
-                <button
-                  type="button"
-                  onClick={() => handleRemove(a)}
-                  className="opacity-0 group-hover:opacity-100 text-[10px] text-red-400 hover:text-red-300 shrink-0"
-                  aria-label="Remove attachment"
-                >
-                  Remove
-                </button>
+            <li key={a._id} className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)]/30 overflow-hidden">
+              {(isImage(a.mimeType) || isVideo(a.mimeType)) && (
+                <div className="bg-black/20">
+                  {isImage(a.mimeType) ? (
+                    <a href={getDownloadUrl(a.url)} target="_blank" rel="noopener noreferrer" className="block">
+                      <img
+                        src={getDownloadUrl(a.url)}
+                        alt={a.originalName}
+                        loading="lazy"
+                        className="w-full max-h-64 object-contain"
+                      />
+                    </a>
+                  ) : (
+                    <video
+                      src={getDownloadUrl(a.url)}
+                      className="w-full max-h-80 bg-black"
+                      controls
+                      playsInline
+                      preload="metadata"
+                    />
+                  )}
+                </div>
               )}
+
+              <div className="px-3 py-2.5 flex items-start justify-between gap-3 group">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <a
+                      href={getDownloadUrl(a.url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-w-0 text-xs text-[color:var(--text-primary)] font-medium hover:underline truncate"
+                      title={a.originalName}
+                    >
+                      {a.originalName}
+                    </a>
+                    <span className="text-[10px] text-[color:var(--text-muted)] shrink-0">
+                      {formatSize(a.size)}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                    <a
+                      href={getDownloadUrl(a.url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[color:var(--accent)] hover:underline font-medium"
+                    >
+                      Open
+                    </a>
+                    <a
+                      href={getDownloadUrl(a.url)}
+                      download
+                      className="text-[color:var(--accent)] hover:underline font-medium"
+                    >
+                      Download
+                    </a>
+                  </div>
+                </div>
+
+                {canDelete(a) && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(a)}
+                    className="opacity-0 group-hover:opacity-100 text-[11px] text-red-400 hover:text-red-300 shrink-0"
+                    aria-label="Remove attachment"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>

@@ -8,8 +8,10 @@ import { ApiError } from '../../utils/ApiError';
 import type { PaginationOptions, PaginatedResult } from '../projects/projects.service';
 import type { UpdateUserBody, InviteUserBody } from './users.validation';
 import { sendInviteEmail } from '../../services/email.service';
-import { env } from '../../config/env';
 import * as inboxService from '../inbox/inbox.service';
+
+import dotenv from 'dotenv';
+dotenv.config();
 
 const SALT_ROUNDS = 10;
 
@@ -100,9 +102,9 @@ export async function update(
 }
 
 export async function invite(input: InviteUserBody): Promise<unknown> {
-  if (env.maxUsers != null) {
+  if (process.env.MAX_USERS && parseInt(process.env.MAX_USERS) > 0) {
     const count = await User.countDocuments();
-    if (count >= env.maxUsers) {
+    if (count >= parseInt(process.env.MAX_USERS)) {
       throw new ApiError(403, 'User limit reached. Cannot invite more users.');
     }
   }
@@ -135,7 +137,7 @@ export async function invite(input: InviteUserBody): Promise<unknown> {
     name: input.name.trim(),
     email: input.email.trim(),
     password: plainPassword,
-    appUrl: env.appUrl,
+    appUrl: process.env.FRONTEND_URL ?? '',
   }).catch((err) => console.error('Failed to send invite email:', err));
 
   await inboxService

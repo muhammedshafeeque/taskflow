@@ -2,6 +2,12 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+function cleanEnvValue(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  // Handle values accidentally stored like: " 'https://..'; "
+  return v.trim().replace(/^['"]/, '').replace(/['"];?$/, '').trim();
+}
+
 export const env = {
   port: parseInt(process.env.PORT ?? '5000', 10),
   nodeEnv: process.env.NODE_ENV ?? 'development',
@@ -25,5 +31,25 @@ export const env = {
     if (!v) return null;
     const n = parseInt(v, 10);
     return Number.isFinite(n) && n > 0 ? n : null;
+  })(),
+
+  azureAdClientId: cleanEnvValue(process.env.AZURE_AD_CLIENT_ID),
+  azureAdClientSecret: cleanEnvValue(process.env.AZURE_AD_CLIENT_SECRET),
+  azureAdTenantId: cleanEnvValue(process.env.AZURE_AD_TENANT_ID) || 'common',
+  azureRedirectUri: cleanEnvValue(process.env.AZURE_REDIRECT_URI) || cleanEnvValue(process.env.APP_URL) || 'http://localhost:5173/login',
+
+  msUserInfoEndpoint: cleanEnvValue(process.env.MS_USER_INFO_ENDPOINT) || 'https://graph.microsoft.com/oidc/userinfo',
+  msTokenEndpoint: (() => {
+    const tenant = cleanEnvValue(process.env.AZURE_AD_TENANT_ID) || 'common';
+    const configured = cleanEnvValue(process.env.MS_TOKEN_ENDPOINT);
+    const commonTokenEndpoint = `https://login.microsoftonline.com/common/oauth2/v2.0/token`;
+    // Single-tenant apps must NOT use /common.
+    if (tenant !== 'common') {
+      if (!configured) return `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`;
+      return configured === commonTokenEndpoint || configured.includes('/common/oauth2/')
+        ? `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`
+        : configured;
+    }
+    return configured || commonTokenEndpoint;
   })(),
 };

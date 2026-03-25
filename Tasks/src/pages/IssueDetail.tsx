@@ -337,6 +337,7 @@ export default function IssueDetail() {
                 comments={comments}
                 onAddComment={addComment}
                 submittingComment={submittingComment}
+                mentionUsers={users}
                 workLogs={workLogs}
                 currentUserId={user?.id}
                 onAddWorkLog={addWorkLog}

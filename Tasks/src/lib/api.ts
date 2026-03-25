@@ -106,6 +106,14 @@ export const authApi = {
   login: (email: string, password: string) =>
     api.post<AuthData>('/auth/login', { email, password }),
 
+  microsoftSso: (code: string, redirectUri?: string) =>
+    api.post<AuthData>('/auth/sso/microsoft', { code, redirectUri }),
+
+  microsoftSsoAuthorizeUrl: (redirectUri?: string) => {
+    const q = redirectUri ? `?${new URLSearchParams({ redirectUri }).toString()}` : '';
+    return api.get<{ url: string; state: string }>(`/auth/sso/microsoft/url${q}`);
+  },
+
   refresh: (refreshToken: string) =>
     api.post<AuthData>('/auth/refresh', { refreshToken }),
 
@@ -232,6 +240,32 @@ export interface Paginated<T> {
   limit: number;
   totalPages: number;
 }
+
+/* In-app notifications */
+export interface InAppNotification {
+  _id: string;
+  toUser: string;
+  type: string;
+  title: string;
+  body?: string;
+  url?: string;
+  readAt?: string | null;
+  meta?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export const notificationsApi = {
+  list: (params: { page?: number; limit?: number; unreadOnly?: boolean }, token: string) => {
+    const q = new URLSearchParams();
+    if (params.page) q.set('page', String(params.page));
+    if (params.limit) q.set('limit', String(params.limit));
+    if (params.unreadOnly) q.set('unreadOnly', 'true');
+    return api.get<Paginated<InAppNotification>>(`/notifications?${q.toString()}`, token);
+  },
+  unreadCount: (token: string) => api.get<{ unread: number }>(`/notifications/unread-count`, token),
+  markRead: (id: string, token: string) => api.patch<InAppNotification>(`/notifications/${id}/read`, {}, token),
+  markAllRead: (token: string) => api.post<{ updated: number }>(`/notifications/read-all`, {}, token),
+};
 
 export const projectsApi = {
   list: (page = 1, limit = 20, token: string) =>

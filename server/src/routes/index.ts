@@ -24,6 +24,7 @@ import { projectTemplatesRoutes } from '../modules/projectTemplates/projectTempl
 import { adminRoutes } from '../modules/admin/admin.routes';
 import { analyticsRoutes } from '../modules/analytics/analytics.routes';
 import { reportsRoutes } from '../modules/reports/reports.routes';
+import { notificationsRoutes } from '../modules/notifications/notifications.routes';
 
 const router = Router();
 
@@ -60,5 +61,6 @@ router.use('/project-templates', projectTemplatesRoutes);
 router.use('/admin', adminRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/reports', reportsRoutes);
+router.use('/notifications', notificationsRoutes);
 
 export const apiRoutes = router;

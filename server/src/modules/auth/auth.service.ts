@@ -7,10 +7,31 @@ import { Designation } from '../designations/designation.model';
 import { ApiError } from '../../utils/ApiError';
 import { env } from '../../config/env';
 import { sendForgotPasswordEmail } from '../../services/email.service';
-import type { RegisterInput, LoginInput } from './auth.validation';
+import type { RegisterInput, LoginInput, MicrosoftSsoInput } from './auth.validation';
 import type { IUser } from './user.model';
 
 const SALT_ROUNDS = 10;
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<{ ok: boolean; status: number; data: T | null; text: string }> {
+  const res = await fetch(url, init);
+  const text = await res.text();
+  let data: T | null = null;
+  try {
+    data = text ? (JSON.parse(text) as T) : null;
+  } catch {
+    data = null;
+  }
+  return { ok: res.ok, status: res.status, data, text };
+}
+
+function ensureMicrosoftConfigured() {
+  if (!env.azureAdClientId || !env.azureAdClientSecret) {
+    throw new ApiError(500, 'Microsoft SSO is not configured (missing AZURE_AD_CLIENT_ID/AZURE_AD_CLIENT_SECRET)');
+  }
+  if (!env.msTokenEndpoint || !env.msUserInfoEndpoint) {
+    throw new ApiError(500, 'Microsoft SSO is not configured (missing MS_TOKEN_ENDPOINT/MS_USER_INFO_ENDPOINT)');
+  }
+}
 
 export interface AuthTokens {
   accessToken: string;
@@ -212,4 +233,129 @@ export async function updateProfile(
   const updated = await User.findByIdAndUpdate(userId, { $set: update }, { new: true }).lean();
   if (!updated) throw new ApiError(500, 'User not found after update');
   return toAuthUser(updated as unknown as IUser & { roleId?: unknown; designation?: unknown; mustChangePassword?: boolean });
+}
+
+type MicrosoftTokenResponse = {
+  token_type?: string;
+  scope?: string;
+  expires_in?: number;
+  ext_expires_in?: number;
+  access_token?: string;
+  id_token?: string;
+  refresh_token?: string;
+  error?: string;
+  error_description?: string;
+};
+
+type MicrosoftUserInfo = {
+  sub?: string;
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  email?: string;
+  preferred_username?: string;
+  picture?: string;
+};
+
+export async function microsoftSso(input: MicrosoftSsoInput): Promise<{ user: AuthUser; tokens: AuthTokens }> {
+  ensureMicrosoftConfigured();
+  const code = input.code;
+  const redirectUri = input.redirectUri || env.azureRedirectUri || env.appUrl;
+
+  const params = new URLSearchParams();
+  params.set('client_id', env.azureAdClientId);
+  params.set('client_secret', env.azureAdClientSecret);
+  params.set('grant_type', 'authorization_code');
+  params.set('code', code);
+  params.set('redirect_uri', redirectUri);
+  params.set('scope', 'openid profile email offline_access');
+
+  const tokenRes = await fetchJson<MicrosoftTokenResponse>(env.msTokenEndpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+
+  if (!tokenRes.ok || !tokenRes.data?.access_token) {
+    const msg = tokenRes.data?.error_description || tokenRes.data?.error || tokenRes.text || 'Token exchange failed';
+    throw new ApiError(401, `Microsoft SSO failed: ${msg}`);
+  }
+
+  const userInfoRes = await fetchJson<MicrosoftUserInfo>(env.msUserInfoEndpoint, {
+    headers: { Authorization: `Bearer ${tokenRes.data.access_token}` },
+  });
+  if (!userInfoRes.ok || !userInfoRes.data) {
+    throw new ApiError(401, 'Microsoft SSO failed: could not fetch user profile');
+  }
+
+  const rawEmail = (userInfoRes.data.email || userInfoRes.data.preferred_username || '').toLowerCase().trim();
+  if (!rawEmail || !rawEmail.includes('@')) {
+    throw new ApiError(400, 'Microsoft SSO failed: email not returned by Microsoft');
+  }
+
+  let user: any = await User.findOne({ email: rawEmail }).lean();
+
+  if (!user) {
+    if (env.maxUsers !== null) {
+      const count = await User.countDocuments();
+      if (count >= env.maxUsers) {
+        throw new ApiError(403, 'User limit reached. Cannot create new user via SSO.');
+      }
+    }
+
+    const displayName =
+      (userInfoRes.data.name || '').trim() ||
+      `${userInfoRes.data.given_name ?? ''} ${userInfoRes.data.family_name ?? ''}`.trim() ||
+      rawEmail.split('@')[0];
+
+    const randomPassword = crypto.randomBytes(32).toString('hex');
+    const hashedPassword = await bcrypt.hash(randomPassword, SALT_ROUNDS);
+
+    const created = await User.create({
+      email: rawEmail,
+      password: hashedPassword,
+      name: displayName,
+      avatarUrl: userInfoRes.data.picture || null,
+      role: 'user',
+      mustChangePassword: false,
+    });
+    user = created;
+  } else {
+    const u = user as { enabled?: boolean };
+    if (u.enabled === false) throw new ApiError(401, 'Account is disabled');
+
+    // Keep profile up to date (non-destructive).
+    const update: Record<string, unknown> = {};
+    const nextName = (userInfoRes.data.name || '').trim();
+    if (nextName && user.name !== nextName) update.name = nextName;
+    const nextAvatar = (userInfoRes.data.picture || '').trim();
+    if (nextAvatar && user.avatarUrl !== nextAvatar) update.avatarUrl = nextAvatar;
+    if (Object.keys(update).length > 0) {
+      await User.findByIdAndUpdate(user._id, { $set: update }).lean();
+      user = await User.findById(user._id).lean();
+    }
+  }
+
+  if (!user) throw new ApiError(500, 'User not found after SSO');
+  const tokens = signTokens(String(user._id));
+  const authUser = await toAuthUser(user as any);
+  return { user: authUser, tokens };
+}
+
+export async function microsoftSsoAuthorizeUrl(input: { redirectUri?: string } = {}): Promise<{ url: string; state: string }> {
+  ensureMicrosoftConfigured();
+
+  const redirectUri = input.redirectUri || env.azureRedirectUri || env.appUrl;
+  const tenantId = env.azureAdTenantId || 'common';
+
+  const state = crypto.randomBytes(18).toString('hex');
+  const url = new URL(`https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/authorize`);
+  url.searchParams.set('client_id', env.azureAdClientId);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('response_mode', 'query');
+  url.searchParams.set('scope', 'openid profile email offline_access');
+  url.searchParams.set('state', state);
+
+  return { url: url.toString(), state };
 }

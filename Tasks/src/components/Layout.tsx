@@ -19,7 +19,6 @@ import {
   VersionsIcon,
   TimesheetIcon,
   SettingsIcon,
-  TestCasesIcon,
   SearchIcon,
   SunIcon,
   MoonIcon,
@@ -56,11 +55,9 @@ function buildGlobalNav(user: { mustChangePassword?: boolean; permissions?: stri
     { to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon /> },
     { to: '/workload', label: 'Workload', icon: <TimesheetIcon /> },
     { to: '/estimates', label: 'Estimates', icon: <TimesheetIcon /> },
-    { to: '/portfolio', label: 'Portfolio', icon: <ProjectsIcon /> },
   ];
   if (user?.role === 'admin') {
     nav.push({ to: '/audit-logs', label: 'Audit logs', icon: <SettingsIcon /> });
-    nav.push({ to: '/executive', label: 'Executive', icon: <DashboardIcon /> });
   }
   if (perms.includes('analytics:view')) {
     nav.push({ to: '/analytics', label: 'Analytics', icon: <SettingsIcon /> });
@@ -95,10 +92,6 @@ const PROJECT_NAV_ITEMS: { to: string; label: string; icon: ReactNode; permissio
   { to: '/versions', label: 'Versions', icon: <VersionsIcon />, permission: 'versions:view' },
   { to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon />, permission: 'project:view' },
   { to: '/settings', label: 'Settings', icon: <SettingsIcon />, permission: 'settings:manage' },
-  { to: '/test-cases', label: 'Test cases', icon: <TestCasesIcon />, permission: 'testManagement:view' },
-  { to: '/test-plans', label: 'Test plans', icon: <TestCasesIcon />, permission: 'testManagement:view' },
-  { to: '/traceability', label: 'Traceability', icon: <TestCasesIcon />, permission: 'testManagement:view' },
-  { to: '/defect-metrics', label: 'Defect metrics', icon: <TestCasesIcon />, permission: 'testManagement:view' },
 ];
 
 function projectNav(projectId: string, projectPermissions: string[]) {
@@ -122,6 +115,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     latestPushNotification,
     dismissInboxToast,
     dismissPushToast,
+    notifications,
+    unreadCount,
+    markRead,
+    markAllRead,
   } = useNotifications();
   const navigate = useNavigate();
   const location = useLocation();
@@ -218,6 +215,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [searchResults, setSearchResults] = useState<Issue[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -355,19 +353,82 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           >
             {theme === 'dark' ? <SunIcon className="w-3.5 h-3.5" /> : <MoonIcon className="w-3.5 h-3.5" />}
           </button>
-          <Link
-            to="/inbox"
-            aria-label="Notifications"
-            className="relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--border-subtle)] text-[color:var(--text-muted)] hover:bg-[color:var(--bg-surface)] hover:text-[color:var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40 focus:ring-offset-0 transition"
-          >
-            <BellIcon className="w-3.5 h-3.5" />
-            {(latestInboxMessage || latestPushNotification) && (
-              <span
-                className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[color:var(--accent)] ring-2 ring-[color:var(--bg-surface)]"
-                aria-hidden
-              />
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setNotifOpen((o) => !o)}
+              aria-label="Notifications"
+              className="relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--border-subtle)] text-[color:var(--text-muted)] hover:bg-[color:var(--bg-surface)] hover:text-[color:var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40 focus:ring-offset-0 transition"
+            >
+              <BellIcon className="w-3.5 h-3.5" />
+              {(unreadCount > 0 || latestInboxMessage || latestPushNotification) && (
+                <span
+                  className="absolute -top-0.5 -right-0.5 min-w-2.5 h-2.5 px-1 rounded-full bg-[color:var(--accent)] ring-2 ring-[color:var(--bg-surface)] text-[10px] text-white flex items-center justify-center"
+                  aria-hidden
+                >
+                  {unreadCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : ''}
+                </span>
+              )}
+            </button>
+
+            {notifOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setNotifOpen(false)} />
+                <div className="absolute right-0 z-20 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] shadow-2xl overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[color:var(--border-subtle)] flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-[color:var(--text-primary)]">Notifications</span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => markAllRead()}
+                        className="text-[11px] text-[color:var(--accent)] hover:underline font-medium"
+                        disabled={unreadCount === 0}
+                      >
+                        Mark all read
+                      </button>
+                      <Link to="/inbox" className="text-[11px] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]">
+                        Inbox →
+                      </Link>
+                    </div>
+                  </div>
+                  <div className="max-h-96 overflow-auto">
+                    {notifications.length === 0 ? (
+                      <div className="px-4 py-6 text-xs text-[color:var(--text-muted)]">No notifications yet.</div>
+                    ) : (
+                      <ul className="divide-y divide-[color:var(--border-subtle)]/70">
+                        {notifications.slice(0, 20).map((n) => {
+                          const isUnread = !n.readAt;
+                          const href = n.url && n.url.startsWith('http') ? n.url : (n.url || '');
+                          return (
+                            <li key={n._id} className={`px-4 py-3 hover:bg-[color:var(--bg-surface)] transition ${isUnread ? 'bg-[color:var(--bg-surface)]/40' : ''}`}>
+                              <Link
+                                to={href || '/'}
+                                onClick={async () => {
+                                  if (isUnread) await markRead(n._id);
+                                  setNotifOpen(false);
+                                }}
+                                className="block"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-medium text-[color:var(--text-primary)] truncate">{n.title}</div>
+                                    {n.body && (
+                                      <div className="mt-0.5 text-[11px] text-[color:var(--text-muted)] line-clamp-2">{n.body}</div>
+                                    )}
+                                  </div>
+                                  {isUnread && <span className="mt-1 h-2 w-2 rounded-full bg-[color:var(--accent)] shrink-0" />}
+                                </div>
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </>
             )}
-          </Link>
+          </div>
           <div className="relative w-full max-w-xs">
             <input
               type="text"
