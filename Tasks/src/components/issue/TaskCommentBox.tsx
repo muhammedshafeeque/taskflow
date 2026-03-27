@@ -1,16 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { uploadFile } from '../../lib/api';
-import { BubbleMenu, EditorContent, useEditor, type Editor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
-import Placeholder from '@tiptap/extension-placeholder';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableHeader from '@tiptap/extension-table-header';
-import TableCell from '@tiptap/extension-table-cell';
+import { BubbleMenu, EditorContent, useEditor } from '@tiptap/react';
 import Mention from '@tiptap/extension-mention';
 import { Node, mergeAttributes } from '@tiptap/core';
+import { baseEditorExtensions, editorContentClass } from '../richText/richTextEditorExtensions';
+import RichTextToolbar from '../richText/RichTextToolbar';
+import { isEditorHtmlEmpty } from '../../lib/richTextStorage';
 
 interface TaskCommentBoxProps {
   onSubmit: (body: string) => void;
@@ -18,17 +14,6 @@ interface TaskCommentBoxProps {
   placeholder?: string;
   mentionUsers?: Array<{ _id: string; name: string; email: string }>;
 }
-
-const FORMAT_BUTTONS = [
-  { label: 'B', action: 'bold', title: 'Bold' },
-  { label: 'I', action: 'italic', title: 'Italic' },
-  { label: 'S', action: 'strike', title: 'Strikethrough' },
-  { label: '</>', action: 'code', title: 'Code' },
-  { label: '•', action: 'bulletList', title: 'Bullet list' },
-  { label: '1.', action: 'orderedList', title: 'Numbered list' },
-  { label: '""', action: 'blockquote', title: 'Quote' },
-  { label: '—', action: 'divider', title: 'Divider' },
-];
 
 const VideoBlock = Node.create({
   name: 'videoBlock',
@@ -49,11 +34,30 @@ const VideoBlock = Node.create({
   },
 
   parseHTML() {
-    return [{ tag: 'div[data-video-block]' }];
+    return [
+      {
+        tag: 'div[data-video-block]',
+        getAttrs: (el) => {
+          if (typeof el === 'string') return false;
+          const node = el as HTMLElement;
+          return {
+            url: node.getAttribute('data-url') || '',
+            name: node.getAttribute('data-name') || '',
+          };
+        },
+      },
+    ];
   },
 
-  renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-video-block': 'true' }), 0];
+  renderHTML({ node, HTMLAttributes }) {
+    return [
+      'div',
+      mergeAttributes(HTMLAttributes, {
+        'data-video-block': 'true',
+        'data-url': node.attrs.url || '',
+        'data-name': node.attrs.name || '',
+      }),
+    ];
   },
 
   addNodeView() {
@@ -95,11 +99,35 @@ const AttachmentBlock = Node.create({
   },
 
   parseHTML() {
-    return [{ tag: 'div[data-attachment-block]' }];
+    return [
+      {
+        tag: 'div[data-attachment-block]',
+        getAttrs: (el) => {
+          if (typeof el === 'string') return false;
+          const node = el as HTMLElement;
+          return {
+            url: node.getAttribute('data-url') || '',
+            name: node.getAttribute('data-name') || '',
+            mimeType: node.getAttribute('data-mime-type') || '',
+          };
+        },
+      },
+    ];
   },
 
-  renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-attachment-block': 'true' }), 0];
+  renderHTML({ node, HTMLAttributes }) {
+    return [
+      'div',
+      mergeAttributes(HTMLAttributes, {
+        'data-attachment-block': 'true',
+        'data-url': node.attrs.url || '',
+        'data-name': node.attrs.name || '',
+        'data-mime-type': node.attrs.mimeType || '',
+        class:
+          'my-2 inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[11px] text-[color:var(--text-primary)]',
+      }),
+      (node.attrs.name as string) || 'Attachment',
+    ];
   },
 
   addNodeView() {
@@ -119,134 +147,6 @@ const AttachmentBlock = Node.create({
   },
 });
 
-type JSONNode = {
-  type?: string;
-  text?: string;
-  marks?: { type: string }[];
-  content?: JSONNode[];
-  attrs?: Record<string, unknown>;
-};
-
-function serializeNode(node: JSONNode): string {
-  switch (node.type) {
-    case 'doc':
-      return (node.content || []).map(serializeNode).filter(Boolean).join('\n\n');
-    case 'paragraph': {
-      const text = (node.content || []).map(serializeNode).join('');
-      return text;
-    }
-    case 'text': {
-      let text = node.text || '';
-      const marks = node.marks || [];
-      for (const mark of marks) {
-        if (mark.type === 'bold') {
-          text = `**${text}**`;
-        } else if (mark.type === 'italic') {
-          text = `*${text}*`;
-        } else if (mark.type === 'strike') {
-          text = `~~${text}~~`;
-        } else if (mark.type === 'code') {
-          text = `\`${text}\``;
-        }
-      }
-      return text;
-    }
-    case 'bulletList':
-      return (node.content || [])
-        .map((item) => {
-          const inner = serializeNode(item).replace(/\n/g, '\n  ');
-          return `- ${inner}`;
-        })
-        .join('\n');
-    case 'orderedList': {
-      let index = 1;
-      return (node.content || [])
-        .map((item) => {
-          const inner = serializeNode(item).replace(/\n/g, '\n   ');
-          const line = `${index}. ${inner}`;
-          index += 1;
-          return line;
-        })
-        .join('\n');
-    }
-    case 'listItem':
-      return (node.content || []).map(serializeNode).join('\n');
-    case 'blockquote':
-      return (node.content || [])
-        .map(serializeNode)
-        .join('\n')
-        .split('\n')
-        .map((line) => `> ${line}`)
-        .join('\n');
-    case 'horizontalRule':
-      return '---';
-    case 'image': {
-      const attrs = node.attrs || {};
-      const alt = (attrs.alt as string) || '';
-      const src = (attrs.src as string) || '';
-      if (!src) return '';
-      return `![${alt}](${src})`;
-    }
-    case 'videoBlock': {
-      const attrs = node.attrs || {};
-      const url = (attrs.url as string) || '';
-      if (!url) return '';
-      return `[video](${url})`;
-    }
-    case 'mention': {
-      const attrs = node.attrs || {};
-      const id = (attrs.id as string) || '';
-      const label = (attrs.label as string) || '';
-      if (!id || !/^[a-fA-F0-9]{24}$/.test(id)) return '';
-      const name = label.trim() || 'User';
-      return `@[${name}](${id})`;
-    }
-    case 'attachmentBlock': {
-      const attrs = node.attrs || {};
-      const url = (attrs.url as string) || '';
-      const name = (attrs.name as string) || 'attachment';
-      if (!url) return '';
-      return `[${name}](${url})`;
-    }
-    case 'table': {
-      const rows = node.content || [];
-      const lines: string[] = [];
-      let isFirstRow = true;
-      for (const row of rows) {
-        if (row.type !== 'tableRow') continue;
-        const cells = (row.content || []).map((c) => {
-          const cellText = (c.content || [])
-            .map(serializeNode)
-            .join('')
-            .trim()
-            .replace(/\|/g, '\\|')
-            .replace(/\n/g, ' ');
-          return cellText;
-        });
-        if (cells.length === 0) continue;
-        lines.push('| ' + cells.map((cell) => (cell === '' ? ' ' : cell)).join(' | ') + ' |');
-        if (isFirstRow) {
-          lines.push('| ' + cells.map(() => '---').join(' | ') + ' |');
-          isFirstRow = false;
-        }
-      }
-      return lines.length > 0 ? lines.join('\n') : '';
-    }
-    case 'tableRow':
-    case 'tableHeader':
-    case 'tableCell':
-      return (node.content || []).map(serializeNode).join('');
-    default:
-      return (node.content || []).map(serializeNode).join('\n');
-  }
-}
-
-function getMarkdownFromEditor(editor: Editor | null): string {
-  if (!editor) return '';
-  const json = editor.getJSON() as JSONNode;
-  return serializeNode(json).trim();
-}
-
 export default function TaskCommentBox({
   onSubmit,
   submitting,
@@ -255,6 +155,8 @@ export default function TaskCommentBox({
 }: TaskCommentBoxProps) {
   const { token } = useAuth();
   const [uploading, setUploading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [draftSnapshot, setDraftSnapshot] = useState('');
   const mentionUsersRef = useRef<Array<{ _id: string; name: string; email: string }>>([]);
   useEffect(() => {
     mentionUsersRef.current = mentionUsers;
@@ -393,9 +295,7 @@ export default function TaskCommentBox({
   const editor = useEditor(
     {
       extensions: [
-        StarterKit.configure({
-          codeBlock: false,
-        }),
+        ...baseEditorExtensions(placeholder),
         Mention.configure({
           HTMLAttributes: {
             class:
@@ -403,86 +303,68 @@ export default function TaskCommentBox({
           },
           suggestion: mentionSuggestion as any,
         }),
-        Image.configure({
-          inline: false,
-        }),
-        Placeholder.configure({
-          placeholder,
-        }),
-        Table.configure({
-          resizable: false,
-          HTMLAttributes: {
-            class: 'border-collapse w-full my-2 text-sm [&_th]:border [&_th]:border-[color:var(--border-subtle)] [&_th]:bg-[color:var(--bg-elevated)] [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_td]:border [&_td]:border-[color:var(--border-subtle)] [&_td]:px-2 [&_td]:py-1.5',
-          },
-        }),
-        TableRow,
-        TableHeader,
-        TableCell,
         VideoBlock,
         AttachmentBlock,
       ],
       editorProps: {
         attributes: {
-          class:
-            'min-h-[96px] px-4 py-3 bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] text-sm leading-relaxed outline-none',
+          class: editorContentClass(
+            'min-h-[96px] px-4 py-3 bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] text-sm leading-relaxed outline-none'
+          ),
         },
         handleDrop(_view, event) {
-        const dt = event.dataTransfer;
-        const files = dt?.files;
-        if (!files || files.length === 0) return false;
-        event.preventDefault();
-        const fileArray = Array.from(files);
-        (async () => {
-          for (const file of fileArray) {
-            try {
-              setUploading(true);
-              const res = await uploadFile(file, token || undefined);
-              if (!res.success || !res.data) {
-                // eslint-disable-next-line no-alert
-                alert((res as { message?: string }).message ?? 'Upload failed');
-                continue;
+          const dt = event.dataTransfer;
+          const files = dt?.files;
+          if (!files || files.length === 0) return false;
+          event.preventDefault();
+          const fileArray = Array.from(files);
+          (async () => {
+            for (const file of fileArray) {
+              try {
+                setUploading(true);
+                const res = await uploadFile(file, token || undefined);
+                if (!res.success || !res.data) {
+                  // eslint-disable-next-line no-alert
+                  alert((res as { message?: string }).message ?? 'Upload failed');
+                  continue;
+                }
+                const { url, originalName, mimeType } = res.data;
+                if (file.type.startsWith('image/')) {
+                  editor
+                    ?.chain()
+                    .focus()
+                    .setImage({ src: url, alt: originalName })
+                    .run();
+                } else if (file.type.startsWith('video/')) {
+                  editor
+                    ?.chain()
+                    .focus()
+                    .insertContent({
+                      type: 'videoBlock',
+                      attrs: { url, name: originalName },
+                    })
+                    .run();
+                } else {
+                  editor
+                    ?.chain()
+                    .focus()
+                    .insertContent({
+                      type: 'attachmentBlock',
+                      attrs: { url, name: originalName, mimeType },
+                    })
+                    .run();
+                }
+              } finally {
+                setUploading(false);
               }
-              const { url, originalName, mimeType } = res.data;
-              if (file.type.startsWith('image/')) {
-                editor
-                  ?.chain()
-                  .focus()
-                  .setImage({ src: url, alt: originalName })
-                  .run();
-              } else if (file.type.startsWith('video/')) {
-                editor
-                  ?.chain()
-                  .focus()
-                  .insertContent({
-                    type: 'videoBlock',
-                    attrs: { url, name: originalName },
-                  })
-                  .run();
-              } else {
-                editor
-                  ?.chain()
-                  .focus()
-                  .insertContent({
-                    type: 'attachmentBlock',
-                    attrs: { url, name: originalName, mimeType },
-                  })
-                  .run();
-              }
-            } finally {
-              setUploading(false);
             }
-          }
-        })();
-        return true;
-      },
+          })();
+          return true;
+        },
       },
     },
     []
   );
-
-  const handleInsertTable = () => {
-    editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
-  };
 
   const handleImageUpload = () => {
     const input = document.createElement('input');
@@ -564,97 +446,66 @@ export default function TaskCommentBox({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const markdown = getMarkdownFromEditor(editor);
-    if (!markdown || submitting) return;
-    onSubmit(markdown);
+    const html = editor?.getHTML() ?? '';
+    if (isEditorHtmlEmpty(html) || submitting) return;
+    onSubmit(html);
     editor?.commands.clearContent(true);
+    setExpanded(false);
+    setDraftSnapshot('');
   };
+
+  const mediaBtn =
+    'w-8 h-8 rounded text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 flex items-center justify-center';
+
+  const handleCancel = () => {
+    if (!editor) return;
+    editor.commands.setContent(draftSnapshot || '', false);
+    setExpanded(false);
+  };
+
+  const handleExpand = () => {
+    if (!editor) return;
+    setDraftSnapshot(editor.getHTML());
+    setExpanded(true);
+    requestAnimationFrame(() => {
+      editor.chain().focus('end').run();
+    });
+  };
+
+  if (!expanded) {
+    return (
+      <div className="rounded-xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] p-3">
+        <button
+          type="button"
+          onClick={handleExpand}
+          className="w-full text-left px-3 py-2.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-sm text-[color:var(--text-muted)] hover:border-[color:var(--accent)]/50 transition-colors"
+        >
+          {placeholder}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="rounded-xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] overflow-hidden">
-      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
-        {FORMAT_BUTTONS.map((btn) => (
-          <button
-            key={btn.label}
-            type="button"
-            title={btn.title}
-            onClick={() => {
-              if (!editor) return;
-              const chain = editor.chain().focus();
-              switch (btn.action) {
-                case 'bold':
-                  chain.toggleBold().run();
-                  break;
-                case 'italic':
-                  chain.toggleItalic().run();
-                  break;
-                case 'strike':
-                  chain.toggleStrike().run();
-                  break;
-                case 'code':
-                  chain.toggleCode().run();
-                  break;
-                case 'bulletList':
-                  chain.toggleBulletList().run();
-                  break;
-                case 'orderedList':
-                  chain.toggleOrderedList().run();
-                  break;
-                case 'blockquote':
-                  chain.toggleBlockquote().run();
-                  break;
-                case 'divider':
-                  chain.setHorizontalRule().run();
-                  break;
-                default:
-                  break;
-              }
-            }}
-            className="w-8 h-8 rounded text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 text-xs font-medium"
-          >
-            {btn.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          title="Insert table"
-          onClick={handleInsertTable}
-          className="ml-1 px-2 h-8 rounded text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 text-[10px] font-medium"
-        >
-          Tbl
-        </button>
-        <div className="w-px h-5 bg-[color:var(--border-subtle)]/70 mx-1" />
-        <button
-          type="button"
-          title="Insert image"
-          onClick={handleImageUpload}
-          className="w-8 h-8 rounded text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 flex items-center justify-center"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          title="Insert video"
-          onClick={handleVideoUpload}
-          className="w-8 h-8 rounded text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 flex items-center justify-center"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          title="Insert file link"
-          onClick={handleFileLink}
-          className="w-8 h-8 rounded text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 flex items-center justify-center"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 3.5L21 8l-9.5 9.5a3 3 0 01-4.243 0l-2.757-2.757a3 3 0 010-4.243L11 3l4.5 4.5" />
-          </svg>
-        </button>
-      </div>
+      <RichTextToolbar
+        editor={editor}
+        onPickImage={handleImageUpload}
+        extraRight={
+          <>
+            <button type="button" title="Insert video" onClick={handleVideoUpload} className={mediaBtn}>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+            <button type="button" title="Insert file link" onClick={handleFileLink} className={mediaBtn}>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 3.5L21 8l-9.5 9.5a3 3 0 01-4.243 0l-2.757-2.757a3 3 0 010-4.243L11 3l4.5 4.5" />
+              </svg>
+            </button>
+          </>
+        }
+      />
       <EditorContent editor={editor} />
       {editor && (
         <BubbleMenu
@@ -745,11 +596,19 @@ export default function TaskCommentBox({
           </button>
         </BubbleMenu>
       )}
-      <div className="px-4 py-2 border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] flex justify-end">
+      <div className="px-4 py-2 border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={handleCancel}
+          disabled={submitting || uploading}
+          className="px-3 py-1.5 rounded-md text-xs text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          Cancel
+        </button>
         <button
           type="submit"
-          disabled={submitting || uploading || !getMarkdownFromEditor(editor)}
-          className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          disabled={submitting || uploading || !editor || isEditorHtmlEmpty(editor.getHTML())}
+          className="px-3 py-1.5 rounded-md bg-[color:var(--accent)] text-xs text-white hover:opacity-95 disabled:opacity-60 disabled:bg-[color:var(--bg-elevated)] disabled:text-[color:var(--text-muted)] disabled:cursor-not-allowed transition-colors"
         >
           {submitting || uploading ? 'Sending…' : 'Comment'}
         </button>

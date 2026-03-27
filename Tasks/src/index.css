@@ -22,14 +22,14 @@
 
   :root[data-theme='light'] {
     --auth-page-bg: linear-gradient(to bottom right, #e0ecff, #f9fafb);
-    --bg-page: #f4f5fb;
+    --bg-page: #f3f6fd;
     --bg-surface: #ffffff;
-    --bg-elevated: #f9fafb;
+    --bg-elevated: #f8faff;
     --bg-modal: #ffffff;
-    --bg-button-secondary: #e5edff;
-    --border-subtle: #d9e2ff;
+    --bg-button-secondary: #edf2ff;
+    --border-subtle: #d8e1f2;
     --text-primary: #0f172a;
-    --text-muted: #6b7280;
+    --text-muted: #64748b;
     --accent: #4f46e5;
     --accent-muted: #6366f1;
   }
@@ -116,6 +116,40 @@
   background-color: var(--bg-button-secondary);
   color: var(--text-primary);
   border: 1px solid var(--border-subtle);
+}
+
+/* Global light-theme polish for form controls */
+:root[data-theme='light'] input:not([type='checkbox']):not([type='radio']),
+:root[data-theme='light'] select,
+:root[data-theme='light'] textarea {
+  background-color: #ffffff;
+  border-color: #d8e1f2;
+  color: #0f172a;
+}
+
+:root[data-theme='light'] input:not([type='checkbox']):not([type='radio']):focus,
+:root[data-theme='light'] select:focus,
+:root[data-theme='light'] textarea:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, white);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* Generic reusable surface polish */
+.modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+:root[data-theme='light'] .modal-backdrop {
+  background-color: rgba(15, 23, 42, 0.32);
+}
+
+.modal-panel {
+  background-color: var(--bg-modal);
+  border: 1px solid var(--border-subtle);
+}
+
+:root[data-theme='light'] .modal-panel {
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
 }
 
 /* Light-theme-focused hover elevation */

@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { useEffect, useRef, useState } from 'react';
 import { DescriptionEditor } from '../issue';
 import type { Issue, Project, User, Milestone } from '../../lib/api';
 
@@ -40,14 +41,30 @@ interface IssueCreateEditModalProps {
 export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
   const { modal, setModal, form, setForm, submitError, submitting, handleSubmit, typeList, priorityList, statusList, users, parentCandidates, project, getIssueKey, projects = [], showProjectSelector, milestones = [] } = props;
   if (!modal) return null;
+  const [affectsOpen, setAffectsOpen] = useState(false);
+  const affectsRef = useRef<HTMLDivElement | null>(null);
 
-  const inputCls = 'w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40';
+  const inputCls =
+    'w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 transition-colors';
+  const selectedAffects = (project?.versions || []).filter((v) => form.affectsVersions.includes(v.id));
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (affectsRef.current && !affectsRef.current.contains(target)) {
+        setAffectsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4" onClick={() => setModal(null)}>
-      <div className="w-full max-w-lg bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] rounded-2xl p-6 shadow-xl animate-scale-in max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm animate-fade-in p-4" onClick={() => setModal(null)}>
+      <div className="modal-panel w-full max-w-3xl rounded-2xl p-6 shadow-xl animate-scale-in max-h-[90vh] overflow-y-auto overflow-x-hidden" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-sm font-semibold text-[color:var(--text-primary)] mb-3">{modal === 'create' ? 'New issue' : 'Edit issue'}</h2>
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="space-y-3 min-w-0">
           {submitError && <p className="text-xs text-red-400">{submitError}</p>}
           {showProjectSelector && projects.length > 0 && (
             <div>
@@ -74,7 +91,7 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
             <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Description</label>
             <DescriptionEditor value={form.description} onChange={(v) => setForm((f) => ({ ...f, description: v }))} placeholder="Add a description…" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
             <div>
               <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Type</label>
               <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))} className={inputCls}>
@@ -124,7 +141,7 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
             )}
           </div>
           {project?.versions && project.versions.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+            <div className="grid grid-cols-1 gap-3 pt-2 min-w-0">
               <div>
                 <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Fix version</label>
                 <select value={form.fixVersion} onChange={(e) => setForm((f) => ({ ...f, fixVersion: e.target.value }))} className={inputCls}>
@@ -132,12 +149,53 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
                   {project.versions.map((v) => <option key={v.id} value={v.id}>{v.name} {v.status !== 'unreleased' ? `(${v.status})` : ''}</option>)}
                 </select>
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Affects versions</label>
-                <select multiple value={form.affectsVersions} onChange={(e) => setForm((f) => ({ ...f, affectsVersions: Array.from(e.target.selectedOptions, (o) => o.value) }))} className={inputCls + ' min-h-[80px]'}>
-                  {project.versions.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-                </select>
-                <p className="text-[color:var(--text-muted)] text-[11px] mt-1">Hold Ctrl/Cmd to select multiple.</p>
+                <div className="relative" ref={affectsRef}>
+                  <button
+                    type="button"
+                    onClick={() => setAffectsOpen((v) => !v)}
+                    className={inputCls + ' min-h-[34px] text-left flex items-center justify-between hover:bg-[color:var(--bg-surface)]'}
+                  >
+                    <span className="truncate pr-3">
+                      {selectedAffects.length === 0
+                        ? 'None'
+                        : selectedAffects.length <= 2
+                          ? selectedAffects.map((v) => v.name).join(', ')
+                          : `${selectedAffects.length} selected`}
+                    </span>
+                    <span className="text-[10px] text-[color:var(--text-muted)]">{affectsOpen ? '▲' : '▼'}</span>
+                  </button>
+                  {affectsOpen && (
+                    <div className="absolute z-30 mt-1 w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] shadow-xl p-1 max-h-56 overflow-auto">
+                      {project.versions.map((v) => {
+                        const checked = form.affectsVersions.includes(v.id);
+                        return (
+                          <label
+                            key={v.id}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-[color:var(--bg-page)] transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setForm((f) => {
+                                  const set = new Set(f.affectsVersions);
+                                  if (e.target.checked) set.add(v.id);
+                                  else set.delete(v.id);
+                                  return { ...f, affectsVersions: Array.from(set) };
+                                });
+                              }}
+                              className="accent-[color:var(--accent)]"
+                            />
+                            <span className="text-xs text-[color:var(--text-primary)]">{v.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <p className="text-[color:var(--text-muted)] text-[11px] mt-1">Select one or more versions from the dropdown.</p>
               </div>
             </div>
           )}
@@ -183,9 +241,21 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
               })}
             </div>
           ) : null}
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={() => setModal(null)} className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]">Cancel</button>
-            <button type="submit" disabled={submitting} className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-xs text-[color:var(--text-primary)] hover:bg-[color:var(--bg-surface)] disabled:opacity-50">{submitting ? 'Saving…' : 'Save'}</button>
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setModal(null)}
+              className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-transparent text-xs text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-3 py-1.5 rounded-md border border-[color:var(--accent)] bg-[color:var(--accent)] text-xs font-medium text-white hover:opacity-95 disabled:opacity-60 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              {submitting ? 'Saving…' : 'Save'}
+            </button>
           </div>
         </form>
       </div>

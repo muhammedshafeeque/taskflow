@@ -14,7 +14,7 @@ export const env = {
   mongodbUri: process.env.MONGODB_URI ?? 'mongodb://localhost:27017/pm-tool',
   jwtSecret: process.env.JWT_SECRET ?? 'dev-secret-change-me',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
-  appUrl: process.env.APP_URL ?? 'http://localhost:5173',
+  appUrl: process.env.APP_URL ?? 'http://localhost:5174',
   smtpHost: process.env.SMTP_HOST ?? process.env.EMAIL_HOST,
   smtpPort: (() => {
     const raw = process.env.SMTP_PORT ?? process.env.EMAIL_PORT;
