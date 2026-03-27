@@ -2,8 +2,8 @@ import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationsContext';
 import { useEffect, useState, useMemo } from 'react';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Area, AreaChart } from 'recharts';
-import { issuesApi, boardsApi, sprintsApi, projectsApi, dashboardApi, type EstimatesResponse, type ProjectMetricsResponse, type Project } from '../lib/api';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Area, AreaChart, BarChart, Bar } from 'recharts';
+import { issuesApi, boardsApi, sprintsApi, projectsApi, dashboardApi, type EstimatesResponse, type ProjectMetricsResponse, type Project, type Issue } from '../lib/api';
 import MetricCard from '../components/MetricCard';
 import SectionCard from '../components/SectionCard';
 import { formatMinutes } from '../components/issue/WorkLogInput';
@@ -32,6 +32,10 @@ export default function ProjectDashboard() {
   const [metrics, setMetrics] = useState<ProjectMetricsResponse | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
+  const [typeVsPriorityLoading, setTypeVsPriorityLoading] = useState(false);
+  const [typeVsPrioritySeries, setTypeVsPrioritySeries] = useState<
+    Array<{ type: string; total: number; priorities: Array<{ name: string; value: number }> }>
+  >([]);
 
   const getStatusColor = (statusName: string, index: number) => {
     const status = project?.statuses?.find((s) => s.name === statusName);
@@ -56,6 +60,68 @@ export default function ProjectDashboard() {
       else setEstimates(null);
     });
   }, [token, projectId, refreshTrigger]);
+
+  useEffect(() => {
+    if (!token || !projectId || !project) return;
+    let cancelled = false;
+    const loadTypeVsPriority = async () => {
+      setTypeVsPriorityLoading(true);
+      try {
+        const limit = 200;
+        let page = 1;
+        let totalPages = 1;
+        const allIssues: Issue[] = [];
+        while (page <= totalPages) {
+          const res = await issuesApi.list({ page, limit, token, project: projectId });
+          if (!res.success || !res.data) break;
+          allIssues.push(...res.data.data);
+          totalPages = res.data.totalPages || 1;
+          page += 1;
+        }
+
+        const projectTypes = (project.issueTypes ?? []).map((t) => t.name);
+        const projectPriorities = (project.priorities ?? []).map((p) => p.name);
+        const seenTypes = new Set(allIssues.map((i) => i.type).filter(Boolean));
+        const seenPriorities = new Set(allIssues.map((i) => i.priority).filter(Boolean));
+
+        const types = [
+          ...projectTypes,
+          ...Array.from(seenTypes).filter((t) => !projectTypes.includes(t)),
+        ];
+        const priorities = [
+          ...projectPriorities,
+          ...Array.from(seenPriorities).filter((p) => !projectPriorities.includes(p)),
+        ];
+
+        const counts = new Map<string, number>();
+        for (const issue of allIssues) {
+          const t = issue.type || 'Unknown';
+          const p = issue.priority || 'Unknown';
+          counts.set(`${t}|${p}`, (counts.get(`${t}|${p}`) ?? 0) + 1);
+        }
+
+        const rows = types.map((type) => {
+          const pr = priorities.map((name) => ({
+            name,
+            value: counts.get(`${type}|${name}`) ?? 0,
+          }));
+          const total = pr.reduce((sum, p) => sum + p.value, 0);
+          return { type, total, priorities: pr };
+        });
+
+        const nonZeroRows = rows.filter((r) => r.total > 0);
+        if (!cancelled) {
+          setTypeVsPrioritySeries(nonZeroRows.length ? nonZeroRows : rows);
+        }
+      } finally {
+        if (!cancelled) setTypeVsPriorityLoading(false);
+      }
+    };
+    void loadTypeVsPriority();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, projectId, project, refreshTrigger]);
 
   useEffect(() => {
     if (!token || !projectId) return;
@@ -482,6 +548,62 @@ export default function ProjectDashboard() {
                 </table>
               )}
             </div>
+          </SectionCard>
+        </div>
+
+        <div className="mb-6">
+          <SectionCard
+            title="Issue type vs priority"
+            description="Each issue type has its own priority distribution chart."
+          >
+            {typeVsPriorityLoading ? (
+              <div className="h-56 flex items-center justify-center text-[color:var(--text-muted)] text-sm animate-pulse">
+                Loading chart…
+              </div>
+            ) : !typeVsPrioritySeries.length ? (
+              <div className="h-32 flex items-center justify-center text-[color:var(--text-muted)] text-sm">
+                No issues yet for this project.
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {typeVsPrioritySeries.map((row, idx) => (
+                  <div
+                    key={row.type}
+                    className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-3"
+                  >
+                    <div className="mb-2 flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">{row.type}</h3>
+                      <span className="text-xs text-[color:var(--text-muted)]">{row.total} total</span>
+                    </div>
+                    <div className="h-48">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={row.priorities} layout="vertical" margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                          <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} stroke="var(--text-muted)" />
+                          <YAxis
+                            type="category"
+                            dataKey="name"
+                            width={80}
+                            tick={{ fontSize: 11 }}
+                            stroke="var(--text-muted)"
+                          />
+                          <Tooltip
+                            contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}
+                            labelStyle={{ color: 'var(--text-primary)' }}
+                          />
+                          <Bar
+                            dataKey="value"
+                            name="Issues"
+                            fill={getTypeColor(row.type, idx)}
+                            radius={[0, 4, 4, 0]}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </SectionCard>
         </div>
 
