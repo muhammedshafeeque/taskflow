@@ -190,7 +190,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading || ssoLoading}
-                className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[color:var(--accent)] px-4 py-3 font-medium text-white transition hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/60 focus:ring-offset-2 focus:ring-offset-[color:var(--bg-page)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 font-medium text-white transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:ring-offset-2 focus:ring-offset-[color:var(--bg-page)] disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400 disabled:opacity-100"
               >
                 <FiLogIn className="text-base" />
                 {loading ? 'Signing in…' : 'Sign in'}

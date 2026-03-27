@@ -17,6 +17,9 @@ import {
   microsoftSsoAuthorizeUrlQuerySchema,
 } from './auth.validation';
 import * as authService from './auth.service';
+import { resolveEffectiveGlobalPermissions } from './effectivePermissions';
+import { Role } from '../roles/role.model';
+import { User } from './user.model';
 
 export async function register(_req: import('express').Request, _res: Response): Promise<void> {
   throw new ApiError(403, 'Registration is disabled. Contact an administrator to get an account.');
@@ -46,6 +49,47 @@ export async function me(req: import('express').Request, res: Response): Promise
   if (!userId) throw new ApiError(401, 'Unauthorized');
   const user = await authService.me(userId);
   res.status(200).json({ success: true, data: { user } });
+}
+
+export async function debugPermissions(req: import('express').Request, res: Response): Promise<void> {
+  const requester = req.user;
+  if (!requester) throw new ApiError(401, 'Unauthorized');
+  if (requester.role !== 'admin') {
+    throw new ApiError(403, 'Only admin can debug permissions');
+  }
+
+  const targetUserId = req.params.id;
+  if (!targetUserId) throw new ApiError(400, 'User ID is required');
+
+  const target = await User.findById(targetUserId).lean();
+  if (!target) throw new ApiError(404, 'User not found');
+
+  let rolePermissions: string[] | null = null;
+  let roleName: string | undefined;
+  if (target.roleId) {
+    const role = await Role.findById(target.roleId).select('permissions name').lean();
+    rolePermissions = Array.isArray(role?.permissions) ? role.permissions : [];
+    roleName = role?.name;
+  }
+
+  const effectivePermissions = resolveEffectiveGlobalPermissions({
+    rolePermissions,
+    role: target.role,
+    mustChangePassword: target.mustChangePassword ?? false,
+  });
+
+  res.status(200).json({
+    success: true,
+    data: {
+      userId: target._id.toString(),
+      role: target.role,
+      roleId: target.roleId ? String(target.roleId) : null,
+      roleName: roleName ?? null,
+      mustChangePassword: target.mustChangePassword ?? false,
+      effectivePermissions,
+      rolePermissions,
+    },
+  });
 }
 
 export async function changePassword(req: import('express').Request, res: Response): Promise<void> {
@@ -113,6 +157,11 @@ export const refreshHandler = [
 export const meHandler = [
   authMiddleware,
   asyncHandler(me),
+];
+
+export const debugPermissionsHandler = [
+  authMiddleware,
+  asyncHandler(debugPermissions),
 ];
 
 export const changePasswordHandler = [
