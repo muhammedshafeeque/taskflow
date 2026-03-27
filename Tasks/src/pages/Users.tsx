@@ -56,7 +56,7 @@ function getDesignationId(u: User): string | null {
 }
 
 export default function Users() {
-  const { token, user: currentUser } = useAuth();
+  const { token, user: currentUser, refreshUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [designations, setDesignations] = useState<Designation[]>([]);
@@ -201,6 +201,9 @@ export default function Users() {
     const res = await usersApi.update(editUser._id, body, token);
     setEditSubmitting(false);
     if (res.success) {
+      if (currentUser?.id === editUser._id) {
+        await refreshUser();
+      }
       setEditUser(null);
       loadUsers();
     } else {

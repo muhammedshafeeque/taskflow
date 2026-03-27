@@ -41,6 +41,13 @@ export async function refresh(req: import('express').Request, res: Response): Pr
   res.status(200).json({ success: true, data: result });
 }
 
+export async function me(req: import('express').Request, res: Response): Promise<void> {
+  const userId = req.user?.id;
+  if (!userId) throw new ApiError(401, 'Unauthorized');
+  const user = await authService.me(userId);
+  res.status(200).json({ success: true, data: { user } });
+}
+
 export async function changePassword(req: import('express').Request, res: Response): Promise<void> {
   const userId = req.user?.id;
   if (!userId) throw new ApiError(401, 'Unauthorized');
@@ -101,6 +108,11 @@ export const loginHandler = [
 export const refreshHandler = [
   validate(refreshSchema.shape.body, 'body'),
   asyncHandler(refresh),
+];
+
+export const meHandler = [
+  authMiddleware,
+  asyncHandler(me),
 ];
 
 export const changePasswordHandler = [

@@ -21,6 +21,7 @@ interface AuthContextValue {
   microsoftSso: (code: string, redirectUri?: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
   updateUser: (user: AuthUser) => void;
+  refreshUser: () => Promise<{ ok: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -55,6 +56,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(next);
     localStorage.setItem(USER_KEY, JSON.stringify(next));
   }, []);
+
+  const refreshUser = useCallback(async () => {
+    const accessToken = localStorage.getItem(ACCESS_KEY);
+    if (!accessToken) return { ok: false, error: 'Not authenticated' };
+    const res = await authApi.me(accessToken);
+    if (!res.success || !res.data) {
+      return { ok: false, error: (res as { message?: string }).message ?? 'Failed to refresh user' };
+    }
+    updateUser(res.data.user);
+    return { ok: true };
+  }, [updateUser]);
 
   useEffect(() => {
     if (!token) setLoading(false);
@@ -91,8 +103,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, token, loading, login, microsoftSso, logout, updateUser }),
-    [user, token, loading, login, microsoftSso, logout, updateUser]
+    () => ({ user, token, loading, login, microsoftSso, logout, updateUser, refreshUser }),
+    [user, token, loading, login, microsoftSso, logout, updateUser, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -96,8 +96,8 @@ export async function inviteToProject(req: Request & { user?: AuthPayload }, res
   const userId = req.user?.id;
   if (!userId) throw new ApiError(401, 'Unauthorized');
   const projectId = req.params.id;
-  const { email } = req.body;
-  const data = await projectInvitationsService.inviteToProject(projectId, email, userId);
+  const { email, roleId } = req.body as { email: string; roleId?: string };
+  const data = await projectInvitationsService.inviteToProject(projectId, email, userId, roleId);
   logAudit({
     userId,
     action: 'invite',

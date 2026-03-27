@@ -3,6 +3,7 @@ import {
   registerHandler,
   loginHandler,
   refreshHandler,
+  meHandler,
   changePasswordHandler,
   forgotPasswordHandler,
   resetPasswordHandler,
@@ -16,6 +17,7 @@ const router = Router();
 router.post('/register', registerHandler);
 router.post('/login', loginHandler);
 router.post('/refresh', refreshHandler);
+router.get('/me', meHandler);
 router.patch('/me', updateProfileHandler);
 router.patch('/me/password', changePasswordHandler);
 router.post('/forgot-password', forgotPasswordHandler);

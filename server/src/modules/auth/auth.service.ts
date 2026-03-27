@@ -9,6 +9,7 @@ import { env } from '../../config/env';
 import { sendForgotPasswordEmail } from '../../services/email.service';
 import type { RegisterInput, LoginInput, MicrosoftSsoInput } from './auth.validation';
 import type { IUser } from './user.model';
+import { resolveEffectiveGlobalPermissions } from './effectivePermissions';
 
 const SALT_ROUNDS = 10;
 
@@ -73,11 +74,11 @@ function signTokens(userId: string): AuthTokens {
 }
 
 async function toAuthUser(user: IUser & { roleId?: unknown; designation?: unknown; mustChangePassword?: boolean }): Promise<AuthUser> {
-  let permissions: string[] = [];
+  let rolePermissions: string[] = [];
   let roleName: string | undefined;
   if (user.roleId) {
     const role = await Role.findById(user.roleId).select('permissions name').lean();
-    if (role?.permissions) permissions = role.permissions;
+    if (role?.permissions) rolePermissions = role.permissions;
     if (role?.name) roleName = role.name;
   }
   if (!roleName) roleName = user.role === 'admin' ? 'Administrator' : 'Member';
@@ -87,9 +88,11 @@ async function toAuthUser(user: IUser & { roleId?: unknown; designation?: unknow
     if (des?.name) designationName = des.name;
   }
   const mustChange = user.mustChangePassword ?? false;
-  if (mustChange && permissions.includes('projects:create')) {
-    permissions = permissions.filter((p) => p !== 'projects:create');
-  }
+  const permissions = resolveEffectiveGlobalPermissions({
+    rolePermissions,
+    role: user.role,
+    mustChangePassword: mustChange,
+  });
   const u = user as IUser & { avatarUrl?: string; createdAt?: Date };
   return {
     id: user._id.toString(),
@@ -163,6 +166,16 @@ export async function refresh(refreshToken: string): Promise<{ user: AuthUser; t
   const tokens = signTokens(user._id.toString());
   const authUser = await toAuthUser(user as unknown as IUser & { roleId?: unknown; mustChangePassword?: boolean });
   return { user: authUser, tokens };
+}
+
+export async function me(userId: string): Promise<AuthUser> {
+  const user = await User.findById(userId).lean();
+  if (!user) throw new ApiError(401, 'User not found');
+  const u = user as { enabled?: boolean };
+  if (u.enabled === false) {
+    throw new ApiError(401, 'Account is disabled');
+  }
+  return toAuthUser(user as unknown as IUser & { roleId?: unknown; designation?: unknown; mustChangePassword?: boolean });
 }
 
 export async function changePassword(

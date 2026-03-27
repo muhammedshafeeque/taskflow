@@ -106,7 +106,10 @@ const releaseVersionBodySchema = z.object({
 });
 
 const inviteProjectSchema = z.object({
-  body: z.object({ email: z.string().email() }),
+  body: z.object({
+    email: z.string().email(),
+    roleId: z.string().min(1).optional(),
+  }),
   params: z.object({ id: z.string().min(1) }),
 });
 

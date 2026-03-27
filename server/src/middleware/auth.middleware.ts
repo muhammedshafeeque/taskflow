@@ -3,8 +3,8 @@ import jwt from 'jsonwebtoken';
 import { ApiError } from '../utils/ApiError';
 import { env } from '../config/env';
 import { User } from '../modules/auth/user.model';
-import { PERMISSION_CODES } from '../constants/permissions';
 import type { AuthPayload } from '../types/express';
+import { resolveEffectiveGlobalPermissions } from '../modules/auth/effectivePermissions';
 
 export async function authMiddleware(
   req: Request,
@@ -32,14 +32,11 @@ export async function authMiddleware(
       return;
     }
     const role = user.roleId as { _id?: { toString(): string }; permissions?: string[] } | null | undefined;
-    let permissions = Array.isArray(role?.permissions) ? role.permissions : [];
-    if (permissions.length === 0 && user.role === 'admin') {
-      permissions = [...PERMISSION_CODES];
-    }
-    const mustChangePassword = user.mustChangePassword ?? false;
-    if (mustChangePassword && permissions.includes('projects:create')) {
-      permissions = permissions.filter((p) => p !== 'projects:create');
-    }
+    const permissions = resolveEffectiveGlobalPermissions({
+      rolePermissions: role?.permissions,
+      role: user.role,
+      mustChangePassword: user.mustChangePassword ?? false,
+    });
     const roleIdStr =
       user.roleId && typeof user.roleId === 'object' && '_id' in user.roleId
         ? (user.roleId as { _id: { toString(): string } })._id.toString()

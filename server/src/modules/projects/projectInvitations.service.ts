@@ -39,7 +39,8 @@ export async function getOrCreateProjectMemberRole(): Promise<{ _id: mongoose.Ty
 export async function inviteToProject(
   projectId: string,
   email: string,
-  invitedByUserId: string
+  invitedByUserId: string,
+  roleId?: string
 ): Promise<unknown> {
   const project = await Project.findById(projectId).lean();
   if (!project) throw new ApiError(404, 'Project not found');
@@ -58,7 +59,15 @@ export async function inviteToProject(
   }).lean();
   if (pendingInvite) throw new ApiError(409, 'User has already been invited.');
 
-  const role = await getOrCreateProjectMemberRole();
+  let roleObjectId: mongoose.Types.ObjectId;
+  if (roleId) {
+    const role = await Role.findById(roleId).select('_id').lean();
+    if (!role) throw new ApiError(400, 'Selected role not found');
+    roleObjectId = role._id;
+  } else {
+    const role = await getOrCreateProjectMemberRole();
+    roleObjectId = role._id;
+  }
   await ProjectInvitation.deleteOne({ project: projectId, user: userIdStr });
 
   const inviter = await User.findById(invitedByUserId).select('name').lean();
@@ -69,7 +78,7 @@ export async function inviteToProject(
     project: projectId,
     user: userIdStr,
     invitedBy: invitedByUserId,
-    role: role._id,
+    role: roleObjectId,
     status: 'pending',
   });
 

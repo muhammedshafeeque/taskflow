@@ -117,6 +117,9 @@ export const authApi = {
   refresh: (refreshToken: string) =>
     api.post<AuthData>('/auth/refresh', { refreshToken }),
 
+  me: (token: string) =>
+    api.get<{ user: AuthUser }>('/auth/me', token),
+
   updateProfile: (data: { name?: string; avatarUrl?: string }, token: string) =>
     api.patch<{ user: AuthUser }>('/auth/me', data, token),
 
@@ -303,7 +306,7 @@ export const projectsApi = {
     api.get<ProjectMember[]>(`/projects/${projectId}/members`, token),
   getInvitations: (projectId: string, token: string) =>
     api.get<ProjectInvitation[]>(`/projects/${projectId}/invitations`, token),
-  inviteMember: (projectId: string, body: { email: string }, token: string) =>
+  inviteMember: (projectId: string, body: { email: string; roleId?: string }, token: string) =>
     api.post<unknown>(`/projects/${projectId}/invite`, body, token),
   cancelInvitation: (projectId: string, invitationId: string, token: string) =>
     api.delete(`/projects/${projectId}/invitations/${invitationId}`, token),
