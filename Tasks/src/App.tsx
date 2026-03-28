@@ -10,6 +10,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
+import ProjectTemplates from './pages/ProjectTemplates';
 import Inbox from './pages/Inbox';
 import Profile from './pages/Profile';
 import Issues from './pages/Issues';
@@ -68,6 +69,7 @@ function AppRoutes() {
         <Route path="/cost-usage" element={<CostUsage />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/projects" element={<Projects />} />
+        <Route path="/project-templates" element={<ProjectTemplates />} />
         <Route path="/projects/:projectId" element={<ProjectLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<ProjectDashboard />} />

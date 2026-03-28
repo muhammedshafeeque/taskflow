@@ -10,6 +10,7 @@ import {
   updateProjectHandler,
   deleteProject,
   idParamHandler,
+  saveSettingsTemplateHandler,
   releaseVersionHandler,
   inviteToProjectHandler,
   getMembers,
@@ -36,6 +37,12 @@ router.get('/:id/members', ...idParamHandler, requireProjectPermission('project:
 router.get('/:id/invitations', ...idParamHandler, requireProjectPermission('project:manageMembers'), asyncHandler(getInvitations));
 router.post('/:id/invite', ...idParamHandler, requireProjectPermission('project:manageMembers'), inviteToProjectHandler);
 router.delete('/:id/invitations/:invitationId', requireProjectPermission('project:manageMembers'), ...cancelInvitationParamHandler);
+router.post(
+  '/:id/save-settings-template',
+  ...idParamHandler,
+  requireProjectPermission('settings:manage'),
+  ...saveSettingsTemplateHandler
+);
 router.get('/:id', ...idParamHandler, asyncHandler(getProjectById));
 router.patch('/:id', ...idParamHandler, requireProjectPermission('project:edit'), ...updateProjectHandler);
 router.post('/:id/versions/release', releaseVersionHandler);

@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { ProjectTemplate } from './projectTemplate.model';
 
 const DEFAULT_STATUSES = [
@@ -23,19 +24,17 @@ const DEFAULT_PRIORITIES = [
 ];
 
 export async function list(): Promise<unknown[]> {
-  const list = await ProjectTemplate.find().sort({ name: 1 }).lean();
-  if (list.length === 0) {
-    const defaultConfig = getDefaultConfig();
-    return [{
-      _id: 'default',
-      name: 'Default',
-      description: 'Standard project with Backlog, Todo, In Progress, Done',
-      statuses: defaultConfig.statuses,
-      issueTypes: defaultConfig.issueTypes,
-      priorities: defaultConfig.priorities,
-    }];
-  }
-  return list;
+  const dbList = await ProjectTemplate.find().sort({ name: 1 }).lean();
+  const defaultConfig = getDefaultConfig();
+  const builtIn = {
+    _id: 'default',
+    name: 'Built-in default',
+    description: 'Standard backlog workflow, issue types, and priorities',
+    statuses: defaultConfig.statuses,
+    issueTypes: defaultConfig.issueTypes,
+    priorities: defaultConfig.priorities,
+  };
+  return [builtIn, ...dbList];
 }
 
 export async function getById(templateId: string): Promise<unknown | null> {
@@ -57,4 +56,51 @@ export function getDefaultConfig(): {
     issueTypes: DEFAULT_ISSUE_TYPES,
     priorities: DEFAULT_PRIORITIES,
   };
+}
+
+export async function createTemplateRecord(input: {
+  name: string;
+  description?: string;
+  statuses: unknown[];
+  issueTypes: unknown[];
+  priorities: unknown[];
+}): Promise<unknown> {
+  const doc = await ProjectTemplate.create({
+    name: input.name,
+    description: input.description ?? '',
+    statuses: input.statuses,
+    issueTypes: input.issueTypes,
+    priorities: input.priorities,
+  });
+  return doc.toObject();
+}
+
+export async function removeById(id: string): Promise<'not_found' | 'forbidden' | 'ok'> {
+  if (id === 'default') return 'forbidden';
+  if (!mongoose.Types.ObjectId.isValid(id)) return 'not_found';
+  const r = await ProjectTemplate.findByIdAndDelete(id);
+  return r ? 'ok' : 'not_found';
+}
+
+export async function updateById(
+  id: string,
+  input: {
+    name?: string;
+    description?: string;
+    statuses?: unknown[];
+    issueTypes?: unknown[];
+    priorities?: unknown[];
+  }
+): Promise<'not_found' | 'forbidden' | 'noop' | unknown> {
+  if (id === 'default') return 'forbidden';
+  if (!mongoose.Types.ObjectId.isValid(id)) return 'not_found';
+  const updates: Record<string, unknown> = {};
+  if (input.name !== undefined) updates.name = input.name.trim();
+  if (input.description !== undefined) updates.description = input.description.trim();
+  if (input.statuses !== undefined) updates.statuses = input.statuses;
+  if (input.issueTypes !== undefined) updates.issueTypes = input.issueTypes;
+  if (input.priorities !== undefined) updates.priorities = input.priorities;
+  if (Object.keys(updates).length === 0) return 'noop';
+  const doc = await ProjectTemplate.findByIdAndUpdate(id, { $set: updates }, { new: true, runValidators: true }).lean();
+  return doc ?? 'not_found';
 }

@@ -88,7 +88,7 @@ export function parseFiltersFromSearchParams(searchParams: URLSearchParams): {
   };
   const quick = searchParams.get(PARAM_QUICK);
   const quickFilter: QuickFilterValue =
-    quick === 'my' || quick === 'open' || quick === 'all' ? quick : 'all';
+    quick === 'my' || quick === 'open' || quick === 'all' ? quick : 'my';
   const view = searchParams.get(PARAM_VIEW);
   const viewMode: ViewModeValue =
     view === 'list' || view === 'kanban' ? view : 'table';
@@ -125,7 +125,9 @@ export function buildSearchParams(opts: {
   jql?: string;
 }): URLSearchParams {
   const p = new URLSearchParams();
-  if (opts.quickFilter !== 'all') p.set(PARAM_QUICK, opts.quickFilter);
+  if (opts.quickFilter === 'all') p.set(PARAM_QUICK, 'all');
+  else if (opts.quickFilter === 'open') p.set(PARAM_QUICK, 'open');
+  // 'my' is the default: omit PARAM_QUICK for cleaner URLs
   if (opts.viewMode !== 'table') p.set(PARAM_VIEW, opts.viewMode);
   if (opts.page > 1) p.set(PARAM_PAGE, String(opts.page));
   if (opts.jql && opts.jql.trim()) p.set(PARAM_JQL, opts.jql.trim());

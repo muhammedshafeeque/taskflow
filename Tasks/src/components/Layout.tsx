@@ -23,6 +23,7 @@ import {
   SunIcon,
   MoonIcon,
   BellIcon,
+  PackageIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   LogOutIcon,
@@ -44,6 +45,7 @@ function buildGlobalNav(user: { mustChangePassword?: boolean; permissions?: stri
     return [
       { to: '/inbox', label: 'Inbox', icon: <InboxIcon /> },
       { to: '/projects', label: 'Projects', icon: <ProjectsIcon /> },
+      { to: '/project-templates', label: 'Templates', icon: <PackageIcon /> },
       { to: '/profile', label: 'Profile', icon: <ProfileIcon /> },
     ];
   }
@@ -51,6 +53,7 @@ function buildGlobalNav(user: { mustChangePassword?: boolean; permissions?: stri
     { to: '/', label: 'Dashboard', icon: <DashboardIcon />, end: true },
     { to: '/inbox', label: 'Inbox', icon: <InboxIcon /> },
     { to: '/projects', label: 'Projects', icon: <ProjectsIcon /> },
+    { to: '/project-templates', label: 'Templates', icon: <PackageIcon /> },
     { to: '/issues', label: 'All Issues', icon: <IssuesIcon /> },
     { to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon /> },
     { to: '/workload', label: 'Workload', icon: <TimesheetIcon /> },

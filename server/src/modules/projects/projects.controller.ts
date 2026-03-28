@@ -13,12 +13,12 @@ import { logAudit } from '../auditLogs/logAudit';
 import * as analyticsService from '../analytics/analytics.service';
 
 export async function createProject(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
-  const leadId = req.user?.id;
-  if (!leadId) throw new ApiError(401, 'Unauthorized');
-  const project = await projectsService.create(req.body, leadId);
+  const creatorId = req.user?.id;
+  if (!creatorId) throw new ApiError(401, 'Unauthorized');
+  const project = await projectsService.create(req.body, creatorId);
   const proj = project as unknown as { _id?: string; name?: string; key?: string };
   logAudit({
-    userId: leadId,
+    userId: creatorId,
     action: 'create',
     resourceType: 'project',
     resourceId: proj._id ? String(proj._id) : undefined,
@@ -26,7 +26,7 @@ export async function createProject(req: Request & { user?: AuthPayload }, res: 
     meta: { name: proj.name, key: proj.key },
     ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress,
   });
-  analyticsService.logEvent(leadId, 'project_create', 'project', proj._id ? String(proj._id) : undefined).catch(() => {});
+  analyticsService.logEvent(creatorId, 'project_create', 'project', proj._id ? String(proj._id) : undefined).catch(() => {});
   res.status(201).json({ success: true, data: project });
 }
 
@@ -58,6 +58,25 @@ export async function getMyPermissions(req: Request & { user?: AuthPayload }, re
   const projectId = req.params.id;
   const permissions = await getProjectPermissionsForUser(projectId, userId);
   res.status(200).json({ success: true, data: { permissions } });
+}
+
+export async function saveSettingsTemplate(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
+  const userId = req.user?.id;
+  const created = await projectsService.saveAsTemplate(req.params.id, req.body);
+  if (!created) throw new ApiError(404, 'Project not found');
+  const c = created as { _id?: unknown; name?: string };
+  if (userId && c._id) {
+    logAudit({
+      userId,
+      action: 'create',
+      resourceType: 'projectTemplate',
+      resourceId: String(c._id),
+      projectId: req.params.id,
+      meta: { name: c.name },
+      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress,
+    });
+  }
+  res.status(201).json({ success: true, data: created });
 }
 
 export async function updateProject(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
@@ -166,6 +185,12 @@ export const updateProjectHandler = [
   validate(projectsValidation.update.shape.params, 'params'),
   validate(projectsValidation.update.shape.body, 'body'),
   asyncHandler(updateProject),
+];
+
+export const saveSettingsTemplateHandler = [
+  validate(projectsValidation.saveSettingsTemplate.shape.params, 'params'),
+  validate(projectsValidation.saveSettingsTemplate.shape.body, 'body'),
+  asyncHandler(saveSettingsTemplate),
 ];
 
 export const idParamHandler = [

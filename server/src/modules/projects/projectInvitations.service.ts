@@ -6,7 +6,10 @@ import { Role } from '../roles/role.model';
 import { User } from '../auth/user.model';
 import { InboxMessage } from '../inbox/message.model';
 import { ApiError } from '../../utils/ApiError';
-import { DEFAULT_PROJECT_MEMBER_PERMISSION_CODES } from '../../constants/permissions';
+import {
+  DEFAULT_PROJECT_MEMBER_PERMISSION_CODES,
+  FULL_PROJECT_ROLE_PERMISSION_CODES,
+} from '../../constants/permissions';
 import * as inboxService from '../inbox/inbox.service';
 import { sendProjectInviteEmail } from '../../services/email.service';
 import { sendPushToUser } from '../../services/push.service';
@@ -14,6 +17,7 @@ import { env } from '../../config/env';
 import * as notificationsService from '../notifications/notifications.service';
 
 const PROJECT_MEMBER_ROLE_NAME = 'Project Member';
+const PROJECT_LEAD_ROLE_NAME = 'Project Lead';
 
 /** Syncs the "Project Member" role permissions to the default (no project:edit / project:delete). Call once per process so existing DB roles are updated. */
 export async function syncProjectMemberRolePermissions(): Promise<void> {
@@ -34,6 +38,61 @@ export async function getOrCreateProjectMemberRole(): Promise<{ _id: mongoose.Ty
     permissions: [...DEFAULT_PROJECT_MEMBER_PERMISSION_CODES],
   });
   return { _id: created._id };
+}
+
+/** Role with all project permissions (settings, issues, boards, delete, etc.) — used for project lead on create/update. */
+export async function getOrCreateProjectLeadRole(): Promise<{ _id: mongoose.Types.ObjectId }> {
+  let role = await Role.findOne({ name: PROJECT_LEAD_ROLE_NAME }).select('_id').lean();
+  if (role) {
+    await Role.updateOne(
+      { _id: role._id },
+      { $set: { permissions: [...FULL_PROJECT_ROLE_PERMISSION_CODES] } }
+    );
+    return { _id: role._id };
+  }
+  const created = await Role.create({
+    name: PROJECT_LEAD_ROLE_NAME,
+    permissions: [...FULL_PROJECT_ROLE_PERMISSION_CODES],
+  });
+  return { _id: created._id };
+}
+
+/** If the user holds the Project Lead role on this project, switch them to Project Member (e.g. after lead reassignment). */
+export async function downgradeToProjectMemberIfHasLeadRole(projectId: string, userId: string): Promise<void> {
+  const leadRole = await getOrCreateProjectLeadRole();
+  const memberRole = await getOrCreateProjectMemberRole();
+  const userObjectId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+  const projectObjectId = mongoose.Types.ObjectId.isValid(projectId)
+    ? new mongoose.Types.ObjectId(projectId)
+    : projectId;
+  const m = await ProjectMember.findOne({ project: projectObjectId, user: userObjectId }).lean();
+  if (!m) return;
+  const roleId =
+    m.role && typeof m.role === 'object' && '_id' in m.role
+      ? String((m.role as { _id: unknown })._id)
+      : String(m.role);
+  if (roleId === String(leadRole._id)) {
+    await ProjectMember.updateOne({ _id: m._id }, { $set: { role: memberRole._id } });
+  }
+}
+
+/** Ensures the user is a project member with full project permissions (e.g. after assigning them as lead). */
+export async function ensureUserHasFullProjectAccess(projectId: string, userId: string): Promise<void> {
+  const leadRole = await getOrCreateProjectLeadRole();
+  const userObjectId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+  const projectObjectId = mongoose.Types.ObjectId.isValid(projectId)
+    ? new mongoose.Types.ObjectId(projectId)
+    : projectId;
+  const existing = await ProjectMember.findOne({ project: projectObjectId, user: userObjectId }).lean();
+  if (existing) {
+    await ProjectMember.updateOne({ _id: existing._id }, { $set: { role: leadRole._id } });
+    return;
+  }
+  await ProjectMember.create({
+    project: projectObjectId,
+    user: userObjectId,
+    role: leadRole._id,
+  });
 }
 
 export async function inviteToProject(

@@ -41,9 +41,9 @@ export function IssuesToolbar({
   onSaveFilterClick,
 }: IssuesToolbarProps) {
   return (
-    <div className="flex items-center justify-between mb-6">
-      <h1 className="text-xl font-semibold">Issues</h1>
-      <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <h1 className="text-xl font-semibold shrink-0">Issues</h1>
+      <div className="flex flex-wrap items-center justify-end gap-2 flex-1 min-w-0 ml-auto">
         <div className="flex rounded-lg border border-[color:var(--border-subtle)] overflow-hidden bg-[color:var(--bg-surface)]" role="group" aria-label="View mode">
           <button
             type="button"

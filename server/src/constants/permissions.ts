@@ -51,6 +51,9 @@ export const DEFAULT_PROJECT_MEMBER_PERMISSION_CODES = PROJECT_PERMISSIONS.filte
   (p) => p.code !== 'settings:manage' && p.code !== 'project:edit' && p.code !== 'project:delete'
 ).map((p) => p.code);
 
+/** Every project-scoped permission — assigned to the project lead (and creator when different) on project create. */
+export const FULL_PROJECT_ROLE_PERMISSION_CODES = PROJECT_PERMISSIONS.map((p) => p.code);
+
 export type PermissionCode = (typeof PERMISSION_CODES)[number];
 
 export function isValidPermission(code: string): code is PermissionCode {

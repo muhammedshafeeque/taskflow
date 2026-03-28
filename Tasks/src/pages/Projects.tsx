@@ -15,7 +15,14 @@ export default function Projects() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
   const [users, setUsers] = useState<User[]>([]);
-  const [form, setForm] = useState({ name: '', key: '', description: '', lead: '', templateId: '' });
+  const [form, setForm] = useState({
+    name: '',
+    key: '',
+    description: '',
+    lead: '',
+    templateId: '',
+    applyTemplateId: '',
+  });
   const [editId, setEditId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -44,14 +51,14 @@ export default function Projects() {
   }, [token, modal]);
 
   useEffect(() => {
-    if (!token || modal !== 'create') return;
+    if (!token || !modal) return;
     projectTemplatesApi.list(token).then((res) => {
       if (res.success && res.data) setTemplates(Array.isArray(res.data) ? res.data : []);
     });
   }, [token, modal]);
 
   function openCreate() {
-    setForm({ name: '', key: '', description: '', lead: user?.id ?? '', templateId: '' });
+    setForm({ name: '', key: '', description: '', lead: user?.id ?? '', templateId: '', applyTemplateId: '' });
     setEditId(null);
     setSubmitError('');
     setModal('create');
@@ -64,6 +71,7 @@ export default function Projects() {
       description: p.description ?? '',
       lead: typeof p.lead === 'object' && p.lead ? p.lead._id : '',
       templateId: '',
+      applyTemplateId: '',
     });
     setEditId(p._id);
     setSubmitError('');
@@ -91,11 +99,14 @@ export default function Projects() {
         });
       } else setSubmitError(res.message ?? 'Failed');
     } else if (editId) {
-      const res = await projectsApi.update(
-        editId,
-        { name: form.name, key: form.key.toUpperCase(), description: form.description, lead: form.lead },
-        token
-      );
+      const body: Parameters<typeof projectsApi.update>[1] = {
+        name: form.name,
+        key: form.key.toUpperCase(),
+        description: form.description,
+        lead: form.lead,
+      };
+      if (form.applyTemplateId.trim()) body.templateId = form.applyTemplateId.trim();
+      const res = await projectsApi.update(editId, body, token);
       if (res.success) {
         setModal(null);
         projectsApi.list(page, limit, token).then((r) => {
@@ -239,19 +250,54 @@ export default function Projects() {
                 {submitError && (
                   <p className="text-xs text-red-400">{submitError}</p>
                 )}
-                {modal === 'create' && templates.length > 0 && (
+                {modal === 'create' && (
                   <div>
-                    <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Template</label>
+                    <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">
+                      Workflow template
+                    </label>
                     <select
                       value={form.templateId}
                       onChange={(e) => setForm((f) => ({ ...f, templateId: e.target.value }))}
                       className="w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
                     >
-                      <option value="">Default (no template)</option>
+                      <option value="">Server default (same as built-in)</option>
+                      {templates
+                        .filter((t) => t._id !== 'default')
+                        .map((t) => (
+                          <option key={t._id} value={t._id}>
+                            {t.name}
+                          </option>
+                        ))}
+                    </select>
+                    <p className="text-[11px] text-[color:var(--text-muted)] mt-1">
+                      Statuses, issue types, and priorities for the new project.{' '}
+                      <Link to="/project-templates" className="text-[color:var(--accent)] hover:underline">
+                        Manage templates
+                      </Link>
+                    </p>
+                  </div>
+                )}
+                {modal === 'edit' && (
+                  <div>
+                    <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">
+                      Replace workflow from template
+                    </label>
+                    <select
+                      value={form.applyTemplateId}
+                      onChange={(e) => setForm((f) => ({ ...f, applyTemplateId: e.target.value }))}
+                      className="w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
+                    >
+                      <option value="">Do not change statuses / types / priorities</option>
                       {templates.map((t) => (
-                        <option key={t._id} value={t._id}>{t.name}</option>
+                        <option key={t._id} value={t._id}>
+                          {t.name}
+                        </option>
                       ))}
                     </select>
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400/90 mt-1">
+                      Applying a template overwrites this project&apos;s statuses, issue types, and priorities. Existing
+                      issues keep their current values; validate boards and filters afterward.
+                    </p>
                   </div>
                 )}
                 <div>

@@ -22,7 +22,6 @@ export function ActiveFilterChips({
 }: ActiveFilterChipsProps) {
   const userName = (id: string) => users.find((u) => u._id === id)?.name ?? id;
 
-  const hasQuick = quickFilter !== 'all';
   const hasAnyFilter =
     filters.status.length > 0 ||
     filters.assignee.length > 0 ||
@@ -35,7 +34,8 @@ export function ActiveFilterChips({
     filters.hasEstimate === false ||
     filters.hasEstimate === true;
 
-  if (!hasQuick && !hasAnyFilter) return null;
+  // Default quick filter is "my"; no chip row when that is the only active scope.
+  if (!hasAnyFilter && quickFilter !== 'open') return null;
 
   const handleRemoveQuick = () => updateUrl({ quickFilter: 'all', page: 1 });
 

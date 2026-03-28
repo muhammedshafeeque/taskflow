@@ -244,6 +244,15 @@ export interface Paginated<T> {
   totalPages: number;
 }
 
+export interface ProjectTemplate {
+  _id: string;
+  name: string;
+  description?: string;
+  statuses?: Array<{ id: string; name: string; order: number }>;
+  issueTypes?: Array<{ id: string; name: string; order: number }>;
+  priorities?: Array<{ id: string; name: string; order: number }>;
+}
+
 /* In-app notifications */
 export interface InAppNotification {
   _id: string;
@@ -285,6 +294,8 @@ export const projectsApi = {
       key: string;
       description: string;
       lead: string;
+      /** Replaces statuses, issueTypes, and priorities from this template when set. */
+      templateId: string;
       statuses: ProjectStatus[];
       issueTypes: ProjectIssueType[];
       priorities: ProjectPriority[];
@@ -296,6 +307,8 @@ export const projectsApi = {
     token: string
   ) => api.patch<Project>(`/projects/${id}`, body, token),
   delete: (id: string, token: string) => api.delete(`/projects/${id}`, token),
+  saveSettingsTemplate: (projectId: string, body: { name: string; description?: string }, token: string) =>
+    api.post<ProjectTemplate>(`/projects/${projectId}/save-settings-template`, body, token),
   releaseVersion: (projectId: string, versionId: string, environmentId: string, token: string, issueIds?: string[]) =>
     api.post<{ releaseNotes: string; version: ProjectVersion; updatedCount: number }>(
       `/projects/${projectId}/versions/release`,
@@ -312,18 +325,21 @@ export const projectsApi = {
     api.delete(`/projects/${projectId}/invitations/${invitationId}`, token),
 };
 
-export interface ProjectTemplate {
-  _id: string;
-  name: string;
-  description?: string;
-  statuses?: Array<{ id: string; name: string; order: number }>;
-  issueTypes?: Array<{ id: string; name: string; order: number }>;
-  priorities?: Array<{ id: string; name: string; order: number }>;
-}
-
 export const projectTemplatesApi = {
   list: (token: string) => api.get<ProjectTemplate[]>('/project-templates', token),
   get: (id: string, token: string) => api.get<ProjectTemplate>(`/project-templates/${id}`, token),
+  patch: (
+    id: string,
+    body: Partial<{
+      name: string;
+      description: string;
+      statuses: ProjectTemplate['statuses'];
+      issueTypes: ProjectTemplate['issueTypes'];
+      priorities: ProjectTemplate['priorities'];
+    }>,
+    token: string
+  ) => api.patch<ProjectTemplate>(`/project-templates/${id}`, body, token),
+  delete: (id: string, token: string) => api.delete(`/project-templates/${id}`, token),
 };
 
 export interface Milestone {

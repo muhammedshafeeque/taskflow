@@ -1,11 +1,12 @@
 import mongoose from 'mongoose';
 import { Project } from './project.model';
 import { ProjectMember } from './projectMember.model';
-import { Role } from '../roles/role.model';
 import { Issue } from '../issues/issue.model';
+import { User } from '../auth/user.model';
 import { ApiError } from '../../utils/ApiError';
 import * as inboxService from '../inbox/inbox.service';
 import * as projectTemplatesService from '../projectTemplates/projectTemplates.service';
+import * as projectInvitationsService from './projectInvitations.service';
 import type { CreateProjectBody, UpdateProjectBody } from './projects.validation';
 
 export interface PaginationOptions {
@@ -23,13 +24,22 @@ export interface PaginatedResult<T> {
 
 export async function create(
   input: CreateProjectBody,
-  leadId: string
+  creatorUserId: string
 ): Promise<mongoose.Document> {
   const key = input.key.toUpperCase();
   const existing = await Project.findOne({ key }).lean();
   if (existing) {
     throw new ApiError(409, `Project with key "${key}" already exists`);
   }
+  const leadUserId = String(input.lead).trim();
+  if (!mongoose.Types.ObjectId.isValid(leadUserId)) {
+    throw new ApiError(400, 'Invalid lead user id');
+  }
+  const leadUserExists = await User.exists({ _id: leadUserId });
+  if (!leadUserExists) {
+    throw new ApiError(400, 'Lead user not found');
+  }
+
   const config = input.templateId
     ? await projectTemplatesService.getById(input.templateId)
     : null;
@@ -43,17 +53,21 @@ export async function create(
     name: input.name,
     key,
     description: input.description ?? '',
-    lead: leadId,
+    lead: leadUserId,
     statuses,
     issueTypes,
     priorities,
   });
   const projectId = project._id.toString();
-  const roleForLead = await Role.findOne({ permissions: 'project:edit' }).select('_id').lean();
-  const roleWithView = roleForLead ?? (await Role.findOne({ permissions: 'project:view' }).select('_id').lean());
-  if (roleWithView) {
-    await ProjectMember.create({ project: projectId, user: leadId, role: roleWithView._id });
+
+  // Selected lead gets every project permission (including settings:manage, project:delete, etc.)
+  await projectInvitationsService.ensureUserHasFullProjectAccess(projectId, leadUserId);
+
+  // Creator may differ from lead; they still need membership to access the project they created.
+  if (creatorUserId && creatorUserId !== leadUserId) {
+    await projectInvitationsService.ensureUserHasFullProjectAccess(projectId, creatorUserId);
   }
+
   return project;
 }
 
@@ -171,23 +185,71 @@ function withProjectDefaults(p: Record<string, unknown>): Record<string, unknown
   return p;
 }
 
+export async function saveAsTemplate(
+  projectId: string,
+  input: { name: string; description?: string }
+): Promise<unknown | null> {
+  const project = await Project.findById(projectId).lean();
+  if (!project) return null;
+  const p = withProjectDefaults(project as Record<string, unknown>) as {
+    statuses?: unknown[];
+    issueTypes?: unknown[];
+    priorities?: unknown[];
+  };
+  return projectTemplatesService.createTemplateRecord({
+    name: input.name.trim(),
+    description: (input.description ?? '').trim(),
+    statuses: (p.statuses ?? []) as unknown[],
+    issueTypes: (p.issueTypes ?? []) as unknown[],
+    priorities: (p.priorities ?? []) as unknown[],
+  });
+}
+
 export async function update(
   id: string,
   input: UpdateProjectBody
 ): Promise<unknown | null> {
+  let previousLeadId: string | null = null;
+  if (input.lead !== undefined) {
+    const existingProj = await Project.findById(id).select('lead').lean();
+    if (existingProj && (existingProj as { lead?: unknown }).lead != null) {
+      previousLeadId = String((existingProj as { lead: unknown }).lead);
+    }
+  }
+
   const updateData: Record<string, unknown> = {};
   if (input.name !== undefined) updateData.name = input.name;
   if (input.description !== undefined) updateData.description = input.description;
-  if (input.lead !== undefined) updateData.lead = input.lead;
+  if (input.lead !== undefined) {
+    const nextLead = String(input.lead).trim();
+    if (!mongoose.Types.ObjectId.isValid(nextLead)) {
+      throw new ApiError(400, 'Invalid lead user id');
+    }
+    const leadUserExists = await User.exists({ _id: nextLead });
+    if (!leadUserExists) {
+      throw new ApiError(400, 'Lead user not found');
+    }
+    updateData.lead = nextLead;
+  }
   if (input.key !== undefined) {
     const key = input.key.toUpperCase();
     const existing = await Project.findOne({ key, _id: { $ne: id } }).lean();
     if (existing) throw new ApiError(409, `Project with key "${key}" already exists`);
     updateData.key = key;
   }
-  if (input.statuses !== undefined) updateData.statuses = input.statuses;
-  if (input.issueTypes !== undefined) updateData.issueTypes = input.issueTypes;
-  if (input.priorities !== undefined) updateData.priorities = input.priorities;
+  if (input.templateId !== undefined && String(input.templateId).trim() !== '') {
+    const config = await projectTemplatesService.getById(String(input.templateId).trim());
+    if (!config) throw new ApiError(404, 'Template not found');
+    const template = config as { statuses?: unknown[]; issueTypes?: unknown[]; priorities?: unknown[] };
+    const defaultConfig = projectTemplatesService.getDefaultConfig();
+    updateData.statuses = (template.statuses?.length ? template.statuses : defaultConfig.statuses) as unknown[];
+    updateData.issueTypes = (template.issueTypes?.length ? template.issueTypes : defaultConfig.issueTypes) as unknown[];
+    updateData.priorities = (template.priorities?.length ? template.priorities : defaultConfig.priorities) as unknown[];
+  } else {
+    if (input.statuses !== undefined) updateData.statuses = input.statuses;
+    if (input.issueTypes !== undefined) updateData.issueTypes = input.issueTypes;
+    if (input.priorities !== undefined) updateData.priorities = input.priorities;
+  }
   if (input.customFields !== undefined) updateData.customFields = input.customFields;
   if (input.versions !== undefined) {
     updateData.versions = input.versions.map((v) => ({
@@ -207,6 +269,14 @@ export async function update(
     .lean();
 
   if (!project) return null;
+
+  if (input.lead !== undefined) {
+    const nextLead = String(input.lead).trim();
+    if (previousLeadId && previousLeadId !== nextLead) {
+      await projectInvitationsService.downgradeToProjectMemberIfHasLeadRole(id, previousLeadId);
+    }
+    await projectInvitationsService.ensureUserHasFullProjectAccess(id, nextLead);
+  }
   const out = withProjectDefaults(project as Record<string, unknown>);
   const versions = out.versions as Array<{ id: string }> | undefined;
   if (versions?.length) {

@@ -75,6 +75,8 @@ const updateProjectSchema = z.object({
     key: z.string().min(1).max(10).transform((s) => s.toUpperCase()).optional(),
     description: z.string().optional(),
     lead: z.string().min(1).optional(),
+    /** When set, replaces statuses, issueTypes, and priorities from this template (built-in id: `default`). */
+    templateId: z.string().optional(),
     statuses: z.array(projectStatusSchema).optional(),
     issueTypes: z.array(projectIssueTypeSchema).optional(),
     priorities: z.array(projectPrioritySchema).optional(),
@@ -91,6 +93,16 @@ const updateProjectSchema = z.object({
 const idParamSchema = z.object({
   params: z.object({
     id: z.string().min(1),
+  }),
+});
+
+const saveSettingsTemplateSchema = z.object({
+  params: z.object({
+    id: z.string().min(1),
+  }),
+  body: z.object({
+    name: z.string().min(1).max(120),
+    description: z.string().max(500).optional(),
   }),
 });
 
@@ -148,6 +160,7 @@ export const projectsValidation = {
   create: createProjectSchema,
   update: updateProjectSchema,
   idParam: idParamSchema,
+  saveSettingsTemplate: saveSettingsTemplateSchema,
   releaseVersion: releaseVersionBodySchema,
   inviteProject: inviteProjectSchema,
   invitationIdParam: invitationIdParamSchema,

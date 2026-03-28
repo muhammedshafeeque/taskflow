@@ -520,6 +520,12 @@ export default function ProjectSettings() {
   const [inviteAutocompleteOpen, setInviteAutocompleteOpen] = useState(false);
   const inviteAutocompleteRef = useRef<HTMLDivElement>(null);
 
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [saveTemplateName, setSaveTemplateName] = useState('');
+  const [saveTemplateDescription, setSaveTemplateDescription] = useState('');
+  const [saveTemplateSaving, setSaveTemplateSaving] = useState(false);
+  const [saveTemplateError, setSaveTemplateError] = useState('');
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (inviteAutocompleteRef.current && !inviteAutocompleteRef.current.contains(e.target as Node)) {
@@ -994,6 +1000,24 @@ export default function ProjectSettings() {
     }
   }
 
+  async function handleSaveAsTemplate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token || !projectId || !saveTemplateName.trim()) return;
+    setSaveTemplateSaving(true);
+    setSaveTemplateError('');
+    const res = await projectsApi.saveSettingsTemplate(
+      projectId,
+      { name: saveTemplateName.trim(), description: saveTemplateDescription.trim() || undefined },
+      token
+    );
+    setSaveTemplateSaving(false);
+    if (res.success) {
+      setSaveTemplateOpen(false);
+      setSaveTemplateName('');
+      setSaveTemplateDescription('');
+    } else setSaveTemplateError(res.message ?? 'Failed to save template');
+  }
+
   if (!projectId) return null;
 
   if (loading) {
@@ -1042,6 +1066,28 @@ export default function ProjectSettings() {
             <div>
               <h1 className="text-xl lg:text-2xl font-semibold text-[color:var(--text-primary)] tracking-tight">Project settings</h1>
               <p className="text-[color:var(--text-muted)] text-sm mt-1">Manage how this project works for your team.</p>
+              {projectPermissions.includes('settings:manage') && (
+                <div className="flex flex-wrap items-center gap-3 mt-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSaveTemplateOpen(true);
+                      setSaveTemplateError('');
+                      setSaveTemplateName(`${project.name} workflow`);
+                      setSaveTemplateDescription('');
+                    }}
+                    className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] text-xs font-medium text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] transition"
+                  >
+                    Save workflow as template
+                  </button>
+                  <Link
+                    to="/project-templates"
+                    className="text-xs text-[color:var(--accent)] hover:underline font-medium"
+                  >
+                    View all templates
+                  </Link>
+                </div>
+              )}
             </div>
             {saved && (
               <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/15 text-emerald-400 text-sm font-medium border border-emerald-500/30">
@@ -2130,6 +2176,68 @@ export default function ProjectSettings() {
               </div>
             )}
           </main>
+
+          {saveTemplateOpen &&
+            createPortal(
+              <div
+                className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                onClick={() => !saveTemplateSaving && setSaveTemplateOpen(false)}
+              >
+                <div
+                  className="w-full max-w-md rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-xl p-6"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">Save workflow as template</h3>
+                  <p className="text-xs text-[color:var(--text-muted)] mt-1">
+                    Stores current statuses, issue types, and priorities. Use when creating or editing projects.
+                  </p>
+                  <form onSubmit={handleSaveAsTemplate} className="mt-4 space-y-3">
+                    {saveTemplateError && (
+                      <p className="text-xs text-red-500">{saveTemplateError}</p>
+                    )}
+                    <div>
+                      <label className={labelClass}>Template name</label>
+                      <input
+                        type="text"
+                        value={saveTemplateName}
+                        onChange={(e) => setSaveTemplateName(e.target.value)}
+                        required
+                        className={inputClass}
+                        placeholder="e.g. Scrum board preset"
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Description (optional)</label>
+                      <textarea
+                        value={saveTemplateDescription}
+                        onChange={(e) => setSaveTemplateDescription(e.target.value)}
+                        rows={2}
+                        className={`${inputClass} resize-y`}
+                        placeholder="When to use this template"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        disabled={saveTemplateSaving}
+                        onClick={() => setSaveTemplateOpen(false)}
+                        className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)] disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={saveTemplateSaving || !saveTemplateName.trim()}
+                        className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-xs font-medium text-[color:var(--text-primary)] disabled:opacity-50"
+                      >
+                        {saveTemplateSaving ? 'Saving…' : 'Save template'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>,
+              document.body
+            )}
 
           {/* Release rule modal: Add / Edit rule */}
           {releaseRuleModalOpen && createPortal(

@@ -155,6 +155,7 @@ export default function TaskCommentBox({
 }: TaskCommentBoxProps) {
   const { token } = useAuth();
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [draftSnapshot, setDraftSnapshot] = useState('');
   const mentionUsersRef = useRef<Array<{ _id: string; name: string; email: string }>>([]);
@@ -321,11 +322,11 @@ export default function TaskCommentBox({
           (async () => {
             for (const file of fileArray) {
               try {
+                setUploadError(null);
                 setUploading(true);
                 const res = await uploadFile(file, token || undefined);
                 if (!res.success || !res.data) {
-                  // eslint-disable-next-line no-alert
-                  alert((res as { message?: string }).message ?? 'Upload failed');
+                  setUploadError((res as { message?: string }).message ?? 'Upload failed');
                   continue;
                 }
                 const { url, originalName, mimeType } = res.data;
@@ -373,6 +374,7 @@ export default function TaskCommentBox({
     input.onchange = async () => {
       if (!input.files || !input.files[0]) return;
       const file = input.files[0];
+      setUploadError(null);
       setUploading(true);
       const res = await uploadFile(file, token || undefined);
       setUploading(false);
@@ -383,7 +385,7 @@ export default function TaskCommentBox({
           .setImage({ src: res.data.url, alt: res.data.originalName })
           .run();
       } else {
-        alert((res as { message?: string }).message ?? 'Image upload failed');
+        setUploadError((res as { message?: string }).message ?? 'Image upload failed');
       }
     };
     input.click();
@@ -396,6 +398,7 @@ export default function TaskCommentBox({
     input.onchange = async () => {
       if (!input.files || !input.files[0]) return;
       const file = input.files[0];
+      setUploadError(null);
       setUploading(true);
       const res = await uploadFile(file, token || undefined);
       setUploading(false);
@@ -409,7 +412,7 @@ export default function TaskCommentBox({
           })
           .run();
       } else {
-        alert((res as { message?: string }).message ?? 'Video upload failed');
+        setUploadError((res as { message?: string }).message ?? 'Video upload failed');
       }
     };
     input.click();
@@ -421,6 +424,7 @@ export default function TaskCommentBox({
     input.onchange = async () => {
       if (!input.files || !input.files[0]) return;
       const file = input.files[0];
+      setUploadError(null);
       setUploading(true);
       const res = await uploadFile(file, token || undefined);
       setUploading(false);
@@ -438,7 +442,7 @@ export default function TaskCommentBox({
           })
           .run();
       } else {
-        alert((res as { message?: string }).message ?? 'File upload failed');
+        setUploadError((res as { message?: string }).message ?? 'File upload failed');
       }
     };
     input.click();
@@ -465,6 +469,7 @@ export default function TaskCommentBox({
 
   const handleExpand = () => {
     if (!editor) return;
+    setUploadError(null);
     setDraftSnapshot(editor.getHTML());
     setExpanded(true);
     requestAnimationFrame(() => {
@@ -488,6 +493,14 @@ export default function TaskCommentBox({
 
   return (
     <form onSubmit={handleSubmit} className="rounded-xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] overflow-hidden">
+      {uploadError && (
+        <div className="px-4 py-2 text-xs text-red-600 dark:text-red-400 bg-red-500/10 border-b border-red-500/25 flex items-start justify-between gap-2">
+          <span>{uploadError}</span>
+          <button type="button" onClick={() => setUploadError(null)} className="shrink-0 text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]">
+            Dismiss
+          </button>
+        </div>
+      )}
       <RichTextToolbar
         editor={editor}
         onPickImage={handleImageUpload}
