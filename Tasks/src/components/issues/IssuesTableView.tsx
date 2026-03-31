@@ -43,8 +43,15 @@ function renderCell(
   handleToggleWatch: (id: string) => void,
   openEdit: (i: Issue) => void,
   setConfirmDeleteIssue: (i: Issue | null) => void,
-  _projects?: Project[]
+  projects?: Project[]
 ) {
+  const issueProjectId =
+    typeof issue.project === 'object' && issue.project ? issue.project._id : undefined;
+  const issueProject =
+    projectId || !issueProjectId
+      ? project
+      : projects?.find((p) => p._id === issueProjectId) ?? null;
+
   if (colId === 'project') {
     const proj = typeof issue.project === 'object' && issue.project ? issue.project : null;
     return proj ? <span className="text-[color:var(--text-muted)] text-sm">{proj.name ?? proj.key ?? '—'}</span> : '—';
@@ -117,12 +124,17 @@ function renderCell(
     ) : '—';
   }
   if (colId === 'fixVersion') {
-    const versionName = project?.versions?.find((v) => v.id === issue.fixVersion)?.name ?? issue.fixVersion ?? '—';
+    const versionName =
+      issueProject?.versions?.find((v) => v.id === issue.fixVersion)?.name ??
+      issue.fixVersion ??
+      '—';
     return <span className="text-[color:var(--text-muted)] text-sm">{versionName}</span>;
   }
   if (colId === 'affectsVersions') {
     const ids = issue.affectsVersions ?? [];
-    const names = ids.map((id) => project?.versions?.find((v) => v.id === id)?.name ?? id).filter(Boolean);
+    const names = ids
+      .map((id) => issueProject?.versions?.find((v) => v.id === id)?.name ?? id)
+      .filter(Boolean);
     return <span className="text-[color:var(--text-muted)] text-sm">{names.length ? names.join(', ') : '—'}</span>;
   }
   if (colId === 'actions') {
