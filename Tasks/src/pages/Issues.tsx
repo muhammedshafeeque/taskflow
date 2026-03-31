@@ -99,6 +99,8 @@ export default function Issues() {
     status: 'Backlog',
     project: '',
     assignee: '',
+    sprint: '',
+    storyPoints: '',
     parent: '',
     milestone: '',
     customFieldValues: {} as Record<string, unknown>,
@@ -121,7 +123,7 @@ export default function Issues() {
   const [parentCandidates, setParentCandidates] = useState<Issue[]>([]);
   const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(new Set());
   const [bulkModal, setBulkModal] = useState<'edit' | null>(null);
-  const [bulkForm, setBulkForm] = useState<{ status?: string; assignee?: string; sprint?: string; type?: string; priority?: string }>({});
+  const [bulkForm, setBulkForm] = useState<{ status?: string; assignee?: string; sprint?: string; storyPoints?: string; type?: string; priority?: string }>({});
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [sprints, setSprints] = useState<Sprint[]>([]);
@@ -444,6 +446,9 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
       milestonesApi.list(projectId, token).then((res) => {
         if (res.success && res.data) setMilestones(Array.isArray(res.data) ? res.data : []);
       });
+    } else {
+      setSprints([]);
+      setMilestones([]);
     }
   }, [token, projectId]);
 
@@ -486,6 +491,8 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
       status: statusList[0] ?? 'Backlog',
       project: projectId ?? '',
       assignee: '',
+      sprint: '',
+      storyPoints: '',
       parent: initialParent ?? '',
       milestone: '',
       customFieldValues: {},
@@ -507,6 +514,8 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
       status: issue.status,
       project: typeof issue.project === 'object' && issue.project ? issue.project._id : '',
       assignee: typeof issue.assignee === 'object' && issue.assignee ? issue.assignee._id : '',
+      sprint: typeof issue.sprint === 'object' && issue.sprint ? issue.sprint._id : '',
+      storyPoints: issue.storyPoints != null ? String(issue.storyPoints) : '',
       parent: typeof issue.parent === 'object' && issue.parent ? issue.parent._id : '',
       milestone: typeof issue.milestone === 'object' && issue.milestone ? issue.milestone._id : '',
       customFieldValues: { ...(issue.customFieldValues ?? {}) },
@@ -547,6 +556,9 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
     if (bulkForm.status) updates.status = bulkForm.status;
     if (bulkForm.assignee !== undefined) updates.assignee = bulkForm.assignee === '__unassigned__' ? null : bulkForm.assignee || null;
     if (bulkForm.sprint !== undefined) updates.sprint = bulkForm.sprint === '__backlog__' ? null : bulkForm.sprint || null;
+    if (bulkForm.storyPoints !== undefined) {
+      updates.storyPoints = bulkForm.storyPoints === '__clear__' ? null : Number(bulkForm.storyPoints);
+    }
     if (bulkForm.type) updates.type = bulkForm.type;
     if (bulkForm.priority) updates.priority = bulkForm.priority;
     if (Object.keys(updates).length === 0) return;
@@ -627,6 +639,8 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
           status: form.status,
           project: form.project,
           assignee: form.assignee || undefined,
+          sprint: form.sprint || null,
+          storyPoints: form.storyPoints === '' ? null : Number(form.storyPoints),
           parent: form.parent || undefined,
           milestone: form.milestone || undefined,
           customFieldValues: Object.keys(form.customFieldValues).length ? form.customFieldValues : undefined,
@@ -655,6 +669,8 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
           priority: form.priority,
           status: form.status,
           assignee: form.assignee || undefined,
+          sprint: form.sprint || null,
+          storyPoints: form.storyPoints === '' ? null : Number(form.storyPoints),
           parent: form.parent || null,
           milestone: form.milestone || null,
           customFieldValues: form.customFieldValues,
@@ -869,21 +885,7 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
         project={project}
         getIssueKey={getIssueKey}
         milestones={milestones}
-      />
-
-      <BulkEditModal
-        bulkModal={bulkModal}
-        setBulkModal={setBulkModal}
-        bulkForm={bulkForm}
-        setBulkForm={setBulkForm}
-        bulkSubmitting={bulkSubmitting}
-        handleBulkUpdate={handleBulkUpdate}
-        submitError={submitError}
-        statusList={statusList}
-        users={users}
         sprints={sprints}
-        typeList={typeList}
-        priorityList={priorityList}
       />
 
       <BulkEditModal

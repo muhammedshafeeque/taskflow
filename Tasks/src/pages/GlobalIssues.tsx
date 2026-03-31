@@ -95,6 +95,8 @@ export default function GlobalIssues() {
     status: 'Backlog',
     project: '',
     assignee: '',
+    sprint: '',
+    storyPoints: '',
     parent: '',
     milestone: '',
     customFieldValues: {} as Record<string, unknown>,
@@ -116,7 +118,7 @@ export default function GlobalIssues() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(new Set());
   const [bulkModal, setBulkModal] = useState<'edit' | null>(null);
-  const [bulkForm, setBulkForm] = useState<{ status?: string; assignee?: string; sprint?: string; type?: string; priority?: string }>({});
+  const [bulkForm, setBulkForm] = useState<{ status?: string; assignee?: string; sprint?: string; storyPoints?: string; type?: string; priority?: string }>({});
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [sprints, setSprints] = useState<Sprint[]>([]);
@@ -350,9 +352,11 @@ export default function GlobalIssues() {
       status: statusList[0] ?? 'Backlog',
       project: projects[0]?._id ?? '',
       assignee: '',
-    parent: initialParent ?? '',
-    milestone: '',
-    customFieldValues: {},
+      sprint: '',
+      storyPoints: '',
+      parent: initialParent ?? '',
+      milestone: '',
+      customFieldValues: {},
       fixVersion: '',
       affectsVersions: [],
     });
@@ -372,6 +376,8 @@ export default function GlobalIssues() {
       status: issue.status,
       project: projId,
       assignee: typeof issue.assignee === 'object' && issue.assignee ? issue.assignee._id : '',
+      sprint: typeof issue.sprint === 'object' && issue.sprint ? issue.sprint._id : '',
+      storyPoints: issue.storyPoints != null ? String(issue.storyPoints) : '',
       parent: typeof issue.parent === 'object' && issue.parent ? issue.parent._id : '',
       milestone: typeof issue.milestone === 'object' && issue.milestone ? issue.milestone._id : '',
       customFieldValues: { ...(issue.customFieldValues ?? {}) },
@@ -412,6 +418,9 @@ export default function GlobalIssues() {
     if (bulkForm.status) updates.status = bulkForm.status;
     if (bulkForm.assignee !== undefined) updates.assignee = bulkForm.assignee === '__unassigned__' ? null : bulkForm.assignee || null;
     if (bulkForm.sprint !== undefined) updates.sprint = bulkForm.sprint === '__backlog__' ? null : bulkForm.sprint || null;
+    if (bulkForm.storyPoints !== undefined) {
+      updates.storyPoints = bulkForm.storyPoints === '__clear__' ? null : Number(bulkForm.storyPoints);
+    }
     if (bulkForm.type) updates.type = bulkForm.type;
     if (bulkForm.priority) updates.priority = bulkForm.priority;
     if (Object.keys(updates).length === 0) return;
@@ -492,6 +501,8 @@ export default function GlobalIssues() {
           status: form.status,
           project: form.project,
           assignee: form.assignee || undefined,
+          sprint: form.sprint || null,
+          storyPoints: form.storyPoints === '' ? null : Number(form.storyPoints),
           parent: form.parent || undefined,
           milestone: form.milestone || undefined,
           customFieldValues: Object.keys(form.customFieldValues).length ? form.customFieldValues : undefined,
@@ -520,6 +531,8 @@ export default function GlobalIssues() {
           priority: form.priority,
           status: form.status,
           assignee: form.assignee || undefined,
+          sprint: form.sprint || null,
+          storyPoints: form.storyPoints === '' ? null : Number(form.storyPoints),
           parent: form.parent || null,
           milestone: form.milestone || null,
           customFieldValues: form.customFieldValues,
@@ -729,6 +742,7 @@ export default function GlobalIssues() {
         projects={projects}
         showProjectSelector
         milestones={milestones}
+        sprints={sprints}
       />
 
       <BulkEditModal

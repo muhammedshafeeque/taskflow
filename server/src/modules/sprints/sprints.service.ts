@@ -2,6 +2,7 @@ import { Sprint } from './sprint.model';
 import { Issue } from '../issues/issue.model';
 import { Project } from '../projects/project.model';
 import { ApiError } from '../../utils/ApiError';
+import { notifyProjectRefresh } from '../../websocket';
 
 const DEFAULT_DONE_STATUSES = ['Done', 'Closed', 'Resolved'];
 
@@ -31,6 +32,7 @@ export async function create(input: CreateSprintBody): Promise<unknown> {
     endDate: parseDate(input.endDate as string | Date | undefined),
     status: input.status ?? 'planned',
   });
+  notifyProjectRefresh(String(input.project));
   return doc.toObject();
 }
 
@@ -73,6 +75,8 @@ export async function findById(id: string): Promise<unknown | null> {
 }
 
 export async function update(id: string, input: UpdateSprintBody): Promise<unknown | null> {
+  const existing = await Sprint.findById(id).select('project').lean();
+  if (!existing) return null;
   const updateData: Record<string, unknown> = {};
   if (input.name !== undefined) updateData.name = input.name;
   if (input.status !== undefined) updateData.status = input.status;
@@ -88,6 +92,7 @@ export async function update(id: string, input: UpdateSprintBody): Promise<unkno
     .populate('board', 'name type')
     .lean();
 
+  if (sprint) notifyProjectRefresh(String(existing.project));
   return sprint ?? null;
 }
 
@@ -118,6 +123,7 @@ export async function start(id: string): Promise<unknown | null> {
     .populate('board', 'name type')
     .lean();
 
+  if (updated) notifyProjectRefresh(String(sprint.project));
   return updated ?? null;
 }
 
@@ -148,11 +154,16 @@ export async function complete(id: string): Promise<unknown | null> {
     .populate('board', 'name type')
     .lean();
 
+  if (updated) notifyProjectRefresh(String(sprint.project));
   return updated ?? null;
 }
 
 export async function remove(id: string): Promise<boolean> {
+  const sprint = await Sprint.findById(id).select('project').lean();
+  if (!sprint) return false;
+  await Issue.updateMany({ sprint: id }, { $unset: { sprint: 1 } });
   const result = await Sprint.findByIdAndDelete(id);
+  if (result) notifyProjectRefresh(String(sprint.project));
   return result != null;
 }
 

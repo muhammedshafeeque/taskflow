@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import { DescriptionEditor } from '../issue';
 import DateInputDDMMYYYY from '../DateInputDDMMYYYY';
-import type { Issue, Project, User, Milestone } from '../../lib/api';
+import type { Issue, Project, User, Milestone, Sprint } from '../../lib/api';
 import { formatDateDDMMYYYY } from '../../lib/dateFormat';
 
 export interface IssueForm {
@@ -13,6 +13,8 @@ export interface IssueForm {
   status: string;
   project: string;
   assignee: string;
+  sprint: string;
+  storyPoints: string;
   parent: string;
   milestone: string;
   customFieldValues: Record<string, unknown>;
@@ -38,10 +40,11 @@ interface IssueCreateEditModalProps {
   projects?: Project[];
   showProjectSelector?: boolean;
   milestones?: Milestone[];
+  sprints?: Sprint[];
 }
 
 export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
-  const { modal, setModal, form, setForm, submitError, submitting, handleSubmit, typeList, priorityList, statusList, users, parentCandidates, project, getIssueKey, projects = [], showProjectSelector, milestones = [] } = props;
+  const { modal, setModal, form, setForm, submitError, submitting, handleSubmit, typeList, priorityList, statusList, users, parentCandidates, project, getIssueKey, projects = [], showProjectSelector, milestones = [], sprints = [] } = props;
   if (!modal) return null;
   const [affectsOpen, setAffectsOpen] = useState(false);
   const affectsRef = useRef<HTMLDivElement | null>(null);
@@ -118,6 +121,25 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
                 <option value="">Unassigned</option>
                 {users.map((u) => <option key={u._id} value={u._id}>{u.name}</option>)}
               </select>
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Sprint</label>
+              <select value={form.sprint} onChange={(e) => setForm((f) => ({ ...f, sprint: e.target.value }))} className={inputCls}>
+                <option value="">Backlog (no sprint)</option>
+                {sprints.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Story points</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={form.storyPoints}
+                onChange={(e) => setForm((f) => ({ ...f, storyPoints: e.target.value }))}
+                placeholder="Optional"
+                className={inputCls}
+              />
             </div>
             {(typeList.includes('Epic') || typeList.includes('Story')) && (
               <div className="col-span-2">

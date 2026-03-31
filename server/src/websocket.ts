@@ -6,8 +6,25 @@ import { env } from './config/env';
 let io: Server | null = null;
 
 export function initWebSocket(server: HttpServer): void {
+  const socketAllowedOrigins = Array.from(
+    new Set(
+      [env.appUrl, process.env.FRONTEND_URL]
+        .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+        .map((v) => v.trim())
+    )
+  );
+
   io = new Server(server, {
-    cors: { origin: env.appUrl || true },
+    cors: {
+      origin: (origin, cb) => {
+        if (!origin) return cb(null, true);
+        if (socketAllowedOrigins.length === 0) return cb(null, true);
+        if (socketAllowedOrigins.includes(origin)) return cb(null, true);
+        return cb(new Error(`Socket CORS blocked for origin: ${origin}`));
+      },
+      methods: ['GET', 'POST'],
+      credentials: true,
+    },
     path: '/socket.io',
   });
 

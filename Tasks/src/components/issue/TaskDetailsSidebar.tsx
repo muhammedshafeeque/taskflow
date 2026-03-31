@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import type { Issue, Project, User, WorkLog } from '../../lib/api';
+import type { Issue, Project, User, WorkLog, Sprint } from '../../lib/api';
 import { MetaIconGlyph, type MetaIconKey } from '../../pages/ProjectSettings';
 import { formatMinutes, parseDuration } from './WorkLogInput';
 import WatchButton from './WatchButton';
@@ -43,7 +43,7 @@ interface TaskDetailsSidebarProps {
   newLabel: string;
   workLogs: WorkLog[];
   onUpdateField: (
-    field: 'status' | 'type' | 'priority' | 'assignee' | 'dueDate' | 'startDate' | 'fixVersion' | 'timeEstimateMinutes',
+    field: 'status' | 'type' | 'priority' | 'assignee' | 'dueDate' | 'startDate' | 'storyPoints' | 'fixVersion' | 'timeEstimateMinutes' | 'sprint',
     value: string | number | null
   ) => void;
   onUpdateAffectsVersions: (versions: string[]) => void;
@@ -52,6 +52,7 @@ interface TaskDetailsSidebarProps {
   onNewLabelChange: (value: string) => void;
   onOpenTimeLog: () => void;
   onDelete: () => void;
+  sprints?: Sprint[];
 }
 
 const inputBase =
@@ -257,6 +258,91 @@ function InlineEstimate({
   );
 }
 
+function InlineStoryPoints({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: number | undefined;
+  onChange: (points: number | null) => void;
+  disabled?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [inputValue, setInputValue] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  if (editing) {
+    return (
+      <div>
+        <input
+          type="number"
+          min={0}
+          step={1}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const trimmed = inputValue.trim();
+              if (trimmed === '') {
+                onChange(null);
+                setEditing(false);
+                setError(null);
+                return;
+              }
+              const parsed = Number(trimmed);
+              if (!Number.isFinite(parsed) || parsed < 0) {
+                setError('Enter a valid non-negative number');
+                return;
+              }
+              onChange(Math.round(parsed));
+              setEditing(false);
+              setError(null);
+            }
+          }}
+          onBlur={() => {
+            const trimmed = inputValue.trim();
+            if (trimmed === '') {
+              onChange(null);
+              setEditing(false);
+              setError(null);
+              return;
+            }
+            const parsed = Number(trimmed);
+            if (!Number.isFinite(parsed) || parsed < 0) {
+              setError('Enter a valid non-negative number');
+              return;
+            }
+            onChange(Math.round(parsed));
+            setEditing(false);
+            setError(null);
+          }}
+          disabled={disabled}
+          autoFocus
+          className={`${inputBase} ${error ? 'border-red-400' : ''}`}
+        />
+        {error && <p className="text-[10px] text-red-400 mt-0.5">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (!disabled) {
+          setInputValue(value != null ? String(value) : '');
+          setError(null);
+          setEditing(true);
+        }
+      }}
+      disabled={disabled}
+      className="w-full text-left px-3 py-2 rounded-md min-h-[36px] text-xs text-[color:var(--text-primary)] hover:bg-[color:var(--bg-surface)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 focus:ring-inset transition-colors"
+    >
+      {value != null ? value : '—'}
+    </button>
+  );
+}
+
 export default function TaskDetailsSidebar({
   issue,
   project,
@@ -285,6 +371,7 @@ export default function TaskDetailsSidebar({
   onNewLabelChange,
   onOpenTimeLog,
   onDelete,
+  sprints = [],
 }: TaskDetailsSidebarProps) {
   const assigneeId = typeof issue.assignee === 'object' && issue.assignee ? issue.assignee._id : '';
   const assignee = users.find((u) => u._id === assigneeId);
@@ -570,6 +657,18 @@ export default function TaskDetailsSidebar({
               </p>
             </div>
 
+            {/* Story points */}
+            <div className="px-4 py-3 space-y-2">
+              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+                Story points
+              </label>
+              <InlineStoryPoints
+                value={issue.storyPoints}
+                onChange={(v) => onUpdateField('storyPoints', v)}
+                disabled={!!updatingField}
+              />
+            </div>
+
             {/* Time logged */}
             <div className="px-4 py-3 space-y-2">
               <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
@@ -613,14 +712,25 @@ export default function TaskDetailsSidebar({
               )}
             </div>
 
-            {issue.sprint && (
-              <div className="px-4 py-3">
-                <span className="block text-[10px] text-[color:var(--text-muted)] mb-1">Sprint</span>
-                <p className="px-3 py-2 text-xs text-[color:var(--text-primary)] bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] rounded-md">
-                  {typeof issue.sprint === 'object' ? issue.sprint.name : issue.sprint}
-                </p>
-              </div>
-            )}
+            {/* Sprint */}
+            <div className="px-4 py-3 space-y-2">
+              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+                Sprint
+              </label>
+              <InlineSelect
+                value={
+                  issue.sprint && typeof issue.sprint === 'object'
+                    ? issue.sprint._id
+                    : (issue.sprint as unknown as string) || ''
+                }
+                options={[
+                  { value: '' as string, label: 'Backlog (no sprint)' },
+                  ...sprints.map((s) => ({ value: s._id as string, label: s.name })),
+                ]}
+                onChange={(v) => onUpdateField('sprint', v || null)}
+                disabled={!!updatingField}
+              />
+            </div>
 
             {/* Timestamps */}
             <div className="px-4 py-3 bg-[color:var(--bg-surface)]">

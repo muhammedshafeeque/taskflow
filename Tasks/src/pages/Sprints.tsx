@@ -54,6 +54,10 @@ export default function Sprints() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!token || !projectId) return;
+    if (!form.board) {
+      setSubmitError('Select a board before creating a sprint.');
+      return;
+    }
     setSubmitting(true);
     setSubmitError('');
     const res = await sprintsApi.create(
@@ -118,11 +122,17 @@ export default function Sprints() {
               setSubmitError('');
               setModal(true);
             }}
+            disabled={boards.length === 0}
             className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-primary)] hover:bg-[color:var(--bg-surface)] transition"
           >
             New sprint
           </button>
         </div>
+        {boards.length === 0 && (
+          <p className="mb-4 text-xs text-amber-400">
+            No board found for this project. Create a board first to use sprints.
+          </p>
+        )}
 
         {loading ? (
           <div className="text-[color:var(--text-muted)] text-sm animate-pulse">Loading…</div>
@@ -236,6 +246,7 @@ export default function Sprints() {
                     required
                     className="w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
                   >
+                    <option value="">Select board</option>
                     {boards.map((b) => (
                       <option key={b._id} value={b._id}>{b.name}</option>
                     ))}

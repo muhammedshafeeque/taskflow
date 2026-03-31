@@ -5,6 +5,7 @@ interface BulkForm {
   status?: string;
   assignee?: string;
   sprint?: string;
+  storyPoints?: string;
   type?: string;
   priority?: string;
 }
@@ -73,6 +74,14 @@ export function BulkEditModal({
               <option value="">— No change —</option>
               <option value="__backlog__">Backlog</option>
               {sprints.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-[color:var(--text-muted)] mb-1">Story points</label>
+            <select value={bulkForm.storyPoints ?? ''} onChange={(e) => setBulkForm((f) => ({ ...f, storyPoints: e.target.value || undefined }))} className="w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-primary)]">
+              <option value="">— No change —</option>
+              <option value="__clear__">Clear story points</option>
+              {[0, 1, 2, 3, 5, 8, 13, 21].map((p) => <option key={p} value={String(p)}>{p}</option>)}
             </select>
           </div>
           <div>

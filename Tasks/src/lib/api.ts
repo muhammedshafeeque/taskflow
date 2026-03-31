@@ -971,6 +971,8 @@ export const issuesApi = {
       priority?: IssuePriority;
       status?: string;
       assignee?: string;
+      sprint?: string | null;
+      storyPoints?: number | null;
       parent?: string;
       milestone?: string;
       customFieldValues?: Record<string, unknown>;
@@ -981,7 +983,7 @@ export const issuesApi = {
   ) => api.post<Issue>('/issues', body, token),
   update: (
     id: string,
-    body: Partial<Omit<Issue, 'assignee' | 'project' | 'reporter' | 'parent' | 'sprint' | 'milestone'>> & {
+    body: Partial<Omit<Issue, 'assignee' | 'project' | 'reporter' | 'parent' | 'sprint' | 'milestone' | 'storyPoints'>> & {
       assignee?: string;
       dueDate?: string | null;
       startDate?: string | null;
@@ -1023,7 +1025,7 @@ export const issuesApi = {
     ),
   bulkUpdate: (
     issueIds: string[],
-    updates: { status?: string; assignee?: string | null; sprint?: string | null; labels?: string[]; type?: string; priority?: string; fixVersion?: string | null },
+    updates: { status?: string; assignee?: string | null; sprint?: string | null; storyPoints?: number | null; labels?: string[]; type?: string; priority?: string; fixVersion?: string | null },
     token: string
   ) => api.patch<{ updated: number; errors: string[] }>('/issues/bulk', { issueIds, updates }, token),
   bulkDelete: (issueIds: string[], token: string) =>
@@ -1242,6 +1244,8 @@ export const timesheetApi = {
 export interface BoardColumn {
   name: string;
   statusId: string;
+  /** Additional statuses that should be displayed in this column (optional). */
+  visibleStatuses?: string[];
   order: number;
 }
 
@@ -1253,6 +1257,12 @@ export interface Board {
   columns: BoardColumn[];
 }
 
+export type BoardPatch = Partial<{
+  name: string;
+  type: 'Kanban' | 'Scrum';
+  columns: BoardColumn[];
+}>;
+
 export const boardsApi = {
   list: (page = 1, limit = 20, projectId: string | undefined, token: string) => {
     const q = projectId ? `page=${page}&limit=${limit}&project=${projectId}` : `page=${page}&limit=${limit}`;
@@ -1261,7 +1271,7 @@ export const boardsApi = {
   get: (id: string, token: string) => api.get<Board>(`/boards/${id}`, token),
   create: (body: { name: string; type: 'Kanban' | 'Scrum'; project: string; columns?: BoardColumn[] }, token: string) =>
     api.post<Board>('/boards', body, token),
-  update: (id: string, body: Partial<Board>, token: string) =>
+  update: (id: string, body: BoardPatch, token: string) =>
     api.patch<Board>(`/boards/${id}`, body, token),
   delete: (id: string, token: string) => api.delete(`/boards/${id}`, token),
 };

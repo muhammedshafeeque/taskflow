@@ -77,7 +77,7 @@ export async function getSprintVelocity(projectId: string, limit: number, userId
   const result: { sprintName: string; completedSP: number }[] = [];
   for (const s of completedSprints) {
     const done = await Issue.aggregate([
-      { $match: { sprint: s._id, status: { $in: DONE_STATUSES } } },
+      { $match: { sprint: s._id, project: new mongoose.Types.ObjectId(projectId), status: { $in: DONE_STATUSES } } },
       { $group: { _id: null, sum: { $sum: { $ifNull: ['$storyPoints', 0] } } } },
     ]);
     result.push({

@@ -5,6 +5,8 @@ export type BoardType = 'Kanban' | 'Scrum';
 export interface IBoardColumn {
   name: string;
   statusId: string;
+  /** Additional statuses that should be displayed in this column (optional). */
+  visibleStatuses?: string[];
   order: number;
 }
 
@@ -21,6 +23,7 @@ const boardColumnSchema = new Schema<IBoardColumn>(
   {
     name: { type: String, required: true },
     statusId: { type: String, required: true },
+    visibleStatuses: { type: [String], default: [] },
     order: { type: Number, required: true, default: 0 },
   },
   { _id: false }

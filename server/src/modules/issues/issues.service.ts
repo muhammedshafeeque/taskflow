@@ -75,12 +75,15 @@ export async function create(
     reporter: reporterId,
     project: projectId,
     key: issueKey,
-    sprint: input.sprint ?? undefined,
+    sprint:
+      input.sprint !== undefined && input.sprint !== null && input.sprint !== ''
+        ? input.sprint
+        : undefined,
     boardColumn: input.boardColumn ?? DEFAULT_STATUS,
     labels: input.labels ?? [],
     dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
     startDate: input.startDate ? new Date(input.startDate) : undefined,
-    storyPoints: input.storyPoints,
+    storyPoints: input.storyPoints ?? undefined,
     timeEstimateMinutes: input.timeEstimateMinutes,
     checklist: input.checklist ?? [],
     customFieldValues: input.customFieldValues ?? {},
@@ -279,7 +282,9 @@ export async function update(
   if (input.assignee !== undefined && input.assignee !== '' && input.assignee !== null) {
     updateData.assignee = input.assignee;
   }
-  if (input.sprint !== undefined) updateData.sprint = input.sprint || undefined;
+  if (input.sprint !== undefined && input.sprint !== '' && input.sprint !== null) {
+    updateData.sprint = input.sprint;
+  }
   if (input.boardColumn !== undefined) updateData.boardColumn = input.boardColumn;
   if (input.labels !== undefined) updateData.labels = input.labels;
   if (input.dueDate !== undefined) {
@@ -295,6 +300,7 @@ export async function update(
 
   const unset: Record<string, 1> = {};
   if (input.assignee !== undefined && (input.assignee === '' || input.assignee === null)) unset.assignee = 1;
+  if (input.sprint === null || input.sprint === '') unset.sprint = 1;
   if (input.dueDate === null || input.dueDate === '') unset.dueDate = 1;
   if (input.startDate === null || input.startDate === '') unset.startDate = 1;
   if (input.storyPoints === null) unset.storyPoints = 1;
@@ -333,7 +339,7 @@ export async function update(
   if (input.priority !== undefined) addChange('priority', oldRaw.priority, input.priority);
   if (input.status !== undefined) addChange('status', oldRaw.status, input.status);
   if (input.assignee !== undefined) addChange('assignee', oldRaw.assignee, input.assignee || undefined);
-  if (input.sprint !== undefined) addChange('sprint', oldRaw.sprint, input.sprint || undefined);
+  if (input.sprint !== undefined) addChange('sprint', oldRaw.sprint, input.sprint ?? undefined);
   if (input.boardColumn !== undefined) addChange('boardColumn', oldRaw.boardColumn, input.boardColumn);
   if (input.labels !== undefined) addChange('labels', oldRaw.labels, input.labels);
   if (input.dueDate !== undefined) {
@@ -524,6 +530,7 @@ export interface BulkUpdateInput {
   status?: string;
   assignee?: string | null;
   sprint?: string | null;
+  storyPoints?: number | null;
   labels?: string[];
   type?: string;
   priority?: string;
@@ -560,6 +567,10 @@ export async function bulkUpdate(
     if (updates.sprint === null || updates.sprint === '') unset.sprint = 1;
     else updateData.sprint = updates.sprint;
   }
+  if (updates.storyPoints !== undefined) {
+    if (updates.storyPoints === null) unset.storyPoints = 1;
+    else updateData.storyPoints = updates.storyPoints;
+  }
   if (updates.labels !== undefined) updateData.labels = updates.labels;
   if (updates.type !== undefined) updateData.type = updates.type;
   if (updates.priority !== undefined) updateData.priority = updates.priority;
@@ -581,6 +592,7 @@ export async function bulkUpdate(
     if (updates.status !== undefined) changes.push({ field: 'status', fromValue: null, toValue: updates.status });
     if (updates.assignee !== undefined) changes.push({ field: 'assignee', fromValue: null, toValue: updates.assignee || undefined });
     if (updates.sprint !== undefined) changes.push({ field: 'sprint', fromValue: null, toValue: updates.sprint || undefined });
+    if (updates.storyPoints !== undefined) changes.push({ field: 'storyPoints', fromValue: null, toValue: updates.storyPoints ?? undefined });
     if (updates.labels !== undefined) changes.push({ field: 'labels', fromValue: null, toValue: updates.labels });
     if (updates.type !== undefined) changes.push({ field: 'type', fromValue: null, toValue: updates.type });
     if (updates.priority !== undefined) changes.push({ field: 'priority', fromValue: null, toValue: updates.priority });

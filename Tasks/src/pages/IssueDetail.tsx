@@ -7,11 +7,13 @@ import {
   workLogsApi,
   projectsApi,
   attachmentsApi,
+  sprintsApi,
   type Issue,
   type Comment,
   type User,
   type Project,
   type Attachment,
+  type Sprint,
   getIssueKey,
 } from '../lib/api';
 import ConfirmModal from '../components/ConfirmModal';
@@ -58,6 +60,7 @@ export default function IssueDetail() {
   const [newLabel, setNewLabel] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [timeLogOpen, setTimeLogOpen] = useState(false);
+  const [sprints, setSprints] = useState<Sprint[]>([]);
 
   useEffect(() => {
     if (!token || !projectId || !ticketId) return;
@@ -73,6 +76,13 @@ export default function IssueDetail() {
     if (!token || !projectId) return;
     projectsApi.get(projectId, token).then((res) => {
       if (res.success && res.data) setProject(res.data);
+    });
+  }, [token, projectId]);
+
+  useEffect(() => {
+    if (!token || !projectId) return;
+    sprintsApi.list(1, 100, projectId, undefined, token).then((res) => {
+      if (res.success && res.data) setSprints(res.data.data ?? []);
     });
   }, [token, projectId]);
 
@@ -204,7 +214,8 @@ export default function IssueDetail() {
       | 'startDate'
       | 'storyPoints'
       | 'fixVersion'
-      | 'timeEstimateMinutes',
+      | 'timeEstimateMinutes'
+      | 'sprint',
     value: string | number | null
   ) {
     if (!token || !issue?._id || !issue) return;
@@ -216,7 +227,9 @@ export default function IssueDetail() {
           ? { [field]: value === '' ? null : value }
           : field === 'timeEstimateMinutes'
             ? { timeEstimateMinutes: value }
-            : { [field]: value };
+            : field === 'sprint'
+              ? { sprint: value === '' ? null : value }
+              : { [field]: value };
     await updateIssue(payload);
     setUpdatingField(null);
   }
@@ -395,6 +408,7 @@ export default function IssueDetail() {
               onRemoveLabel={removeLabel}
               onNewLabelChange={setNewLabel}
               onDelete={() => setConfirmDelete(true)}
+              sprints={sprints}
             />
           </div>
         </div>

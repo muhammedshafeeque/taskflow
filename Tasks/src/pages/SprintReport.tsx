@@ -33,10 +33,12 @@ export default function SprintReport() {
     };
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token || !projectId || !sprintId) return;
     setLoading(true);
+    setError(null);
     Promise.all([
       sprintsApi.get(sprintId, token),
       projectsApi.get(projectId, token),
@@ -45,14 +47,32 @@ export default function SprintReport() {
       setLoading(false);
       if (sprintRes.success && sprintRes.data) setSprint(sprintRes.data);
       if (projectRes.success && projectRes.data) setProject(projectRes.data);
-      if (reportRes.success && reportRes.data) setReport(reportRes.data);
+      if (reportRes.success && reportRes.data) {
+        setReport(reportRes.data);
+      } else {
+        setReport(null);
+        setError(reportRes.message ?? 'Failed to load sprint report');
+      }
     });
   }, [token, projectId, sprintId]);
 
-  if (loading || !report) {
+  if (loading) {
     return (
       <div className="p-8 animate-fade-in">
         <div className="text-[color:var(--text-muted)] animate-pulse">Loading report…</div>
+      </div>
+    );
+  }
+
+  if (!report) {
+    return (
+      <div className="p-8 animate-fade-in">
+        <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-6">
+          <p className="text-sm text-red-400">{error ?? 'Unable to load sprint report.'}</p>
+          <Link to={`/projects/${projectId}/sprints`} className="inline-block mt-3 text-sm text-[color:var(--accent)] hover:underline">
+            ← Back to sprints
+          </Link>
+        </div>
       </div>
     );
   }
