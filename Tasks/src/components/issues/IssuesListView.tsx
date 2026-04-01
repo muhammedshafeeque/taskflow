@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { MetaBadge } from '../MetaBadge';
 import { WatchButton } from '../issue';
-import { EditIcon, TrashIcon } from '../icons/NavigationIcons';
+import { EditIcon } from '../icons/NavigationIcons';
 import type { Issue } from '../../lib/api';
 
 type MetaGetter = (name: string) => { icon?: string; color?: string } | undefined;
@@ -32,7 +32,7 @@ export function IssuesListView({
   watchingLoadingId,
   handleToggleWatch,
   openEdit,
-  setConfirmDeleteIssue,
+  setConfirmDeleteIssue: _setConfirmDeleteIssue,
   navigate,
 }: IssuesListViewProps) {
   return (

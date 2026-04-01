@@ -3,7 +3,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { MetaBadge } from '../MetaBadge';
 import { WatchButton } from '../issue';
-import { EditIcon, TrashIcon } from '../icons/NavigationIcons';
+import { EditIcon } from '../icons/NavigationIcons';
 import { isDueTodayOrPast } from './constants';
 import type { Issue } from '../../lib/api';
 import { formatDateDDMMYYYY } from '../../lib/dateFormat';
@@ -29,7 +29,7 @@ export function KanbanCard({
   getTypeMeta,
   getPriorityMeta,
   openEdit,
-  setConfirmDeleteIssue,
+  setConfirmDeleteIssue: _setConfirmDeleteIssue,
   isUpdating,
   watching,
   watchingLoading,

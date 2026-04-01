@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { MetaBadge } from '../MetaBadge';
 import { WatchButton } from '../issue';
-import { EditIcon, TrashIcon } from '../icons/NavigationIcons';
+import { EditIcon } from '../icons/NavigationIcons';
 import { ISSUE_TABLE_COLUMNS, isDueTodayOrPast } from './constants';
 import type { Issue, Project } from '../../lib/api';
 import { formatDateDDMMYYYY } from '../../lib/dateFormat';
@@ -42,7 +42,7 @@ function renderCell(
   watchingLoadingId: string | null,
   handleToggleWatch: (id: string) => void,
   openEdit: (i: Issue) => void,
-  setConfirmDeleteIssue: (i: Issue | null) => void,
+  _setConfirmDeleteIssue: (i: Issue | null) => void,
   projects?: Project[]
 ) {
   const issueProjectId =
@@ -151,7 +151,7 @@ function renderCell(
 }
 
 export function IssuesTableView(props: IssuesTableViewProps) {
-  const { issues, projectId, project, visibleColumnIds, selectedIssueIds, toggleSelectIssue, toggleSelectAll, getIssueKey, getTypeMeta, getPriorityMeta, getStatusMeta, watchingStatus, watchingLoadingId, handleToggleWatch, openEdit, setConfirmDeleteIssue, navigate } = props;
+  const { issues, projectId, project, visibleColumnIds, selectedIssueIds, toggleSelectIssue, toggleSelectAll, getIssueKey, getTypeMeta, getPriorityMeta, getStatusMeta, watchingStatus, watchingLoadingId, handleToggleWatch, openEdit, setConfirmDeleteIssue: _setConfirmDeleteIssue2, navigate } = props;
 
   return (
     <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-hidden">
@@ -183,7 +183,7 @@ export function IssuesTableView(props: IssuesTableViewProps) {
                 </td>
                 {visibleColumnIds.map((colId) => (
                   <td key={colId} className={`px-4 py-3 ${colId === 'actions' ? 'text-right' : ''}`} onClick={colId === 'actions' ? (e) => e.stopPropagation() : undefined}>
-                    {renderCell(colId, issue, project, projectId, getIssueKey, getTypeMeta, getPriorityMeta, getStatusMeta, watchingStatus, watchingLoadingId, handleToggleWatch, openEdit, setConfirmDeleteIssue, props.projects)}
+                    {renderCell(colId, issue, project, projectId, getIssueKey, getTypeMeta, getPriorityMeta, getStatusMeta, watchingStatus, watchingLoadingId, handleToggleWatch, openEdit, _setConfirmDeleteIssue2, props.projects)}
                   </td>
                 ))}
               </tr>
