@@ -51,7 +51,6 @@ interface TaskDetailsSidebarProps {
   onRemoveLabel: (label: string) => void;
   onNewLabelChange: (value: string) => void;
   onOpenTimeLog: () => void;
-  onDelete: () => void;
   sprints?: Sprint[];
 }
 
@@ -370,7 +369,6 @@ export default function TaskDetailsSidebar({
   onRemoveLabel,
   onNewLabelChange,
   onOpenTimeLog,
-  onDelete,
   sprints = [],
 }: TaskDetailsSidebarProps) {
   const assigneeId = typeof issue.assignee === 'object' && issue.assignee ? issue.assignee._id : '';
@@ -387,14 +385,6 @@ export default function TaskDetailsSidebar({
         <div className="rounded-xl border border-[color:var(--border-subtle)]/90 bg-[color:var(--bg-surface)] overflow-hidden shadow-sm">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
             <span className="text-xs font-semibold tracking-tight text-[color:var(--text-primary)]">Details</span>
-            <button
-              type="button"
-              onClick={onDelete}
-              className="text-[10px] text-[color:var(--text-muted)] hover:text-red-400 transition-colors py-1 px-2 rounded hover:bg-red-500/10"
-              title="Delete issue"
-            >
-              Delete
-            </button>
           </div>
 
           <div className="divide-y divide-[color:var(--border-subtle)]/70">

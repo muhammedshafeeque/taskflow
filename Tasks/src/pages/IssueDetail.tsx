@@ -316,7 +316,6 @@ export default function IssueDetail() {
             projectId={projectId}
             projectName={projectName}
             issueKey={getIssueKey(issue)}
-            onDelete={() => setConfirmDelete(true)}
           />
 
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(260px,340px)] gap-6 lg:gap-8">
@@ -407,7 +406,6 @@ export default function IssueDetail() {
               onAddLabel={addLabel}
               onRemoveLabel={removeLabel}
               onNewLabelChange={setNewLabel}
-              onDelete={() => setConfirmDelete(true)}
               sprints={sprints}
             />
           </div>

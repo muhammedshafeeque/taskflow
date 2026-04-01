@@ -104,14 +104,6 @@ export function KanbanCard({
             >
               <EditIcon className="w-3.5 h-3.5" />
             </button>
-            <button
-              type="button"
-              onClick={() => setConfirmDeleteIssue(issue)}
-              title="Delete"
-              className="p-1 rounded text-[color:var(--text-muted)] hover:text-red-500 hover:bg-red-500/10 transition"
-            >
-              <TrashIcon className="w-3.5 h-3.5" />
-            </button>
           </div>
         </div>
       </div>

@@ -144,9 +144,6 @@ function renderCell(
         <button type="button" onClick={() => openEdit(issue)} title="Edit" className="p-1 rounded text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] opacity-0 group-hover:opacity-100 transition">
           <EditIcon className="w-3.5 h-3.5" />
         </button>
-        <button type="button" onClick={() => setConfirmDeleteIssue(issue)} title="Delete" className="p-1 rounded text-[color:var(--text-muted)] hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition">
-          <TrashIcon className="w-3.5 h-3.5" />
-        </button>
       </div>
     );
   }

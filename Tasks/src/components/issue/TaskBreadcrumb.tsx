@@ -4,14 +4,12 @@ interface TaskBreadcrumbProps {
   projectId?: string;
   projectName: string;
   issueKey: string;
-  onDelete: () => void;
 }
 
 export default function TaskBreadcrumb({
   projectId,
   projectName,
   issueKey,
-  onDelete,
 }: TaskBreadcrumbProps) {
   const navigate = useNavigate();
 
@@ -41,13 +39,6 @@ export default function TaskBreadcrumb({
           <span className="mx-2 opacity-50">/</span>
           <span className="font-mono font-medium text-[color:var(--text-primary)]">{issueKey}</span>
         </nav>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="text-xs font-medium px-3 py-1.5 rounded-lg text-[color:var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0 self-start"
-        >
-          Delete issue
-        </button>
       </div>
     </div>
   );

@@ -14,6 +14,8 @@ import {
   projectsApi,
   sprintsApi,
   milestonesApi,
+  uploadFile,
+  attachmentsApi,
   type Issue,
   type User,
   type Project,
@@ -86,6 +88,7 @@ export default function GlobalIssues() {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [editIssue, setEditIssue] = useState<Issue | null>(null);
   const [form, setForm] = useState({
     title: '',
@@ -376,6 +379,7 @@ export default function GlobalIssues() {
     });
     setEditIssue(null);
     setSubmitError('');
+    setPendingFiles([]);
     setModal('create');
   }
 
@@ -527,7 +531,19 @@ export default function GlobalIssues() {
         },
         token
       );
-      if (res.success) {
+      if (res.success && res.data) {
+        const issueId = res.data._id;
+        if (pendingFiles.length > 0) {
+          await Promise.all(
+            pendingFiles.map(async (file) => {
+              const up = await uploadFile(file, token);
+              if (up.success && up.data) {
+                await attachmentsApi.add(issueId, { url: up.data.url, originalName: up.data.originalName, mimeType: up.data.mimeType, size: up.data.size }, token);
+              }
+            })
+          );
+          setPendingFiles([]);
+        }
         setModal(null);
         updateUrl({ page: 1 });
         issuesApi.list(buildListParams({ page: 1 })).then((r) => {
@@ -761,6 +777,8 @@ export default function GlobalIssues() {
         milestones={milestones}
         sprints={sprints}
             labelSuggestions={allLabels}
+        pendingFiles={pendingFiles}
+        onPendingFilesChange={setPendingFiles}
       />
 
       <BulkEditModal

@@ -5,6 +5,7 @@ import { getFilesFromDataTransfer } from '../../lib/clipboardFiles';
 import { uploadFile } from '../../lib/api';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { baseEditorExtensions, editorContentClass } from '../richText/richTextEditorExtensions';
+import { VideoBlock, AttachmentBlock } from '../richText/richTextCustomNodes';
 import { contentToEditorHtml } from '../../lib/richTextStorage';
 import RichTextToolbar from '../richText/RichTextToolbar';
 
@@ -34,7 +35,7 @@ export default function DescriptionEditor({
   const lastSetValueRef = useRef<string | null>(null);
 
   const editor = useEditor({
-    extensions: baseEditorExtensions(placeholder),
+    extensions: [...baseEditorExtensions(placeholder), VideoBlock, AttachmentBlock],
     editorProps: {
       attributes: {
         class: editorContentClass(
@@ -99,9 +100,29 @@ export default function DescriptionEditor({
     input.click();
   };
 
+  const handleFileUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'video/*,.pdf,.xlsx,.xls,.docx,.doc';
+    input.onchange = async () => {
+      if (!input.files?.[0]) return;
+      const file = input.files[0];
+      const res = await uploadFile(file, token || undefined);
+      if (res.success && res.data) {
+        const { url, originalName, mimeType } = res.data;
+        if (file.type.startsWith('video/')) {
+          editor?.chain().focus().insertContent({ type: 'videoBlock', attrs: { url, name: originalName } }).run();
+        } else {
+          editor?.chain().focus().insertContent({ type: 'attachmentBlock', attrs: { url, name: originalName, mimeType } }).run();
+        }
+      }
+    };
+    input.click();
+  };
+
   return (
     <div className="rounded-md border border-[color:var(--border-subtle)] overflow-hidden">
-      <RichTextToolbar editor={editor} onPickImage={handleImageUpload} />
+      <RichTextToolbar editor={editor} onPickImage={handleImageUpload} onPickFile={handleFileUpload} />
       <EditorContent editor={editor} />
     </div>
   );

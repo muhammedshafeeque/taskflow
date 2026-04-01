@@ -88,14 +88,6 @@ export function IssuesListView({
               >
                 <EditIcon className="w-4 h-4" />
               </button>
-              <button
-                type="button"
-                onClick={() => setConfirmDeleteIssue(issue)}
-                title="Delete"
-                className="p-1.5 rounded-md text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)] hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
-              >
-                <TrashIcon className="w-4 h-4" />
-              </button>
             </div>
           </li>
           );

@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { DescriptionEditor } from '../issue';
 import DateInputDDMMYYYY from '../DateInputDDMMYYYY';
 import type { Issue, Project, User, Milestone, Sprint } from '../../lib/api';
@@ -43,14 +43,32 @@ interface IssueCreateEditModalProps {
   milestones?: Milestone[];
   sprints?: Sprint[];
   labelSuggestions?: string[];
+  pendingFiles?: File[];
+  onPendingFilesChange?: (files: File[]) => void;
 }
 
 export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
-  const { modal, setModal, form, setForm, submitError, submitting, handleSubmit, typeList, priorityList, statusList, users, parentCandidates, project, getIssueKey, projects = [], showProjectSelector, milestones = [], sprints = [], labelSuggestions = [] } = props;
+  const { modal, setModal, form, setForm, submitError, submitting, handleSubmit, typeList, priorityList, statusList, users, parentCandidates, project, getIssueKey, projects = [], showProjectSelector, milestones = [], sprints = [], labelSuggestions = [], pendingFiles = [], onPendingFilesChange } = props;
   if (!modal) return null;
   const [affectsOpen, setAffectsOpen] = useState(false);
   const affectsRef = useRef<HTMLDivElement | null>(null);
   const [labelInput, setLabelInput] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const ACCEPTED_FILE_TYPES = 'image/*,video/*,.pdf,.xlsx,.xls,.docx,.doc';
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!onPendingFilesChange) return;
+    const selected = Array.from(e.target.files ?? []);
+    if (selected.length === 0) return;
+    onPendingFilesChange([...pendingFiles, ...selected]);
+    e.target.value = '';
+  }, [pendingFiles, onPendingFilesChange]);
+
+  const removeFile = useCallback((index: number) => {
+    if (!onPendingFilesChange) return;
+    onPendingFilesChange(pendingFiles.filter((_, i) => i !== index));
+  }, [pendingFiles, onPendingFilesChange]);
 
   const inputCls =
     'w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 transition-colors';
@@ -355,6 +373,44 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
               })}
             </div>
           ) : null}
+          {modal === 'create' && onPendingFilesChange && (
+            <div className="pt-2 border-t border-[color:var(--border-subtle)]">
+              <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-2">Attachments</label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={ACCEPTED_FILE_TYPES}
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-xs px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] transition-colors"
+              >
+                + Add files
+              </button>
+              <p className="text-[11px] text-[color:var(--text-muted)] mt-1">Images, videos, PDF, Excel, Word</p>
+              {pendingFiles.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {pendingFiles.map((file, i) => (
+                    <li key={i} className="flex items-center justify-between gap-2 text-xs px-2 py-1 rounded bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)]">
+                      <span className="truncate text-[color:var(--text-primary)]">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(i)}
+                        className="shrink-0 text-[color:var(--text-muted)] hover:text-red-400 transition-colors"
+                        aria-label="Remove file"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           <div className="flex items-center justify-end gap-2 pt-2">
             <button
               type="button"
