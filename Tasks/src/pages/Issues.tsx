@@ -249,9 +249,9 @@ export default function Issues() {
   const allLabels = useMemo(() => [...new Set(issues.flatMap((i) => i.labels || []))].sort(), [issues]);
   const limit = 25;
 
-  /** Status names considered "done"/closed — open issues exclude these. */
-  function isDoneStatusName(name: string): boolean {
-    const l = (name ?? '').trim().toLowerCase();
+  function isClosedStatus(status: { name: string; isClosed?: boolean }): boolean {
+    if (status.isClosed !== undefined) return Boolean(status.isClosed);
+    const l = (status.name ?? '').trim().toLowerCase();
     return l === 'done' || l === 'closed' || l === 'clossed' || l === 'resolved' || l.includes('completed');
   }
 
@@ -261,15 +261,17 @@ export default function Issues() {
     if (useJql) {
       return { token: token!, page: p.page, limit: viewMode === 'kanban' ? 200 : 20, jql };
     }
-    const params: { page: number; limit: number; token: string; project: string; status?: string; assignee?: string; reporter?: string; type?: string; priority?: string; labels?: string; storyPoints?: string; hasStoryPoints?: string; hasEstimate?: string } = {
+    const params: { page: number; limit: number; token: string; project: string; status?: string; statusExclude?: string; assignee?: string; reporter?: string; type?: string; priority?: string; labels?: string; storyPoints?: string; hasStoryPoints?: string; hasEstimate?: string } = {
       ...p,
       limit: viewMode === 'kanban' ? 100 : limit,
       token: token!,
       project: projectId!,
     };
     if (quickFilter === 'open' || quickFilter === 'my') {
-      const openStatuses = statusList.filter((s) => !isDoneStatusName(String(s)));
-      if (openStatuses.length > 0) params.status = openStatuses.join(',');
+      const closedStatuses = project?.statuses?.length
+        ? project.statuses.filter((s) => isClosedStatus(s)).map((s) => s.name).filter(Boolean)
+        : statusList.filter((s) => isClosedStatus({ name: String(s) }));
+      if (closedStatuses.length > 0) params.statusExclude = closedStatuses.join(',');
     }
     else {
       if (filters.status.length) params.status = filters.status.join(',');

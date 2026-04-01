@@ -12,9 +12,9 @@ import { notifyPush, notifyProjectRefresh } from '../../websocket';
 import { env } from '../../config/env';
 import * as notificationsService from '../notifications/notifications.service';
 import * as watchersService from '../watchers/watchers.service';
+import { getClosedStatusNamesForProject } from '../projects/statusClassification';
 
 const DEFAULT_STATUS = 'Backlog';
-const DEFAULT_DONE_STATUSES = ['Done', 'Closed', 'Resolved'];
 
 async function validateParent(
   parentId: string | null | undefined,
@@ -100,6 +100,7 @@ export async function create(
 export interface ListIssuesFilters {
   project?: string | string[];
   status?: string | string[];
+  statusExclude?: string | string[];
   assignee?: string | string[];
   reporter?: string | string[];
   sprint?: string;
@@ -137,7 +138,12 @@ export async function findAll(
     filter.project = projectIds.length === 1 ? projectIds[0] : { $in: projectIds };
   }
   const statusArr = toArr(filters.status);
-  if (statusArr.length) filter.status = statusArr.length === 1 ? statusArr[0] : { $in: statusArr };
+  if (statusArr.length) {
+    filter.status = statusArr.length === 1 ? statusArr[0] : { $in: statusArr };
+  } else {
+    const statusExcludeArr = toArr(filters.statusExclude);
+    if (statusExcludeArr.length) filter.status = { $nin: statusExcludeArr };
+  }
   const assigneeArr = toArr(filters.assignee);
   if (assigneeArr.length) filter.assignee = assigneeArr.length === 1 ? assigneeArr[0] : { $in: assigneeArr };
   if (filters.sprint !== undefined) {
@@ -465,7 +471,8 @@ export async function update(
     }
 
     const statusChange = changes.find((c) => c.field === 'status');
-    if (statusChange?.toValue && DEFAULT_DONE_STATUSES.includes(String(statusChange.toValue))) {
+    const closedStatuses = await getClosedStatusNamesForProject(projectId);
+    if (statusChange?.toValue && closedStatuses.includes(String(statusChange.toValue))) {
       const assignee = issue.assignee as { _id?: unknown } | null;
       const reporter = issue.reporter as { _id?: unknown } | null;
       const assigneeId = assignee?._id ? String(assignee._id) : null;
@@ -743,6 +750,7 @@ export function queryToFilters(query: ListIssuesQuery): ListIssuesFilters {
   return {
     project: query.project,
     status: query.status,
+    statusExclude: query.statusExclude,
     assignee: query.assignee,
     reporter: query.reporter,
     sprint: query.sprint,

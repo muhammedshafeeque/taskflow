@@ -155,11 +155,23 @@ export async function findById(id: string): Promise<unknown | null> {
 function withProjectDefaults(p: Record<string, unknown>): Record<string, unknown> {
   if (!p.statuses || (Array.isArray(p.statuses) && p.statuses.length === 0)) {
     p.statuses = [
-      { id: 'backlog', name: 'Backlog', order: 0 },
-      { id: 'todo', name: 'Todo', order: 1 },
-      { id: 'inprogress', name: 'In Progress', order: 2 },
-      { id: 'done', name: 'Done', order: 3 },
+      { id: 'backlog', name: 'Backlog', order: 0, isClosed: false },
+      { id: 'todo', name: 'Todo', order: 1, isClosed: false },
+      { id: 'inprogress', name: 'In Progress', order: 2, isClosed: false },
+      { id: 'done', name: 'Done', order: 3, isClosed: true },
     ];
+  } else if (Array.isArray(p.statuses)) {
+    p.statuses = p.statuses.map((raw, idx) => {
+      const status = raw as { id?: string; name?: string; order?: number; isClosed?: boolean };
+      const inferredClosed = ['done', 'closed', 'resolved', 'completed'].includes(
+        String(status.name ?? '').trim().toLowerCase()
+      );
+      return {
+        ...status,
+        order: typeof status.order === 'number' ? status.order : idx,
+        isClosed: status.isClosed ?? inferredClosed,
+      };
+    });
   }
   if (!p.issueTypes || (Array.isArray(p.issueTypes) && p.issueTypes.length === 0)) {
     p.issueTypes = [

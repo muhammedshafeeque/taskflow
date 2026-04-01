@@ -4,6 +4,7 @@ export interface IProjectStatus {
   id: string;
   name: string;
   order: number;
+  isClosed?: boolean;
   icon?: string;
   color?: string;
 }
@@ -92,6 +93,7 @@ const projectStatusSchema = new Schema<IProjectStatus>(
     id: { type: String, required: true },
     name: { type: String, required: true },
     order: { type: Number, required: true },
+    isClosed: { type: Boolean, default: undefined },
     icon: { type: String, default: undefined },
     color: { type: String, default: undefined },
   },

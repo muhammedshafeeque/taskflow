@@ -1,17 +1,11 @@
 import { Sprint } from './sprint.model';
 import { Issue } from '../issues/issue.model';
-import { Project } from '../projects/project.model';
 import { ApiError } from '../../utils/ApiError';
 import { notifyProjectRefresh } from '../../websocket';
-
-const DEFAULT_DONE_STATUSES = ['Done', 'Closed', 'Resolved'];
+import { getClosedStatusNamesForProject } from '../projects/statusClassification';
 
 async function getDoneStatuses(projectId: string): Promise<string[]> {
-  const project = await Project.findById(projectId).select('statuses').lean();
-  if (!project?.statuses?.length) return DEFAULT_DONE_STATUSES;
-  const statuses = (project.statuses as { name: string; order: number }[]).sort((a, b) => b.order - a.order);
-  const doneFromProject = statuses.slice(0, 3).map((s) => s.name);
-  return [...new Set([...DEFAULT_DONE_STATUSES, ...doneFromProject])];
+  return getClosedStatusNamesForProject(projectId);
 }
 import type { CreateSprintBody, UpdateSprintBody } from './sprints.validation';
 import type { PaginationOptions, PaginatedResult } from '../projects/projects.service';

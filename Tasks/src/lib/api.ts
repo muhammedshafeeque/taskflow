@@ -138,6 +138,7 @@ export interface ProjectStatus {
   id: string;
   name: string;
   order: number;
+  isClosed?: boolean;
   icon?: string;
   color?: string;
 }

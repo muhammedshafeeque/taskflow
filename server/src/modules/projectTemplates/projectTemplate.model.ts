@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface IProjectTemplate extends Document {
   name: string;
   description?: string;
-  statuses: Array<{ id: string; name: string; order: number; icon?: string; color?: string }>;
+  statuses: Array<{ id: string; name: string; order: number; isClosed?: boolean; icon?: string; color?: string }>;
   issueTypes: Array<{ id: string; name: string; order: number; icon?: string; color?: string }>;
   priorities: Array<{ id: string; name: string; order: number; icon?: string; color?: string }>;
   createdAt: Date;
@@ -11,7 +11,7 @@ export interface IProjectTemplate extends Document {
 }
 
 const statusSchema = new Schema(
-  { id: String, name: String, order: Number, icon: String, color: String },
+  { id: String, name: String, order: Number, isClosed: Boolean, icon: String, color: String },
   { _id: false }
 );
 const issueTypeSchema = new Schema(

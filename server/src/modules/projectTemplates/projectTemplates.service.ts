@@ -2,10 +2,10 @@ import mongoose from 'mongoose';
 import { ProjectTemplate } from './projectTemplate.model';
 
 const DEFAULT_STATUSES = [
-  { id: 'backlog', name: 'Backlog', order: 0 },
-  { id: 'todo', name: 'Todo', order: 1 },
-  { id: 'inprogress', name: 'In Progress', order: 2 },
-  { id: 'done', name: 'Done', order: 3 },
+  { id: 'backlog', name: 'Backlog', order: 0, isClosed: false },
+  { id: 'todo', name: 'Todo', order: 1, isClosed: false },
+  { id: 'inprogress', name: 'In Progress', order: 2, isClosed: false },
+  { id: 'done', name: 'Done', order: 3, isClosed: true },
 ];
 
 const DEFAULT_ISSUE_TYPES = [
@@ -23,6 +23,18 @@ const DEFAULT_PRIORITIES = [
   { id: 'highest', name: 'Highest', order: 4 },
 ];
 
+function inferClosedFromName(name: string): boolean {
+  const normalized = String(name ?? '').trim().toLowerCase();
+  return normalized === 'done' || normalized === 'closed' || normalized === 'clossed' || normalized === 'resolved' || normalized.includes('completed');
+}
+
+function normalizeStatuses(statuses: unknown[]): unknown[] {
+  return (Array.isArray(statuses) ? statuses : []).map((raw) => {
+    const status = raw as { name?: string; isClosed?: boolean };
+    return { ...status, isClosed: status.isClosed ?? inferClosedFromName(String(status.name ?? '')) };
+  });
+}
+
 export async function list(): Promise<unknown[]> {
   const dbList = await ProjectTemplate.find().sort({ name: 1 }).lean();
   const defaultConfig = getDefaultConfig();
@@ -34,7 +46,11 @@ export async function list(): Promise<unknown[]> {
     issueTypes: defaultConfig.issueTypes,
     priorities: defaultConfig.priorities,
   };
-  return [builtIn, ...dbList];
+  const normalizedDb = dbList.map((tpl) => ({
+    ...tpl,
+    statuses: normalizeStatuses((tpl as { statuses?: unknown[] }).statuses ?? []),
+  }));
+  return [builtIn, ...normalizedDb];
 }
 
 export async function getById(templateId: string): Promise<unknown | null> {
@@ -43,7 +59,11 @@ export async function getById(templateId: string): Promise<unknown | null> {
     return { _id: 'default', name: 'Default', description: '', ...config };
   }
   const doc = await ProjectTemplate.findById(templateId).lean();
-  return doc;
+  if (!doc) return null;
+  return {
+    ...doc,
+    statuses: normalizeStatuses((doc as { statuses?: unknown[] }).statuses ?? []),
+  };
 }
 
 export function getDefaultConfig(): {
@@ -68,7 +88,7 @@ export async function createTemplateRecord(input: {
   const doc = await ProjectTemplate.create({
     name: input.name,
     description: input.description ?? '',
-    statuses: input.statuses,
+    statuses: normalizeStatuses(input.statuses),
     issueTypes: input.issueTypes,
     priorities: input.priorities,
   });
@@ -97,7 +117,7 @@ export async function updateById(
   const updates: Record<string, unknown> = {};
   if (input.name !== undefined) updates.name = input.name.trim();
   if (input.description !== undefined) updates.description = input.description.trim();
-  if (input.statuses !== undefined) updates.statuses = input.statuses;
+  if (input.statuses !== undefined) updates.statuses = normalizeStatuses(input.statuses);
   if (input.issueTypes !== undefined) updates.issueTypes = input.issueTypes;
   if (input.priorities !== undefined) updates.priorities = input.priorities;
   if (Object.keys(updates).length === 0) return 'noop';

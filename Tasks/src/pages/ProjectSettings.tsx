@@ -476,7 +476,7 @@ export default function ProjectSettings() {
 
   const [statuses, setStatuses] = useState<ProjectStatus[]>([]);
   const [statusEdit, setStatusEdit] = useState<ProjectStatus | null>(null);
-  const [statusForm, setStatusForm] = useState({ name: '', icon: '', color: '' });
+  const [statusForm, setStatusForm] = useState({ name: '', icon: '', color: '', isClosed: false });
 
   const [issueTypes, setIssueTypes] = useState<ProjectIssueType[]>([]);
   const [issueTypeEdit, setIssueTypeEdit] = useState<ProjectIssueType | null>(null);
@@ -528,6 +528,11 @@ export default function ProjectSettings() {
   const [saveTemplateSaving, setSaveTemplateSaving] = useState(false);
   const [saveTemplateError, setSaveTemplateError] = useState('');
 
+  function inferClosedFromStatusName(name: string): boolean {
+    const lower = String(name ?? '').trim().toLowerCase();
+    return lower === 'done' || lower === 'closed' || lower === 'clossed' || lower === 'resolved' || lower.includes('completed');
+  }
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (inviteAutocompleteRef.current && !inviteAutocompleteRef.current.contains(e.target as Node)) {
@@ -552,7 +557,7 @@ export default function ProjectSettings() {
           description: p.description ?? '',
           lead: typeof p.lead === 'object' && p.lead ? p.lead._id : '',
         });
-        setStatuses(p.statuses ?? []);
+        setStatuses((p.statuses ?? []).map((s) => ({ ...s, isClosed: s.isClosed ?? inferClosedFromStatusName(s.name) })));
         setIssueTypes(p.issueTypes ?? []);
         setPriorities(p.priorities ?? []);
         setCustomFields(p.customFields ?? []);
@@ -641,13 +646,14 @@ export default function ProjectSettings() {
     if (!token || !projectId) return;
     setSaving(true);
     setError('');
-    const res = await projectsApi.update(projectId, { statuses }, token);
+    const normalizedStatuses = statuses.map((s) => ({ ...s, isClosed: s.isClosed ?? inferClosedFromStatusName(s.name) }));
+    const res = await projectsApi.update(projectId, { statuses: normalizedStatuses }, token);
     setSaving(false);
     if (res.success && res.data) {
       setProject(res.data);
       setStatuses(res.data.statuses ?? []);
       setStatusEdit(null);
-      setStatusForm({ name: '', icon: '', color: '' });
+      setStatusForm({ name: '', icon: '', color: '', isClosed: false });
       showSaved();
     } else setError((res as { message?: string }).message ?? 'Save failed');
   }
@@ -685,16 +691,16 @@ export default function ProjectSettings() {
   function addStatus() {
     const name = statusForm.name.trim();
     if (!name) return;
-    setStatuses((prev) => [...prev, { id: generateId(), name, order: prev.length, icon: statusForm.icon || undefined, color: statusForm.color || undefined }]);
-    setStatusForm({ name: '', icon: '', color: '' });
+    setStatuses((prev) => [...prev, { id: generateId(), name, order: prev.length, isClosed: statusForm.isClosed, icon: statusForm.icon || undefined, color: statusForm.color || undefined }]);
+    setStatusForm({ name: '', icon: '', color: '', isClosed: false });
   }
   function updateStatusItem() {
     if (!statusEdit) return;
     const name = statusForm.name.trim();
     if (!name) return;
-    setStatuses((prev) => prev.map((s) => (s.id === statusEdit.id ? { ...s, name, icon: statusForm.icon || undefined, color: statusForm.color || undefined } : s)));
+    setStatuses((prev) => prev.map((s) => (s.id === statusEdit.id ? { ...s, name, isClosed: statusForm.isClosed, icon: statusForm.icon || undefined, color: statusForm.color || undefined } : s)));
     setStatusEdit(null);
-    setStatusForm({ name: '', icon: '', color: '' });
+    setStatusForm({ name: '', icon: '', color: '', isClosed: false });
   }
   function removeStatus(id: string) {
     setStatuses((prev) => prev.filter((s) => s.id !== id).map((s, i) => ({ ...s, order: i })));
@@ -1249,12 +1255,23 @@ export default function ProjectSettings() {
                         />
                       </div>
                     </div>
+                    <div className="w-44">
+                      <label className={labelClass}>Issue state</label>
+                      <select
+                        value={statusForm.isClosed ? 'closed' : 'open'}
+                        onChange={(e) => setStatusForm((f) => ({ ...f, isClosed: e.target.value === 'closed' }))}
+                        className={inputClass}
+                      >
+                        <option value="open">Open</option>
+                        <option value="closed">Closed</option>
+                      </select>
+                    </div>
                     {statusEdit ? (
                       <>
                         <button type="button" onClick={updateStatusItem} className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-xs text-[color:var(--text-primary)] font-medium hover:bg-[color:var(--bg-surface)]">
                           Update
                         </button>
-                        <button type="button" onClick={() => { setStatusEdit(null); setStatusForm({ name: '', icon: '', color: '' }); }} className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-muted)]">
+                        <button type="button" onClick={() => { setStatusEdit(null); setStatusForm({ name: '', icon: '', color: '', isClosed: false }); }} className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-muted)]">
                           Cancel
                         </button>
                       </>
@@ -1287,6 +1304,9 @@ export default function ProjectSettings() {
                               )}
                               {s.color && <span className="w-4 h-4 rounded border border-[color:var(--border-subtle)] shrink-0" style={{ backgroundColor: s.color }} />}
                               <span className="font-medium text-[color:var(--text-primary)] text-sm">{s.name}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] border ${s.isClosed ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' : 'text-sky-300 border-sky-500/40 bg-sky-500/10'}`}>
+                                {s.isClosed ? 'Closed' : 'Open'}
+                              </span>
                             </span>
                             <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
                               <IconButton title="Move up" onClick={() => moveStatus(s.id, -1)} disabled={idx === 0}>
@@ -1303,7 +1323,7 @@ export default function ProjectSettings() {
                                 title="Edit"
                                 onClick={() => {
                                   setStatusEdit(s);
-                                  setStatusForm({ name: s.name, icon: s.icon ?? '', color: s.color ?? '' });
+                                  setStatusForm({ name: s.name, icon: s.icon ?? '', color: s.color ?? '', isClosed: Boolean(s.isClosed) });
                                 }}
                               >
                                 <EditIcon className="w-3.5 h-3.5" />

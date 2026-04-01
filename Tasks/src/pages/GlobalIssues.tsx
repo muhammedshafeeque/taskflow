@@ -197,8 +197,9 @@ export default function GlobalIssues() {
   const allLabels = useMemo(() => [...new Set(issues.flatMap((i) => i.labels || []))].sort(), [issues]);
   const limit = 25;
 
-  function isDoneStatusName(name: string): boolean {
-    const l = (name ?? '').trim().toLowerCase();
+  function isClosedStatus(status: { name: string; isClosed?: boolean }): boolean {
+    if (status.isClosed !== undefined) return Boolean(status.isClosed);
+    const l = (status.name ?? '').trim().toLowerCase();
     return l === 'done' || l === 'closed' || l === 'clossed' || l === 'resolved' || l.includes('completed');
   }
 
@@ -215,8 +216,16 @@ export default function GlobalIssues() {
     };
     if (filters.project.length) params.project = filters.project.join(',');
     if (quickFilter === 'open' || quickFilter === 'my') {
-      const openStatuses = statusList.filter((s) => !isDoneStatusName(String(s)));
-      if (openStatuses.length > 0) params.status = openStatuses.join(',');
+      const closedStatusSet = new Set<string>();
+      projects.forEach((project) => {
+        (project.statuses ?? []).forEach((status) => {
+          if (isClosedStatus(status)) closedStatusSet.add(status.name);
+        });
+      });
+      const closedStatuses = closedStatusSet.size > 0
+        ? Array.from(closedStatusSet)
+        : statusList.filter((s) => isClosedStatus({ name: String(s) }));
+      if (closedStatuses.length > 0) params.statusExclude = closedStatuses.join(',');
     }
     else {
       if (filters.status.length) params.status = filters.status.join(',');

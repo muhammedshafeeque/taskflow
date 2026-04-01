@@ -3,12 +3,7 @@ import { Issue } from '../issues/issue.model';
 import { ProjectMember } from '../projects/projectMember.model';
 import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError';
-
-const DONE_STATUSES = ['Done', 'Closed', 'Resolved'];
-
-function isDone(status: string): boolean {
-  return DONE_STATUSES.includes(status);
-}
+import { getClosedStatusNamesForProject } from '../projects/statusClassification';
 
 export interface BurndownPoint {
   date: string; // YYYY-MM-DD
@@ -28,6 +23,9 @@ export async function getSprintBurndown(sprintId: string, projectId: string, use
   const start = sprint.startDate ? new Date(sprint.startDate) : new Date(sprint.createdAt);
   const end = sprint.endDate ? new Date(sprint.endDate) : new Date(start.getTime() + 14 * 24 * 60 * 60 * 1000);
   const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)));
+
+  const closedStatuses = await getClosedStatusNamesForProject(projectId);
+  const isDone = (status: string): boolean => closedStatuses.includes(status);
 
   const issues = await Issue.find({ sprint: sprintId, project: projectId })
     .select('storyPoints status')
@@ -69,6 +67,8 @@ export async function getSprintVelocity(projectId: string, limit: number, userId
   const member = await ProjectMember.findOne({ project: projectId, user: userObjectId });
   if (!member) throw new ApiError(403, 'Access denied');
 
+  const closedStatuses = await getClosedStatusNamesForProject(projectId);
+
   const completedSprints = await Sprint.find({ project: projectId, status: 'completed' })
     .sort({ endDate: -1 })
     .limit(limit)
@@ -77,7 +77,7 @@ export async function getSprintVelocity(projectId: string, limit: number, userId
   const result: { sprintName: string; completedSP: number }[] = [];
   for (const s of completedSprints) {
     const done = await Issue.aggregate([
-      { $match: { sprint: s._id, project: new mongoose.Types.ObjectId(projectId), status: { $in: DONE_STATUSES } } },
+      { $match: { sprint: s._id, project: new mongoose.Types.ObjectId(projectId), status: { $in: closedStatuses } } },
       { $group: { _id: null, sum: { $sum: { $ifNull: ['$storyPoints', 0] } } } },
     ]);
     result.push({
@@ -105,6 +105,9 @@ export async function getSprintSummary(sprintId: string, projectId: string, user
   const sprint = await Sprint.findById(sprintId).lean();
   if (!sprint) throw new ApiError(404, 'Sprint not found');
   if (String(sprint.project) !== String(projectId)) throw new ApiError(404, 'Sprint not found');
+
+  const closedStatuses = await getClosedStatusNamesForProject(projectId);
+  const isDone = (status: string): boolean => closedStatuses.includes(status);
 
   const issues = await Issue.find({ sprint: sprintId, project: projectId })
     .select('storyPoints status')

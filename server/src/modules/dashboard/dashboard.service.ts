@@ -8,6 +8,7 @@ import { WorkLog } from '../workLogs/workLog.model';
 import { ApiError } from '../../utils/ApiError';
 import type { ReportFilters } from '../reports/reportFilters';
 import { buildIssueMatch } from '../reports/reportFilters';
+import { getClosedStatusNamesForProject, getClosedStatusNamesFromStatuses } from '../projects/statusClassification';
 
 export interface WorkloadEntry {
   userId: string;
@@ -25,25 +26,28 @@ export interface WorkloadStats {
 export async function getWorkloadStats(userId: string, projectId?: string, filters?: ReportFilters): Promise<WorkloadStats> {
   const match = await buildIssueMatch(userId, projectId, filters ?? {});
   if (!match) return { entries: [] };
+  const issues = await Issue.find(match).select('assignee status storyPoints project').lean();
+  const projectIds = [...new Set(issues.map((i) => String(i.project)).filter(Boolean))];
+  const projectDocs = projectIds.length
+    ? await Project.find({ _id: { $in: projectIds } }).select('statuses').lean()
+    : [];
+  const closedByProject = new Map(
+    projectDocs.map((p) => [String(p._id), new Set(getClosedStatusNamesFromStatuses((p as { statuses?: Array<{ name?: string; isClosed?: boolean }> }).statuses))])
+  );
 
-  const agg = await Issue.aggregate<{
-    _id: mongoose.Types.ObjectId | null;
-    totalCount: number;
-    openCount: number;
-    doneCount: number;
-    storyPoints: number;
-  }>([
-    { $match: match },
-    {
-      $group: {
-        _id: '$assignee',
-        totalCount: { $sum: 1 },
-        openCount: { $sum: { $cond: [{ $ne: ['$status', 'Done'] }, 1, 0] } },
-        doneCount: { $sum: { $cond: [{ $eq: ['$status', 'Done'] }, 1, 0] } },
-        storyPoints: { $sum: { $ifNull: ['$storyPoints', 0] } },
-      },
-    },
-  ]);
+  const aggMap = new Map<string, { _id: mongoose.Types.ObjectId | null; totalCount: number; openCount: number; doneCount: number; storyPoints: number }>();
+  for (const issue of issues) {
+    const assigneeId = (issue.assignee as mongoose.Types.ObjectId | null) ?? null;
+    const key = assigneeId ? String(assigneeId) : '__unassigned__';
+    const row = aggMap.get(key) ?? { _id: assigneeId, totalCount: 0, openCount: 0, doneCount: 0, storyPoints: 0 };
+    row.totalCount += 1;
+    row.storyPoints += (issue.storyPoints ?? 0);
+    const closedSet = closedByProject.get(String(issue.project)) ?? new Set(['Done', 'Closed', 'Resolved']);
+    if (closedSet.has(String(issue.status ?? ''))) row.doneCount += 1;
+    else row.openCount += 1;
+    aggMap.set(key, row);
+  }
+  const agg = Array.from(aggMap.values());
 
   const assigneeIds = agg.map((r) => r._id).filter(Boolean) as mongoose.Types.ObjectId[];
   const users = assigneeIds.length > 0
@@ -74,8 +78,6 @@ export interface EstimatesByAssignee {
   userName: string;
   totalMinutes: number;
 }
-
-const DONE_STATUSES = ['Done', 'Closed', 'Resolved'];
 
 /** Pipeline stage: add hasChildren (true if any issue has parent = this._id). Use only leaf issues for estimate sums so epics/stories use children sum. */
 const leafOnlyLookup = [
@@ -127,13 +129,14 @@ export async function getProjectDeliveryEstimate(
     };
   }
   const projectObjectId = new mongoose.Types.ObjectId(projectId);
+  const closedStatuses = await getClosedStatusNamesForProject(projectId);
 
   const [remainingResult, loggedResult] = await Promise.all([
     Issue.aggregate<{ total: number }>([
       {
         $match: {
           project: projectObjectId,
-          status: { $nin: DONE_STATUSES },
+          status: { $nin: closedStatuses },
           timeEstimateMinutes: { $exists: true, $gt: 0 },
         },
       },
@@ -146,7 +149,7 @@ export async function getProjectDeliveryEstimate(
       {
         $match: {
           'issueDoc.project': projectObjectId,
-          'issueDoc.status': { $in: DONE_STATUSES },
+          'issueDoc.status': { $in: closedStatuses },
         },
       },
       {
@@ -505,26 +508,24 @@ export async function getPortfolioStats(userId: string): Promise<PortfolioProjec
   const projectObjectIds = projectIds.map((id) => new mongoose.Types.ObjectId(id));
   if (projectObjectIds.length === 0) return [];
 
-  const agg = await Issue.aggregate<{
-    _id: mongoose.Types.ObjectId;
-    totalCount: number;
-    doneCount: number;
-    openCount: number;
-  }>([
-    { $match: { project: { $in: projectObjectIds } } },
-    {
-      $group: {
-        _id: '$project',
-        totalCount: { $sum: 1 },
-        doneCount: { $sum: { $cond: [{ $eq: ['$status', 'Done'] }, 1, 0] } },
-        openCount: { $sum: { $cond: [{ $ne: ['$status', 'Done'] }, 1, 0] } },
-      },
-    },
-  ]);
+  const projectDocs = await Project.find({ _id: { $in: projectObjectIds } }).select('name key statuses').lean();
+  const closedByProject = new Map(
+    projectDocs.map((p) => [String(p._id), new Set(getClosedStatusNamesFromStatuses((p as { statuses?: Array<{ name?: string; isClosed?: boolean }> }).statuses))])
+  );
+  const rows = await Issue.find({ project: { $in: projectObjectIds } }).select('project status').lean();
+  const aggMap = new Map<string, { _id: mongoose.Types.ObjectId; totalCount: number; doneCount: number; openCount: number }>();
+  for (const row of rows) {
+    const pid = String(row.project);
+    const closedSet = closedByProject.get(pid) ?? new Set(['Done', 'Closed', 'Resolved']);
+    const entry = aggMap.get(pid) ?? { _id: new mongoose.Types.ObjectId(pid), totalCount: 0, doneCount: 0, openCount: 0 };
+    entry.totalCount += 1;
+    if (closedSet.has(String(row.status ?? ''))) entry.doneCount += 1;
+    else entry.openCount += 1;
+    aggMap.set(pid, entry);
+  }
+  const agg = Array.from(aggMap.values());
 
-  const { Project } = await import('../projects/project.model');
-  const projects = await Project.find({ _id: { $in: projectObjectIds } }).select('name key').lean();
-  const projectMap = new Map(projects.map((p) => [String(p._id), p as { name: string; key: string }]));
+  const projectMap = new Map(projectDocs.map((p) => [String(p._id), p as { name: string; key: string }]));
 
   return agg.map((row) => {
     const proj = projectMap.get(String(row._id));
@@ -603,8 +604,10 @@ export async function getDefectMetrics(userId: string, projectId?: string, filte
   if (!match) return { totalBugs: 0, openBugs: 0, closedBugs: 0, byStatus: {}, byPriority: {} };
 
   const allIssues = await Issue.find(match)
-    .select('type status priority storyPoints')
+    .select('type status priority storyPoints project')
     .lean();
+  const closedStatuses = projectId ? await getClosedStatusNamesForProject(projectId) : ['Done', 'Closed', 'Resolved'];
+  const closedSet = new Set(closedStatuses);
 
   const bugs = allIssues.filter((i) => isBugType((i as { type?: string }).type ?? ''));
 
@@ -618,7 +621,7 @@ export async function getDefectMetrics(userId: string, projectId?: string, filte
     const priority = (b as { priority?: string }).priority ?? 'Unknown';
     byStatus[status] = (byStatus[status] ?? 0) + 1;
     byPriority[priority] = (byPriority[priority] ?? 0) + 1;
-    if (status === 'Done' || status.toLowerCase() === 'closed' || status.toLowerCase() === 'resolved') {
+    if (closedSet.has(status)) {
       closedBugs++;
     } else {
       openBugs++;
