@@ -7,6 +7,7 @@ interface TaskSubtasksProps {
   projectId: string | undefined;
   subtasks: Issue[];
   getStatusMeta: (name: string) => { color?: string; icon?: string } | undefined;
+  noWrapper?: boolean;
 }
 
 export default function TaskSubtasks({
@@ -14,29 +15,14 @@ export default function TaskSubtasks({
   projectId,
   subtasks,
   getStatusMeta,
+  noWrapper = false,
 }: TaskSubtasksProps) {
   const addSubtaskUrl = projectId
     ? `/projects/${projectId}/issues?create=1&parent=${issueId}`
     : '#';
 
-  return (
-    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">
-          Subtasks{' '}
-          <span className="ml-1 bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] px-1.5 py-0.5 rounded-full text-[10px] font-semibold">
-            {subtasks.length}
-          </span>
-        </span>
-        {projectId && (
-          <Link
-            to={addSubtaskUrl}
-            className="text-xs font-medium px-2.5 py-1 rounded-md text-[color:var(--accent)] hover:bg-[color:var(--accent)]/10 transition-colors"
-          >
-            Add subtask
-          </Link>
-        )}
-      </div>
+  const content = (
+    <>
       {subtasks.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)] italic py-6 text-center px-4">No subtasks yet.</p>
       ) : (
@@ -76,6 +62,30 @@ export default function TaskSubtasks({
           })}
         </ul>
       )}
+    </>
+  );
+
+  if (noWrapper) return content;
+
+  return (
+    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">
+          Subtasks{' '}
+          <span className="ml-1 bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] px-1.5 py-0.5 rounded-full text-[10px] font-semibold">
+            {subtasks.length}
+          </span>
+        </span>
+        {projectId && (
+          <Link
+            to={addSubtaskUrl}
+            className="text-xs font-medium px-2.5 py-1 rounded-md text-[color:var(--accent)] hover:bg-[color:var(--accent)]/10 transition-colors"
+          >
+            Add subtask
+          </Link>
+        )}
+      </div>
+      {content}
     </div>
   );
 }

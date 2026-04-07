@@ -22,6 +22,7 @@ interface TaskIssueLinksProps {
   onLinksChange: () => void;
   /** Called after clearing Issue.parent via the virtual parent link (refresh issue for sidebar). */
   onParentRemoved?: () => void;
+  noWrapper?: boolean;
 }
 
 export type TaskIssueLinksHandle = {
@@ -36,6 +37,7 @@ const TaskIssueLinks = forwardRef<TaskIssueLinksHandle, TaskIssueLinksProps>(fun
   token,
   onLinksChange,
   onParentRemoved,
+  noWrapper = false,
 },
   ref
 ) {
@@ -114,25 +116,8 @@ const TaskIssueLinks = forwardRef<TaskIssueLinksHandle, TaskIssueLinksProps>(fun
     return `/projects/${projId}/issues/${encodeURIComponent(link.issue.key)}`;
   }
 
-  return (
-    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">
-          Links{' '}
-          <span className="ml-1 bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] px-1.5 py-0.5 rounded-full text-[10px] font-semibold">
-            {links.length}
-          </span>
-        </span>
-        {token && (
-          <button
-            type="button"
-            onClick={() => setLinkModalOpen(true)}
-            className="text-xs font-medium px-2.5 py-1 rounded-md text-[color:var(--accent)] hover:bg-[color:var(--accent)]/10 transition-colors"
-          >
-            Link issue
-          </button>
-        )}
-      </div>
+  const content = (
+    <>
       {links.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)] italic py-6 text-center px-4">No links yet.</p>
       ) : (
@@ -246,6 +231,31 @@ const TaskIssueLinks = forwardRef<TaskIssueLinksHandle, TaskIssueLinksProps>(fun
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (noWrapper) return content;
+
+  return (
+    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">
+          Links{' '}
+          <span className="ml-1 bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] px-1.5 py-0.5 rounded-full text-[10px] font-semibold">
+            {links.length}
+          </span>
+        </span>
+        {token && (
+          <button
+            type="button"
+            onClick={() => setLinkModalOpen(true)}
+            className="text-xs font-medium px-2.5 py-1 rounded-md text-[color:var(--accent)] hover:bg-[color:var(--accent)]/10 transition-colors"
+          >
+            Link issue
+          </button>
+        )}
+      </div>
+      {content}
     </div>
   );
 });

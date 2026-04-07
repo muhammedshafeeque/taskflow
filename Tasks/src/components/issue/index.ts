@@ -4,6 +4,7 @@ export { default as TaskDescription } from './TaskDescription';
 export { default as DescriptionEditor } from './DescriptionEditor';
 export { default as TaskChecklist } from './TaskChecklist';
 export { default as TaskActivityComments } from './TaskActivityComments';
+export { default as TaskSecondaryTabs, type TaskSecondaryTabsHandle } from './TaskSecondaryTabs';
 export { default as TaskDetailsSidebar } from './TaskDetailsSidebar';
 export { default as TaskCommentBox } from './TaskCommentBox';
 export { default as TaskCommentItem } from './TaskCommentItem';

@@ -21,15 +21,12 @@ import {
   TaskBreadcrumb,
   TaskHeader,
   TaskDescription,
-  TaskAttachments,
-  TaskSubtasks,
-  TaskIssueLinks,
+  TaskSecondaryTabs,
   TaskActivityComments,
   TaskDetailsSidebar,
   WorkLogInput,
 } from '../components/issue';
-import type { TaskIssueLinksHandle } from '../components/issue/TaskIssueLinks';
-import type { TaskAttachmentsHandle } from '../components/issue/TaskAttachments';
+import type { TaskSecondaryTabsHandle } from '../components/issue/TaskSecondaryTabs';
 
 const DEFAULT_STATUSES = ['Backlog', 'Todo', 'In Progress', 'Done'];
 const DEFAULT_TYPES = ['Task', 'Bug', 'Story', 'Epic'];
@@ -39,8 +36,7 @@ export default function IssueDetail() {
   const { projectId, ticketId } = useParams<{ projectId?: string; ticketId: string }>();
   const navigate = useNavigate();
   const { token, user } = useAuth();
-  const issueLinksRef = useRef<TaskIssueLinksHandle>(null);
-  const attachmentsRef = useRef<TaskAttachmentsHandle>(null);
+  const secondaryTabsRef = useRef<TaskSecondaryTabsHandle>(null);
   const [issue, setIssue] = useState<Issue | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -326,26 +322,22 @@ export default function IssueDetail() {
                 issueId={issue._id}
                 projectId={projectId}
                 canLinkAndAttach={!!token}
-                onOpenLinkModal={() => issueLinksRef.current?.openLinkModal()}
-                onAttach={() => attachmentsRef.current?.openFilePicker()}
+                onOpenLinkModal={() => secondaryTabsRef.current?.openLinkModal()}
+                onAttach={() => secondaryTabsRef.current?.openFilePicker()}
                 getTypeMeta={getTypeMeta}
                 getPriorityMeta={getPriorityMeta}
                 getStatusMeta={getStatusMeta}
                 onUpdateTitle={updateTitle}
               />
               <TaskDescription issue={issue} onUpdateDescription={updateDescription} />
-              <TaskSubtasks
-                issueId={issue._id}
+              <TaskSecondaryTabs
+                ref={secondaryTabsRef}
+                issue={issue}
                 projectId={projectId}
+                token={token ?? null}
                 subtasks={subtasks}
                 getStatusMeta={getStatusMeta}
-              />
-              <TaskIssueLinks
-                ref={issueLinksRef}
-                issueId={issue._id}
-                projectId={projectId}
                 links={links}
-                token={token ?? null}
                 onLinksChange={refreshLinks}
                 onParentRemoved={() => {
                   if (!token || !projectId || !ticketId) return;
@@ -353,14 +345,9 @@ export default function IssueDetail() {
                     if (res.success && res.data) setIssue(res.data);
                   });
                 }}
-              />
-              <TaskAttachments
-                ref={attachmentsRef}
-                issueId={issue._id}
                 attachments={attachments}
-                currentUserId={user?.id}
-                token={token ?? null}
                 onAttachmentsChange={refreshAttachments}
+                currentUserId={user?.id}
               />
               <TaskActivityComments
                 issue={issue}

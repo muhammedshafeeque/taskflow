@@ -30,6 +30,7 @@ interface TaskAttachmentsProps {
   currentUserId?: string;
   token: string | null;
   onAttachmentsChange: () => void;
+  noWrapper?: boolean;
 }
 
 export type TaskAttachmentsHandle = {
@@ -43,6 +44,7 @@ const TaskAttachments = forwardRef<TaskAttachmentsHandle, TaskAttachmentsProps>(
   currentUserId,
   token,
   onAttachmentsChange,
+  noWrapper = false,
 },
   ref
 ) {
@@ -133,42 +135,8 @@ const TaskAttachments = forwardRef<TaskAttachmentsHandle, TaskAttachmentsProps>(
   const videoAttachments = attachments.filter((a) => isVideo(a.mimeType));
   const otherAttachments = attachments.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType));
 
-  return (
-    <div
-      className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/35"
-      tabIndex={token ? 0 : undefined}
-      onPaste={handlePaste}
-      onDragOver={handleDragOver}
-      onDrop={handleDropFiles}
-      role={token ? 'region' : undefined}
-      aria-label={token ? 'Attachments — paste or drop files here when focused' : undefined}
-    >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">
-          Attachments{' '}
-          <span className="ml-1 bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] px-1.5 py-0.5 rounded-full text-[10px] font-semibold">
-            {attachments.length}
-          </span>
-        </span>
-        {token && (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              onChange={handleFileSelect}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="text-xs font-medium px-2.5 py-1 rounded-md text-[color:var(--accent)] hover:bg-[color:var(--accent)]/10 transition-colors"
-            >
-              Add attachment
-            </button>
-          </>
-        )}
-      </div>
-
+  const content = (
+    <>
       {attachments.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)] italic py-6 text-center px-4">No attachments yet.</p>
       ) : (
@@ -264,6 +232,47 @@ const TaskAttachments = forwardRef<TaskAttachmentsHandle, TaskAttachmentsProps>(
           ))}
         </>
       )}
+    </>
+  );
+
+  if (noWrapper) return content;
+
+  return (
+    <div
+      className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/35"
+      tabIndex={token ? 0 : undefined}
+      onPaste={handlePaste}
+      onDragOver={handleDragOver}
+      onDrop={handleDropFiles}
+      role={token ? 'region' : undefined}
+      aria-label={token ? 'Attachments — paste or drop files here when focused' : undefined}
+    >
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">
+          Attachments{' '}
+          <span className="ml-1 bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] px-1.5 py-0.5 rounded-full text-[10px] font-semibold">
+            {attachments.length}
+          </span>
+        </span>
+        {token && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="text-xs font-medium px-2.5 py-1 rounded-md text-[color:var(--accent)] hover:bg-[color:var(--accent)]/10 transition-colors"
+            >
+              Add attachment
+            </button>
+          </>
+        )}
+      </div>
+      {content}
     </div>
   );
 });
