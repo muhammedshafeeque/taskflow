@@ -23,6 +23,7 @@ export const env = {
   smtpUser: process.env.SMTP_USER ?? process.env.EMAIL_USER,
   smtpPass: process.env.SMTP_PASS ?? process.env.EMAIL_PASSWORD,
   mailFrom: process.env.MAIL_FROM ?? process.env.EMAIL_FROM ?? 'noreply@taskflow.local',
+  isSmtpEnabled: process.env.IS_SMTP_ENABLED === 'true',
   vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? '',
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? '',
   /** Max users allowed (null = no limit). Set MAX_USERS in env to enforce. */
@@ -37,6 +38,16 @@ export const env = {
   azureAdClientSecret: cleanEnvValue(process.env.AZURE_AD_CLIENT_SECRET),
   azureAdTenantId: cleanEnvValue(process.env.AZURE_AD_TENANT_ID) || 'common',
   azureRedirectUri: cleanEnvValue(process.env.AZURE_REDIRECT_URI) || cleanEnvValue(process.env.APP_URL) || 'http://localhost:5173/login',
+  isAzureGraphEnabled: process.env.IS_AZURE_GRAPH_ENABLED === 'true',
+  azureGraphFromEmail: cleanEnvValue(process.env.AZURE_GRAPH_FROM_EMAIL),
+  azureGraphTenantId: cleanEnvValue(process.env.AZURE_GRAPH_TENANT_ID),
+  azureGraphClientId: cleanEnvValue(process.env.AZURE_GRAPH_CLIENT_ID),
+  azureGraphClientSecret: cleanEnvValue(process.env.AZURE_GRAPH_CLIENT_SECRET),
+  azureGraphTokenEndpoint: (() => {
+    const tenant = cleanEnvValue(process.env.AZURE_GRAPH_TENANT_ID);
+    if (!tenant) return '';
+    return `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`;
+  })(),
 
   msUserInfoEndpoint: cleanEnvValue(process.env.MS_USER_INFO_ENDPOINT) || 'https://graph.microsoft.com/oidc/userinfo',
   frontendUrl: cleanEnvValue(process.env.FRONTEND_URL) || cleanEnvValue(process.env.APP_URL) || 'http://localhost:5173',

@@ -81,7 +81,7 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
       {/* Sidebar */}
       <aside
         className={`flex flex-col border-r border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] shrink-0 transition-[width] duration-200 ease-in-out ${
-          collapsed ? 'w-16' : 'w-64'
+          collapsed ? 'w-16' : 'w-55'
         }`}
       >
         {/* Header */}

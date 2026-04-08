@@ -1,12 +1,14 @@
 import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 
+// ── SMTP transport ────────────────────────────────────────────────────────────
+
 let transporter: nodemailer.Transporter | null = null;
 
 function getTransporter(): nodemailer.Transporter | null {
   if (transporter) return transporter;
   if (!env.smtpHost || !env.smtpPort) {
-    console.warn('SMTP not configured (SMTP_HOST, SMTP_PORT). Emails will not be sent.');
+    console.warn('[email] SMTP not configured (SMTP_HOST, SMTP_PORT). Emails will not be sent.');
     return null;
   }
   transporter = nodemailer.createTransport({
@@ -16,6 +18,101 @@ function getTransporter(): nodemailer.Transporter | null {
     auth: env.smtpUser && env.smtpPass ? { user: env.smtpUser, pass: env.smtpPass } : undefined,
   });
   return transporter;
+}
+
+async function sendViaSMTP(to: string, subject: string, html: string): Promise<void> {
+  const transport = getTransporter();
+  if (!transport) return;
+  await transport.sendMail({ from: env.mailFrom, to, subject, html });
+}
+
+// ── Azure Graph API transport ─────────────────────────────────────────────────
+
+interface GraphTokenCache {
+  accessToken: string;
+  expiresAt: number; // ms
+}
+
+let graphTokenCache: GraphTokenCache | null = null;
+
+async function getGraphAccessToken(): Promise<string> {
+  const now = Date.now();
+  if (graphTokenCache && graphTokenCache.expiresAt > now + 60_000) {
+    return graphTokenCache.accessToken;
+  }
+
+  const body = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: env.azureGraphClientId,
+    client_secret: env.azureGraphClientSecret,
+    scope: 'https://graph.microsoft.com/.default',
+  });
+
+  const response = await fetch(env.azureGraphTokenEndpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`[email] Graph token fetch failed [${response.status}]: ${errorText}`);
+  }
+
+  const data = await response.json() as { access_token: string; expires_in: number };
+  graphTokenCache = { accessToken: data.access_token, expiresAt: now + data.expires_in * 1000 };
+  return graphTokenCache.accessToken;
+}
+
+async function sendViaGraph(to: string, subject: string, html: string): Promise<void> {
+  const accessToken = await getGraphAccessToken();
+  console.log('accessToken', accessToken);
+  const fromEmail = env.azureGraphFromEmail;
+
+  const payload = {
+    message: {
+      subject,
+      body: { contentType: 'HTML', content: html },
+      toRecipients: [{ emailAddress: { address: to } }],
+    },
+    saveToSentItems: false,
+  };
+
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${fromEmail}/sendMail`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+
+  // Graph returns 202 Accepted on success
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`[email] Graph sendMail failed [${response.status}]: ${errorText}`);
+  }
+}
+
+// ── Unified dispatcher ────────────────────────────────────────────────────────
+
+async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+  const { isSmtpEnabled, isAzureGraphEnabled } = env;
+
+  if (isSmtpEnabled && isAzureGraphEnabled) {
+    console.warn('[email] Both IS_SMTP_ENABLED and IS_AZURE_GRAPH_ENABLED are true — SMTP takes precedence.');
+  }
+
+  if (!isSmtpEnabled && !isAzureGraphEnabled) {
+    console.warn('[email] No transport enabled (IS_SMTP_ENABLED, IS_AZURE_GRAPH_ENABLED). Email skipped.');
+    return;
+  }
+
+  if (isSmtpEnabled) return sendViaSMTP(to, subject, html);
+  return sendViaGraph(to, subject, html);
 }
 
 export interface InviteEmailParams {
@@ -79,25 +176,11 @@ function escapeHtml(s: string): string {
 }
 
 export async function sendInviteEmail(params: InviteEmailParams): Promise<void> {
-  const transport = getTransporter();
-  if (!transport) return;
-  await transport.sendMail({
-    from: env.mailFrom,
-    to: params.email,
-    subject: 'Your TaskFlow account',
-    html: renderInviteEmail(params),
-  });
+  await sendEmail(params.email, 'Your TaskFlow account', renderInviteEmail(params));
 }
 
 export async function sendForgotPasswordEmail(to: string, params: ForgotPasswordEmailParams): Promise<void> {
-  const transport = getTransporter();
-  if (!transport) return;
-  await transport.sendMail({
-    from: env.mailFrom,
-    to,
-    subject: 'Reset your TaskFlow password',
-    html: renderForgotPasswordEmail(params),
-  });
+  await sendEmail(to, 'Reset your TaskFlow password', renderForgotPasswordEmail(params));
 }
 
 export interface ProjectInviteEmailParams {
@@ -126,14 +209,7 @@ export function renderProjectInviteEmail(params: ProjectInviteEmailParams): stri
 }
 
 export async function sendProjectInviteEmail(to: string, params: ProjectInviteEmailParams): Promise<void> {
-  const transport = getTransporter();
-  if (!transport) return;
-  await transport.sendMail({
-    from: env.mailFrom,
-    to,
-    subject: `Project invitation: ${params.projectName}`,
-    html: renderProjectInviteEmail(params),
-  });
+  await sendEmail(to, `Project invitation: ${params.projectName}`, renderProjectInviteEmail(params));
 }
 
 export interface WatcherNotificationParams {
@@ -162,14 +238,7 @@ export function renderWatcherNotificationEmail(params: WatcherNotificationParams
 }
 
 export async function sendWatcherNotificationEmail(to: string, params: WatcherNotificationParams): Promise<void> {
-  const transport = getTransporter();
-  if (!transport) return;
-  await transport.sendMail({
-    from: env.mailFrom,
-    to,
-    subject: params.title,
-    html: renderWatcherNotificationEmail(params),
-  });
+  await sendEmail(to, params.title, renderWatcherNotificationEmail(params));
 }
 
 // ── Customer Portal Email Templates ──────────────────────────────────────────
@@ -365,12 +434,5 @@ export function renderTicketClosedEmail(
 }
 
 export async function sendCustomerEmail(to: string, subject: string, html: string): Promise<void> {
-  const transport = getTransporter();
-  if (!transport) return;
-  await transport.sendMail({
-    from: env.mailFrom,
-    to,
-    subject,
-    html,
-  });
+  await sendEmail(to, subject, html);
 }

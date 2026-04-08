@@ -275,7 +275,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <div className="h-screen min-h-0 flex bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
       <aside
         className={`flex flex-col border-r border-[color:var(--sidebar-active-bg)] bg-[color:var(--sidebar-bg)] card-shadow shrink-0 transition-[width] duration-200 ease-in-out ${
-          sidebarCollapsed ? 'w-16' : 'w-64'
+          sidebarCollapsed ? 'w-16' : 'w-55'
         }`}
       >
         <div className="p-3 border-b border-[color:var(--sidebar-active-bg)] flex items-center gap-2 min-h-[4.5rem]">
