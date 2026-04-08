@@ -100,6 +100,7 @@ async function sendViaGraph(to: string, subject: string, html: string): Promise<
 // ── Unified dispatcher ────────────────────────────────────────────────────────
 
 async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+  console.log('sendEmail', to, subject, html);
   const { isSmtpEnabled, isAzureGraphEnabled } = env;
 
   if (isSmtpEnabled && isAzureGraphEnabled) {
