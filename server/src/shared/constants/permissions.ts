@@ -116,6 +116,7 @@ export const TASK_FLOW_PERMISSIONS = {
       UPDATE: 'taskflow.report.update',
       DELETE: 'taskflow.report.delete',
     },
+    COST_REPORT: { VIEW: 'taskflow.cost_report.view' },
     LICENSE: { VIEW: 'taskflow.license.view' },
     HR: {
       /** Company job titles (legacy designations collection) */

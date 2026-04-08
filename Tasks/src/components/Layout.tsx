@@ -52,25 +52,37 @@ function buildGlobalNav(user: { mustChangePassword?: boolean; permissions?: stri
   const nav: NavItem[] = [
     { to: '/', label: 'Dashboard', icon: <DashboardIcon />, end: true },
     { to: '/inbox', label: 'Inbox', icon: <InboxIcon /> },
-    { to: '/projects', label: 'Projects', icon: <ProjectsIcon /> },
-    { to: '/project-templates', label: 'Templates', icon: <PackageIcon /> },
-    { to: '/issues', label: 'All Issues', icon: <IssuesIcon /> },
-    { to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon /> },
-    { to: '/performance-report', label: 'Performance', icon: <TimesheetIcon /> },
-    { to: '/workload', label: 'Workload', icon: <TimesheetIcon /> },
-    { to: '/estimates', label: 'Estimates', icon: <TimesheetIcon /> },
   ];
+  const has = (p: string) => perms.includes(p);
+  if (has('project.project.list') || has('projects:list') || has('project.project.create') || has('projects:create')) {
+    nav.push({ to: '/projects', label: 'Projects', icon: <ProjectsIcon /> });
+  }
+  if (has('project.project.create') || has('projects:create')) {
+    nav.push({ to: '/project-templates', label: 'Templates', icon: <PackageIcon /> });
+  }
+  if (has('project.project.list') || has('projects:list')) {
+    nav.push({ to: '/issues', label: 'All Issues', icon: <IssuesIcon /> });
+  }
+  if (has('taskflow.report.read') || has('reports:view')) {
+    nav.push({ to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon /> });
+  }
+  if (has('taskflow.analytics.view') || has('analytics:view')) {
+    nav.push({ to: '/performance-report', label: 'Performance', icon: <TimesheetIcon /> });
+    nav.push({ to: '/workload', label: 'Workload', icon: <TimesheetIcon /> });
+  }
+  if (has('taskflow.report.read') || has('reports:view')) {
+    nav.push({ to: '/estimates', label: 'Estimates', icon: <TimesheetIcon /> });
+  }
   if (user?.role === 'admin') {
     nav.push({ to: '/audit-logs', label: 'Audit logs', icon: <SettingsIcon /> });
   }
-  const has = (p: string) => perms.includes(p);
   if (has('taskflow.analytics.view') || has('analytics:view')) {
     nav.push({ to: '/analytics', label: 'Analytics', icon: <SettingsIcon /> });
   }
   if (has('taskflow.report.read') || has('reports:view')) {
     nav.push({ to: '/reports', label: 'Reports', icon: <SettingsIcon /> });
   }
-  if (has('issue.issue.read') || has('issues:view')) {
+  if (has('taskflow.cost_report.view')) {
     nav.push({ to: '/cost-usage', label: 'Cost report', icon: <TimesheetIcon /> });
   }
   if (has('auth.user.list') || has('auth.user.create') || has('users:list') || has('users:invite')) {

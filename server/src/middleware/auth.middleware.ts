@@ -95,20 +95,14 @@ export async function authMiddleware(
     const role = user.roleId as { _id?: { toString(): string }; permissions?: string[] } | null | undefined;
     const overrides = (user as { permissionOverrides?: { granted?: string[]; revoked?: string[] } })
       .permissionOverrides;
-    const stored = (user as { permissions?: string[] }).permissions;
-    let permissions: string[];
-    if (Array.isArray(stored) && stored.length > 0) {
-      permissions = mergeTaskflowPermissionFloor(stored);
-    } else {
-      permissions = mergeTaskflowPermissionFloor(
-        resolveEffectiveGlobalPermissions({
-          rolePermissions: role?.permissions,
-          role: user.role,
-          mustChangePassword: user.mustChangePassword ?? false,
-          permissionOverrides: overrides,
-        })
-      );
-    }
+    const permissions = mergeTaskflowPermissionFloor(
+      resolveEffectiveGlobalPermissions({
+        rolePermissions: role?.permissions,
+        role: user.role,
+        mustChangePassword: user.mustChangePassword ?? false,
+        permissionOverrides: overrides,
+      })
+    );
     const roleIdStr =
       user.roleId && typeof user.roleId === 'object' && '_id' in user.roleId
         ? (user.roleId as { _id: { toString(): string } })._id.toString()

@@ -2268,7 +2268,7 @@ export default function ProjectSettings() {
                                 </td>
                                 <td className="px-4 py-3">
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[color:var(--bg-page)] text-[color:var(--text-primary)] border border-[color:var(--border-subtle)]">
-                                    {typeof m.designationId === 'object' ? m.designationId.name : 'No Designation'}
+                                    {typeof m.designationId === 'object' && m.designationId !== null ? (m.designationId.name ?? 'No Designation') : 'No Designation'}
                                   </span>
                                 </td>
                                 <td className="px-4 py-3 text-[color:var(--text-muted)] text-xs whitespace-nowrap">

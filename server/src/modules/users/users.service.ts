@@ -84,7 +84,15 @@ export async function update(
   const updateData: Record<string, unknown> = {};
   if (input.name !== undefined) updateData.name = input.name;
   if (input.role !== undefined) updateData.role = input.role;
-  if (input.roleId !== undefined) updateData.roleId = input.roleId || null;
+  if (input.roleId !== undefined) {
+    updateData.roleId = input.roleId || null;
+    const newRole = input.roleId ? await Role.findById(input.roleId).lean() : null;
+    const rolePermsDot = mapLegacyProjectOrGlobalPermissions(
+      Array.isArray(newRole?.permissions) ? (newRole.permissions as string[]) : []
+    );
+    updateData.permissions = mergeTaskflowPermissionFloor(rolePermsDot);
+    updateData.permissionOverrides = { granted: [], revoked: [] };
+  }
   if (input.enabled !== undefined) updateData.enabled = input.enabled;
 
   const user = await User.findByIdAndUpdate(id, { $set: updateData }, { new: true, runValidators: true })

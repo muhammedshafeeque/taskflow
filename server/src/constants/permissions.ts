@@ -18,6 +18,7 @@ export const GLOBAL_PERMISSIONS = [
   { code: 'analytics:view', label: 'View analytics' },
   { code: 'reports:view', label: 'View reports' },
   { code: 'reports:create', label: 'Create reports' },
+  { code: 'taskflow.cost_report.view', label: 'View cost report' },
   { code: 'license:view', label: 'View license' },
   { code: 'customers:manage', label: 'Manage customer organizations' },
   { code: 'customers:view', label: 'View customer organizations' },
