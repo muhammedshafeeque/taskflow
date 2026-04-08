@@ -63,7 +63,7 @@ export default function Users() {
   const [permRevoked, setPermRevoked] = useState<string[]>([]);
   const [permSaving, setPermSaving] = useState(false);
   const [permError, setPermError] = useState('');
-  const [license, setLicense] = useState<any | null>(null);
+  const [license] = useState<any | null>(null);
 
   const tfPerms = currentUser?.permissions ?? [];
   const canEditUsers = userHasPermission(tfPerms, TASK_FLOW_PERMISSIONS.AUTH.USER.UPDATE);

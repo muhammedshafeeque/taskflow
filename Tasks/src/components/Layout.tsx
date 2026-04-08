@@ -10,7 +10,6 @@ import {
   InboxIcon,
   ProjectsIcon,
   UsersIcon,
-  DesignationsIcon,
   RolesIcon,
   ProfileIcon,
   IssuesIcon,
