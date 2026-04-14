@@ -2,6 +2,7 @@ import { useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
 import type { Attachment } from '../../lib/api';
 import { getFilesFromDataTransfer } from '../../lib/clipboardFiles';
 import { uploadFile, attachmentsApi } from '../../lib/api';
+import { AttachmentDownloadLinks } from '../attachment/AttachmentDownloadLinks';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -135,6 +136,11 @@ const TaskAttachments = forwardRef<TaskAttachmentsHandle, TaskAttachmentsProps>(
   const videoAttachments = attachments.filter((a) => isVideo(a.mimeType));
   const otherAttachments = attachments.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType));
 
+  const fileInput =
+    token ? (
+      <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
+    ) : null;
+
   const content = (
     <>
       {attachments.length === 0 ? (
@@ -143,31 +149,49 @@ const TaskAttachments = forwardRef<TaskAttachmentsHandle, TaskAttachmentsProps>(
         <>
           {imageAttachments.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 px-4 py-4">
-              {imageAttachments.map((a) => (
-                <div key={a._id} className="relative rounded-lg overflow-hidden border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] group">
-                  <a href={getDownloadUrl(a.url)} target="_blank" rel="noopener noreferrer" className="block">
-                    <img
-                      src={getDownloadUrl(a.url)}
-                      alt={a.originalName}
-                      loading="lazy"
-                      className="w-full h-40 object-cover"
-                    />
-                  </a>
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition">
-                    <p className="text-[11px] text-white truncate">{a.originalName}</p>
+              {imageAttachments.map((a) => {
+                const href = getDownloadUrl(a.url);
+                return (
+                  <div
+                    key={a._id}
+                    className="flex flex-col rounded-lg overflow-hidden border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] group"
+                  >
+                    <div className="relative">
+                      <a href={href} target="_blank" rel="noopener noreferrer" className="block">
+                        <img
+                          src={href}
+                          alt={a.originalName}
+                          loading="lazy"
+                          className="w-full h-40 object-cover"
+                        />
+                      </a>
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition pointer-events-none">
+                        <p className="text-[11px] text-white truncate">{a.originalName}</p>
+                      </div>
+                      {canDelete(a) && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemove(a)}
+                          className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 bg-black/60 text-[10px] text-red-300 hover:text-red-200 px-1.5 py-0.5 rounded transition"
+                          aria-label="Remove attachment"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/70 px-2 py-1.5">
+                      <span className="text-[10px] text-[color:var(--text-muted)] truncate min-w-0 flex-1" title={a.originalName}>
+                        {a.originalName}
+                      </span>
+                      <AttachmentDownloadLinks
+                        href={href}
+                        fileName={a.originalName}
+                        linkClassName="text-[10px] font-medium text-[color:var(--accent)] hover:underline"
+                      />
+                    </div>
                   </div>
-                  {canDelete(a) && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemove(a)}
-                      className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 bg-black/60 text-[10px] text-red-300 hover:text-red-200 px-1.5 py-0.5 rounded transition"
-                      aria-label="Remove attachment"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -180,18 +204,25 @@ const TaskAttachments = forwardRef<TaskAttachmentsHandle, TaskAttachmentsProps>(
                 playsInline
                 preload="metadata"
               />
-              <div className="flex items-center justify-between mt-1.5">
-                <span className="text-xs text-[color:var(--text-muted)] truncate">{a.originalName}</span>
-                {canDelete(a) && (
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(a)}
-                    className="text-[11px] text-red-400 hover:text-red-300 shrink-0 ml-2"
-                    aria-label="Remove attachment"
-                  >
-                    Remove
-                  </button>
-                )}
+              <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5">
+                <span className="text-xs text-[color:var(--text-muted)] truncate min-w-0">{a.originalName}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <AttachmentDownloadLinks
+                    href={getDownloadUrl(a.url)}
+                    fileName={a.originalName}
+                    linkClassName="text-[11px] font-medium text-[color:var(--accent)] hover:underline"
+                  />
+                  {canDelete(a) && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemove(a)}
+                      className="text-[11px] text-red-400 hover:text-red-300"
+                      aria-label="Remove attachment"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -213,9 +244,8 @@ const TaskAttachments = forwardRef<TaskAttachmentsHandle, TaskAttachmentsProps>(
                     {formatSize(a.size)}
                   </span>
                 </div>
-                <div className="mt-0.5 flex items-center gap-2 text-[11px]">
-                  <a href={getDownloadUrl(a.url)} target="_blank" rel="noopener noreferrer" className="text-[color:var(--accent)] hover:underline font-medium">Open</a>
-                  <a href={getDownloadUrl(a.url)} download className="text-[color:var(--accent)] hover:underline font-medium">Download</a>
+                <div className="mt-0.5">
+                  <AttachmentDownloadLinks href={getDownloadUrl(a.url)} fileName={a.originalName} />
                 </div>
               </div>
               {canDelete(a) && (
@@ -235,7 +265,14 @@ const TaskAttachments = forwardRef<TaskAttachmentsHandle, TaskAttachmentsProps>(
     </>
   );
 
-  if (noWrapper) return content;
+  if (noWrapper) {
+    return (
+      <>
+        {fileInput}
+        {content}
+      </>
+    );
+  }
 
   return (
     <div
@@ -256,12 +293,7 @@ const TaskAttachments = forwardRef<TaskAttachmentsHandle, TaskAttachmentsProps>(
         </span>
         {token && (
           <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              onChange={handleFileSelect}
-            />
+            {fileInput}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}

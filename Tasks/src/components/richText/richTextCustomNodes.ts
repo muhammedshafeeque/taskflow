@@ -1,4 +1,5 @@
 import { Node, mergeAttributes } from '@tiptap/core';
+import { resolveMediaUrl } from '../../lib/mediaUrls';
 
 export const VideoBlock = Node.create({
   name: 'videoBlock',
@@ -48,15 +49,31 @@ export const VideoBlock = Node.create({
   addNodeView() {
     return ({ node }) => {
       const dom = document.createElement('div');
-      dom.className =
-        'my-2 inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[11px] text-[color:var(--text-primary)]';
       const icon = document.createElement('span');
-      icon.className = 'inline-flex w-3.5 h-3.5 items-center justify-center';
+      icon.className = 'inline-flex w-3.5 h-3.5 items-center justify-center shrink-0';
       icon.innerHTML =
         '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>';
       const label = document.createElement('span');
       label.textContent = node.attrs.name || 'Video';
-      dom.append(icon, label);
+      const actions = document.createElement('span');
+      actions.className = 'inline-flex items-center gap-2 ml-2 shrink-0';
+      const url = resolveMediaUrl(String(node.attrs.url || ''));
+      const fileName = String(node.attrs.name || 'video').trim() || 'video';
+      const openA = document.createElement('a');
+      openA.href = url;
+      openA.target = '_blank';
+      openA.rel = 'noopener noreferrer';
+      openA.textContent = 'Open';
+      openA.className = 'text-[color:var(--accent)] hover:underline font-medium';
+      const dlA = document.createElement('a');
+      dlA.href = url;
+      dlA.download = fileName;
+      dlA.textContent = 'Download';
+      dlA.className = 'text-[color:var(--accent)] hover:underline font-medium';
+      actions.append(openA, dlA);
+      dom.className =
+        'my-2 flex flex-wrap items-center gap-x-2 gap-y-1 px-2.5 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[11px] text-[color:var(--text-primary)]';
+      dom.append(icon, label, actions);
       return { dom };
     };
   },
@@ -118,15 +135,32 @@ export const AttachmentBlock = Node.create({
   addNodeView() {
     return ({ node }) => {
       const dom = document.createElement('div');
-      dom.className =
-        'my-2 inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[11px] text-[color:var(--text-primary)]';
       const icon = document.createElement('span');
-      icon.className = 'inline-flex w-3.5 h-3.5 items-center justify-center';
+      icon.className = 'inline-flex w-3.5 h-3.5 items-center justify-center shrink-0';
       icon.innerHTML =
         '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.5L21 8l-9.5 9.5a3 3 0 01-4.243 0l-2.757-2.757a3 3 0 010-4.243L11 3l4.5 4.5" /></svg>';
       const label = document.createElement('span');
       label.textContent = node.attrs.name || 'Attachment';
-      dom.append(icon, label);
+      label.className = 'min-w-0 truncate';
+      const actions = document.createElement('span');
+      actions.className = 'inline-flex items-center gap-2 ml-2 shrink-0';
+      const url = resolveMediaUrl(String(node.attrs.url || ''));
+      const fileName = String(node.attrs.name || 'attachment').trim() || 'attachment';
+      const openA = document.createElement('a');
+      openA.href = url;
+      openA.target = '_blank';
+      openA.rel = 'noopener noreferrer';
+      openA.textContent = 'Open';
+      openA.className = 'text-[color:var(--accent)] hover:underline font-medium';
+      const dlA = document.createElement('a');
+      dlA.href = url;
+      dlA.download = fileName;
+      dlA.textContent = 'Download';
+      dlA.className = 'text-[color:var(--accent)] hover:underline font-medium';
+      actions.append(openA, dlA);
+      dom.className =
+        'my-2 flex flex-wrap items-center gap-x-2 gap-y-1 px-2.5 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[11px] text-[color:var(--text-primary)]';
+      dom.append(icon, label, actions);
       return { dom };
     };
   },

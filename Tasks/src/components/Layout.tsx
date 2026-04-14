@@ -4,7 +4,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationsContext';
 import { toAppPath } from '../lib/navigationUrl';
 import NotificationToast from './NotificationToast';
+import ConfirmModal from './ConfirmModal';
 import { projectsApi, issuesApi, type Project, type Issue, getIssueKey } from '../lib/api';
+import { APP_VERSION } from '../appVersion';
 import {
   DashboardIcon,
   InboxIcon,
@@ -257,6 +259,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -278,7 +281,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(t);
   }, [searchQuery, token, projectId]);
 
-  function handleLogout() {
+  function performLogout() {
+    setLogoutConfirmOpen(false);
     logout();
     navigate('/login');
   }
@@ -348,26 +352,60 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <div className={`p-3 border-t border-[color:var(--sidebar-active-bg)] space-y-2 ${sidebarCollapsed ? 'flex flex-col items-center' : ''}`}>
-          {!sidebarCollapsed && (
-            <div className="px-3 py-2 text-[color:var(--sidebar-text)] text-[11px] font-medium truncate" title={user?.email}>
-              {user?.name}
-            </div>
+        <div
+          className={`border-t border-[color:var(--sidebar-active-bg)] p-3 ${
+            sidebarCollapsed ? 'flex flex-col items-center gap-2' : 'space-y-2'
+          }`}
+        >
+          {!sidebarCollapsed ? (
+            <>
+              <Link
+                to="/profile"
+                className="block rounded-md px-1 py-1 text-left transition hover:bg-[color:var(--sidebar-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--sidebar-bg)]"
+                title={user?.email}
+              >
+                <div className="truncate text-xs font-medium text-[color:var(--sidebar-text-active)]">
+                  {user?.name ?? 'Profile'}
+                </div>
+                {user?.email && (
+                  <div className="mt-0.5 truncate text-[10px] text-[color:var(--sidebar-text)]/80">{user.email}</div>
+                )}
+              </Link>
+              <button
+                type="button"
+                onClick={() => setLogoutConfirmOpen(true)}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-[color:var(--sidebar-text)] transition hover:bg-[color:var(--sidebar-hover-bg)] hover:text-[color:var(--sidebar-text-active)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--sidebar-bg)]"
+              >
+                <LogOutIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                Sign out
+              </button>
+              <p className="px-1 pt-1 text-[10px] text-[color:var(--sidebar-text)]/50" title={`TaskFlow v${APP_VERSION}`}>
+                v{APP_VERSION}
+              </p>
+            </>
+          ) : (
+            <>
+              <Link
+                to="/profile"
+                title={user?.name ?? 'Profile'}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color:var(--sidebar-logo-bg)] text-xs font-semibold text-[color:var(--sidebar-text-active)] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/40"
+              >
+                {(user?.name?.trim().charAt(0) || user?.email?.charAt(0) || '?').toUpperCase()}
+              </Link>
+              <button
+                type="button"
+                onClick={() => setLogoutConfirmOpen(true)}
+                title="Sign out"
+                aria-label="Sign out"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[color:var(--sidebar-text)] transition hover:bg-[color:var(--sidebar-hover-bg)] hover:text-[color:var(--sidebar-text-active)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/40"
+              >
+                <LogOutIcon className="h-4 w-4" aria-hidden />
+              </button>
+              <span className="text-[9px] text-[color:var(--sidebar-text)]/50" title={`TaskFlow v${APP_VERSION}`}>
+                v{APP_VERSION}
+              </span>
+            </>
           )}
-          <button
-            type="button"
-            onClick={handleLogout}
-            title="Sign out"
-            className={`flex items-center justify-center rounded-md text-[color:var(--sidebar-text)] border border-transparent hover:border-[color:var(--sidebar-active-bg)] hover:bg-[color:var(--sidebar-hover-bg)] hover:text-[color:var(--sidebar-text-active)] transition ${
-              sidebarCollapsed ? 'w-full py-2 px-0' : 'w-full px-3 py-1.5 text-xs'
-            }`}
-          >
-            {sidebarCollapsed ? (
-              <LogOutIcon className="w-5 h-5" aria-hidden />
-            ) : (
-              'Sign out'
-            )}
-          </button>
         </div>
       </aside>
       <div className="flex-1 flex flex-col min-w-0">
@@ -546,6 +584,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })()}
         </div>
       </div>
+      <ConfirmModal
+        open={logoutConfirmOpen}
+        title="Sign out?"
+        message="You will need to sign in again to continue."
+        confirmLabel="Sign out"
+        variant="default"
+        onConfirm={performLogout}
+        onCancel={() => setLogoutConfirmOpen(false)}
+      />
     </div>
   );
 }

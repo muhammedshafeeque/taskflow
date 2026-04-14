@@ -9,12 +9,9 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { useAuth } from '../contexts/AuthContext';
-import { userHasPermission } from '../utils/permissions';
-import { TASK_FLOW_PERMISSIONS } from '@shared/constants/permissions';
 import { useNotifications } from '../contexts/NotificationsContext';
 import {
   issuesApi,
-  usersApi,
   projectsApi,
   sprintsApi,
   milestonesApi,
@@ -382,26 +379,21 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
   const getStatusMeta = (name: string) => project?.statuses?.find((s) => s.name === name);
 
   useEffect(() => {
-    if (!token) return;
-    const perms = user?.permissions ?? [];
-    if (userHasPermission(perms, TASK_FLOW_PERMISSIONS.AUTH.USER.LIST)) {
-      usersApi.list(1, 100, token).then((res) => {
-        if (res.success && res.data) setUsers(res.data.data);
-      });
-    } else if (projectId) {
-      projectsApi.getMembers(projectId, token).then((res) => {
-        if (res.success && res.data) {
-          const members = Array.isArray(res.data) ? res.data : [];
-          const flattened = members.map((m) => ({
-            _id: m.user._id,
-            name: m.user.name,
-            email: m.user.email,
-          }));
-          setUsers(flattened as unknown as User[]);
-        }
-      });
-    }
-  }, [token, user?.permissions, projectId]);
+    if (!token || !projectId) return;
+    projectsApi.getMembers(projectId, token).then((res) => {
+      if (res.success && res.data) {
+        const members = Array.isArray(res.data) ? res.data : [];
+        const flattened = members.map((m) => ({
+          _id: m.user._id,
+          name: m.user.name,
+          email: m.user.email,
+        }));
+        setUsers(flattened as unknown as User[]);
+      } else {
+        setUsers([]);
+      }
+    });
+  }, [token, projectId]);
 
   useEffect(() => {
     setJqlInput(jql);

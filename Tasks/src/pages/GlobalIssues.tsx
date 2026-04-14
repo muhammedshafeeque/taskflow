@@ -87,6 +87,7 @@ export default function GlobalIssues() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
+  const [modalUsers, setModalUsers] = useState<User[]>([]);
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [editIssue, setEditIssue] = useState<Issue | null>(null);
@@ -313,6 +314,26 @@ export default function GlobalIssues() {
     } else {
       setSelectedProject(null);
     }
+  }, [form.project, token]);
+
+  useEffect(() => {
+    if (!token || !form.project) {
+      setModalUsers([]);
+      return;
+    }
+    projectsApi.getMembers(form.project, token).then((res) => {
+      if (res.success && res.data) {
+        const members = Array.isArray(res.data) ? res.data : [];
+        const flattened = members.map((m) => ({
+          _id: m.user._id,
+          name: m.user.name,
+          email: m.user.email,
+        }));
+        setModalUsers(flattened as unknown as User[]);
+      } else {
+        setModalUsers([]);
+      }
+    });
   }, [form.project, token]);
 
   useEffect(() => {
@@ -768,7 +789,7 @@ export default function GlobalIssues() {
         typeList={selectedProject ? (selectedProject.issueTypes?.map((t) => t.name) ?? DEFAULT_TYPES) : typeList}
         priorityList={selectedProject ? (selectedProject.priorities?.map((p) => p.name) ?? DEFAULT_PRIORITIES) : priorityList}
         statusList={selectedProject ? (selectedProject.statuses?.map((s) => s.name) ?? DEFAULT_STATUSES) : statusList}
-        users={users}
+        users={modalUsers}
         parentCandidates={parentCandidates}
         project={selectedProject}
         getIssueKey={getIssueKey}
