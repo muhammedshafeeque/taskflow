@@ -115,10 +115,10 @@ export async function register(input: RegisterInput): Promise<{ user: AuthUser; 
     throw new ApiError(409, 'Email already registered');
   }
 
-  const hashedPassword = await bcrypt.hash(input.password, SALT_ROUNDS);
   const user = await User.create({
     email: input.email,
-    password: hashedPassword,
+    // User model hashes password in pre-save hook.
+    password: input.password,
     name: input.name,
     role: input.role ?? 'user',
     permissions: mergeTaskflowPermissionFloor([]),
@@ -457,11 +457,11 @@ export async function microsoftSso(input: MicrosoftSsoInput): Promise<{ user: Au
       rawEmail.split('@')[0];
 
     const randomPassword = crypto.randomBytes(32).toString('hex');
-    const hashedPassword = await bcrypt.hash(randomPassword, SALT_ROUNDS);
 
     const created = await User.create({
       email: rawEmail,
-      password: hashedPassword,
+      // User model hashes password in pre-save hook.
+      password: randomPassword,
       name: displayName,
       avatarUrl: userInfoRes.data.picture || null,
       role: 'user',

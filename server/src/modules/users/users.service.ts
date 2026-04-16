@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { User } from '../auth/user.model';
 import { Role } from '../roles/role.model';
@@ -13,8 +12,6 @@ import * as inboxService from '../inbox/inbox.service';
 
 import dotenv from 'dotenv';
 dotenv.config();
-
-const SALT_ROUNDS = 10;
 
 export async function findAll(
   pagination: PaginationOptions = { page: 1, limit: 20 }
@@ -133,14 +130,14 @@ export async function invite(input: InviteUserBody): Promise<unknown> {
   if (!role) throw new ApiError(400, 'Invalid role');
 
   const plainPassword = crypto.randomBytes(10).toString('base64').replace(/[+/=]/g, '').slice(0, 14);
-  const hashedPassword = await bcrypt.hash(plainPassword, SALT_ROUNDS);
 
   const rolePermsDot = mapLegacyProjectOrGlobalPermissions(
     Array.isArray(role.permissions) ? role.permissions : []
   );
   const user = await User.create({
     email: input.email.toLowerCase().trim(),
-    password: hashedPassword,
+    // User model hashes password in pre-save hook.
+    password: plainPassword,
     name: input.name.trim(),
     role: 'user',
     roleId: input.roleId,

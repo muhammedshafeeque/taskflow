@@ -38,17 +38,17 @@ export default function TaskActivityComments({
   return (
     <section className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--text-muted)] shrink-0">
+        <span className="type-label-caps shrink-0">
           Activity
         </span>
         <div className="flex gap-1">
           <button
             type="button"
             onClick={() => setActiveTab('comments')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-xs transition-colors ${
               activeTab === 'comments'
                 ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] border border-[color:var(--border-subtle)] shadow-sm font-semibold'
-                : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'
+                : 'font-normal text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'
             }`}
           >
             Comments ({comments.length})
@@ -56,10 +56,10 @@ export default function TaskActivityComments({
           <button
             type="button"
             onClick={() => setActiveTab('history')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-xs transition-colors ${
               activeTab === 'history'
                 ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] border border-[color:var(--border-subtle)] shadow-sm font-semibold'
-                : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'
+                : 'font-normal text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'
             }`}
           >
             History
@@ -67,10 +67,10 @@ export default function TaskActivityComments({
           <button
             type="button"
             onClick={() => setActiveTab('time')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-xs transition-colors ${
               activeTab === 'time'
                 ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] border border-[color:var(--border-subtle)] shadow-sm font-semibold'
-                : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'
+                : 'font-normal text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'
             }`}
           >
             Time
@@ -88,7 +88,7 @@ export default function TaskActivityComments({
           />
           <ul className="space-y-3 mt-4">
             {comments.length === 0 ? (
-              <li className="text-[color:var(--text-muted)] text-xs py-4 text-center italic">No comments yet.</li>
+              <li className="type-meta py-4 text-center italic">No comments yet.</li>
             ) : (
               comments.map((c) => (
                 <li key={c._id}>

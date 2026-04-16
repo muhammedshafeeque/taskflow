@@ -7,6 +7,7 @@ const metaItemSchema = z.object({
   isClosed: z.boolean().optional(),
   icon: z.string().optional(),
   color: z.string().optional(),
+  fontColor: z.string().optional(),
 });
 
 export const projectTemplatesValidation = {

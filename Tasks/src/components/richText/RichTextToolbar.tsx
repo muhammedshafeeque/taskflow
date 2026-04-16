@@ -1,3 +1,4 @@
+import { useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
 import {
@@ -38,6 +39,12 @@ interface RichTextToolbarProps {
 
 export default function RichTextToolbar({ editor, onPickImage, onPickFile, extraRight }: RichTextToolbarProps) {
   if (!editor) return null;
+  const colorInputRef = useRef<HTMLInputElement>(null);
+  const activeColor = (editor.getAttributes('textStyle').color as string | undefined) ?? '';
+  const buttonColor = useMemo(() => {
+    const v = (activeColor || '').trim();
+    return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v) ? v : '#4f46e5';
+  }, [activeColor]);
 
   return (
     <div className="flex flex-wrap items-center gap-0.5 px-2 py-1 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
@@ -96,6 +103,30 @@ export default function RichTextToolbar({ editor, onPickImage, onPickFile, extra
         className={`${TB} ${editor.isActive('code') ? TB_ACTIVE : ''}`}
       >
         <LuCode className="w-4 h-4" />
+      </button>
+      <input
+        ref={colorInputRef}
+        type="color"
+        value={buttonColor}
+        onChange={(e) => editor.chain().focus().setColor(e.target.value).run()}
+        className="sr-only"
+        aria-label="Pick text color"
+      />
+      <button
+        type="button"
+        title="Text color"
+        onClick={() => colorInputRef.current?.click()}
+        className={`${TB} ${activeColor ? TB_ACTIVE : ''}`}
+      >
+        <span className="w-4 h-4 rounded border border-[color:var(--border-subtle)]" style={{ backgroundColor: buttonColor }} />
+      </button>
+      <button
+        type="button"
+        title="Clear text color"
+        onClick={() => editor.chain().focus().unsetColor().run()}
+        className={TB}
+      >
+        A
       </button>
       <div className={SEP} />
       {(['left', 'center', 'right', 'justify'] as const).map((align) => (

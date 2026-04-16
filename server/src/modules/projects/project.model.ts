@@ -7,6 +7,7 @@ export interface IProjectStatus {
   isClosed?: boolean;
   icon?: string;
   color?: string;
+  fontColor?: string;
 }
 
 export interface IProjectIssueType {
@@ -15,6 +16,7 @@ export interface IProjectIssueType {
   order: number;
   icon?: string;
   color?: string;
+  fontColor?: string;
 }
 
 export interface IProjectPriority {
@@ -23,6 +25,7 @@ export interface IProjectPriority {
   order: number;
   icon?: string;
   color?: string;
+  fontColor?: string;
 }
 
 export type CustomFieldType = 'text' | 'number' | 'date' | 'select' | 'multiselect' | 'user';
@@ -98,6 +101,7 @@ const projectStatusSchema = new Schema<IProjectStatus>(
     isClosed: { type: Boolean, default: undefined },
     icon: { type: String, default: undefined },
     color: { type: String, default: undefined },
+    fontColor: { type: String, default: undefined },
   },
   { _id: false }
 );
@@ -109,6 +113,7 @@ const projectIssueTypeSchema = new Schema<IProjectIssueType>(
     order: { type: Number, required: true },
     icon: { type: String, default: undefined },
     color: { type: String, default: undefined },
+    fontColor: { type: String, default: undefined },
   },
   { _id: false }
 );
@@ -120,6 +125,7 @@ const projectPrioritySchema = new Schema<IProjectPriority>(
     order: { type: Number, required: true },
     icon: { type: String, default: undefined },
     color: { type: String, default: undefined },
+    fontColor: { type: String, default: undefined },
   },
   { _id: false }
 );

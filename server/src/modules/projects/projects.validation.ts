@@ -7,6 +7,7 @@ const projectStatusSchema = z.object({
   isClosed: z.boolean().optional(),
   icon: z.string().optional(),
   color: z.string().optional(),
+  fontColor: z.string().optional(),
 });
 const projectIssueTypeSchema = z.object({
   id: z.string(),
@@ -14,6 +15,7 @@ const projectIssueTypeSchema = z.object({
   order: z.number(),
   icon: z.string().optional(),
   color: z.string().optional(),
+  fontColor: z.string().optional(),
 });
 const projectPrioritySchema = z.object({
   id: z.string(),
@@ -21,6 +23,7 @@ const projectPrioritySchema = z.object({
   order: z.number(),
   icon: z.string().optional(),
   color: z.string().optional(),
+  fontColor: z.string().optional(),
 });
 const customFieldTypeEnum = z.enum(['text', 'number', 'date', 'select', 'multiselect', 'user']);
 const projectCustomFieldSchema = z.object({

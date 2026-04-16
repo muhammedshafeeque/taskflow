@@ -62,13 +62,13 @@ export default function TaskHistoryStack({ issue }: TaskHistoryStackProps) {
 
   if (loading) {
     return (
-      <p className="text-xs text-[color:var(--text-muted)] py-4">Loading history…</p>
+      <p className="type-meta py-4">Loading history…</p>
     );
   }
 
   if (history.length === 0) {
     return (
-      <p className="text-xs text-[color:var(--text-muted)] py-4">No history yet.</p>
+      <p className="type-meta py-4">No history yet.</p>
     );
   }
 
@@ -89,16 +89,16 @@ export default function TaskHistoryStack({ issue }: TaskHistoryStackProps) {
             <div className="w-1.5 h-1.5 rounded-full bg-[color:var(--text-primary)]" />
           </div>
           <div className="flex-1 min-w-0 pb-2">
-            <p className="text-xs text-[color:var(--text-primary)]">
-              <span className="font-medium">{entry.author.name}</span>{' '}
-              <span className="text-[color:var(--text-muted)]">{formatMessage(entry)}</span>
+            <p className="type-history-action">
+              <span className="type-history-actor">{entry.author.name}</span>{' '}
+              <span>{formatMessage(entry)}</span>
             </p>
             {(entry.action === 'comment_added' || entry.action === 'comment_updated') && entry.commentBody && (
-              <p className="text-xs text-[color:var(--text-muted)] mt-1.5 pl-3 border-l-2 border-[color:var(--border-subtle)] italic">
+              <p className="type-meta mt-1.5 pl-3 border-l-2 border-[color:var(--border-subtle)] italic">
                 {truncateBody(entry.commentBody)}
               </p>
             )}
-            <p className="text-[10px] text-[color:var(--text-muted)] mt-0.5">{relativeTime(entry.createdAt)}</p>
+            <p className="type-meta mt-0.5">{relativeTime(entry.createdAt)}</p>
           </div>
         </li>
       ))}

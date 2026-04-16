@@ -26,12 +26,12 @@ export default function TaskCommentItem({ comment }: TaskCommentItemProps) {
 
   return (
     <div className="rounded-xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] p-4">
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <span className="type-author">{authorName}</span>
+        <span className="type-meta">·</span>
+        <span className="type-meta">{relativeTime(comment.createdAt)}</span>
+      </div>
       <RichTextContent body={comment.body} />
-      <p className="text-[color:var(--text-muted)] text-[11px] mt-3 flex items-center gap-1">
-        <span className="font-medium text-[color:var(--text-primary)]">{authorName}</span>
-        <span>·</span>
-        <span>{relativeTime(comment.createdAt)}</span>
-      </p>
     </div>
   );
 }

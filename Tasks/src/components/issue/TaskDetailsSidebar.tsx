@@ -234,7 +234,7 @@ function InlineEstimate({
           placeholder="e.g. 1h 2m 10s"
           className={`${inputBase} ${error ? 'border-red-400' : ''}`}
         />
-        {error && <p className="text-[10px] text-red-400 mt-0.5">{error}</p>}
+        {error && <p className="type-meta text-red-400 mt-0.5">{error}</p>}
       </div>
     );
   }
@@ -319,7 +319,7 @@ function InlineStoryPoints({
           autoFocus
           className={`${inputBase} ${error ? 'border-red-400' : ''}`}
         />
-        {error && <p className="text-[10px] text-red-400 mt-0.5">{error}</p>}
+        {error && <p className="type-meta text-red-400 mt-0.5">{error}</p>}
       </div>
     );
   }
@@ -384,13 +384,13 @@ export default function TaskDetailsSidebar({
       <div className="sticky top-6 max-h-[calc(100vh-5rem)] overflow-y-auto space-y-4 pr-1 [scrollbar-width:thin] [scrollbar-color:var(--border-subtle)_transparent]">
         <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b-2 border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">Details</span>
+            <span className="type-label-caps">Details</span>
           </div>
 
           <div className="divide-y divide-[color:var(--border-subtle)]/70">
             {/* Status */}
             <div className="px-4 py-3">
-              <label className="flex items-center gap-1.5 text-[10px] font-semibold text-[color:var(--text-muted)] uppercase tracking-[0.1em] mb-1.5">
+              <label className="flex items-center gap-1.5 type-label-caps mb-1.5">
                 {(() => {
                   const meta = getStatusMeta(issue.status);
                   return (
@@ -432,7 +432,7 @@ export default function TaskDetailsSidebar({
             {/* Type & Priority */}
             <div className="px-4 py-3 grid grid-cols-2 gap-2.5">
               <div>
-                <label className="flex items-center gap-1.5 text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider mb-1.5">
+                <label className="flex items-center gap-1.5 type-label-caps mb-1.5">
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: getTypeMeta(issue.type)?.color ?? 'rgb(100 116 139)' }} aria-hidden />
                   Type
                 </label>
@@ -457,7 +457,7 @@ export default function TaskDetailsSidebar({
                 />
               </div>
               <div>
-                <label className="flex items-center gap-1.5 text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider mb-1.5">
+                <label className="flex items-center gap-1.5 type-label-caps mb-1.5">
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: getPriorityMeta(issue.priority)?.color ?? 'rgb(251 191 36)' }} aria-hidden />
                   Priority
                 </label>
@@ -485,12 +485,12 @@ export default function TaskDetailsSidebar({
 
             {/* People */}
             <div className="px-4 py-3 space-y-2">
-              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+              <label className="block type-label-caps">
                 People
               </label>
               <div className="space-y-1.5">
                 <div>
-                  <span className="block text-[10px] text-[color:var(--text-muted)] mb-1">Assignee</span>
+                  <span className="block type-sub-label mb-1">Assignee</span>
                   <InlineSelect
                     value={assigneeId || '__unassigned__'}
                     options={[
@@ -503,7 +503,7 @@ export default function TaskDetailsSidebar({
                       <span className="flex items-center gap-2">
                         {assignee && label !== 'Unassigned' ? (
                           <>
-                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[color:var(--accent-subtle)] border border-[color:var(--accent)]/20 text-[9px] font-bold text-[color:var(--accent)] shrink-0">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[color:var(--accent-subtle)] border border-[color:var(--accent)]/20 text-[10px] font-bold text-[color:var(--accent)] shrink-0">
                               {getInitials(label)}
                             </span>
                             <span className="text-[color:var(--text-primary)] truncate">{label}</span>
@@ -516,7 +516,7 @@ export default function TaskDetailsSidebar({
                   />
                 </div>
                 <div>
-                  <span className="block text-[10px] text-[color:var(--text-muted)] mb-1">Reporter</span>
+                  <span className="block type-sub-label mb-1">Reporter</span>
                   <p className="px-3 py-2 text-xs text-[color:var(--text-primary)] bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] rounded-md">
                     {reporterName}
                   </p>
@@ -526,7 +526,7 @@ export default function TaskDetailsSidebar({
 
             {/* Watchers */}
             <div className="px-4 py-3 space-y-2">
-              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+              <label className="block type-label-caps">
                 Watchers
               </label>
               <div className="flex items-center gap-2 flex-wrap">
@@ -550,7 +550,7 @@ export default function TaskDetailsSidebar({
                     return (
                       <span
                         key={w.user._id}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[color:var(--accent-subtle)] border border-[color:var(--accent)]/20 text-[9px] font-bold text-[color:var(--accent)]"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[color:var(--accent-subtle)] border border-[color:var(--accent)]/20 text-[10px] font-bold text-[color:var(--accent)]"
                         title={tooltip}
                       >
                         {getInitials(w.user.name)}
@@ -563,12 +563,12 @@ export default function TaskDetailsSidebar({
 
             {/* Dates */}
             <div className="px-4 py-3 space-y-2">
-              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+              <label className="block type-label-caps">
                 Dates
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <span className="block text-[10px] text-[color:var(--text-muted)] mb-1">Due</span>
+                  <span className="block type-sub-label mb-1">Due</span>
                   <InlineDate
                     value={issue.dueDate ?? ''}
                     onChange={(v) => onUpdateField('dueDate', v)}
@@ -576,7 +576,7 @@ export default function TaskDetailsSidebar({
                   />
                 </div>
                 <div>
-                  <span className="block text-[10px] text-[color:var(--text-muted)] mb-1">Start</span>
+                  <span className="block type-sub-label mb-1">Start</span>
                   <InlineDate
                     value={issue.startDate ?? ''}
                     onChange={(v) => onUpdateField('startDate', v)}
@@ -588,13 +588,13 @@ export default function TaskDetailsSidebar({
 
             {/* Versions */}
             <div className="px-4 py-3 space-y-2">
-              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+              <label className="block type-label-caps">
                 Versions
               </label>
               {project?.versions && project.versions.length > 0 ? (
                 <div className="space-y-2">
                   <div>
-                    <span className="block text-[10px] text-[color:var(--text-muted)] mb-1">Fix version</span>
+                    <span className="block type-sub-label mb-1">Fix version</span>
                     <InlineSelect
                       value={issue.fixVersion ?? ''}
                       options={[
@@ -634,7 +634,7 @@ export default function TaskDetailsSidebar({
 
             {/* Estimate */}
             <div className="px-4 py-3 space-y-2">
-              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+              <label className="block type-label-caps">
                 Estimate
               </label>
               <InlineEstimate
@@ -642,14 +642,14 @@ export default function TaskDetailsSidebar({
                 onChange={(v) => onUpdateField('timeEstimateMinutes', v)}
                 disabled={!!updatingField}
               />
-              <p className="text-[11px] text-[color:var(--text-muted)]">
+              <p className="type-meta">
                 e.g. 1h 2m 10s
               </p>
             </div>
 
             {/* Story points */}
             <div className="px-4 py-3 space-y-2">
-              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+              <label className="block type-label-caps">
                 Story points
               </label>
               <InlineStoryPoints
@@ -661,7 +661,7 @@ export default function TaskDetailsSidebar({
 
             {/* Time logged */}
             <div className="px-4 py-3 space-y-2">
-              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+              <label className="block type-label-caps">
                 Time logged
               </label>
               <button
@@ -674,7 +674,7 @@ export default function TaskDetailsSidebar({
                   {formatMinutes(totalMinutes)}
                 </span>
               </button>
-              <p className="text-[11px] text-[color:var(--text-muted)]">
+              <p className="type-meta">
                 Click to open the full log time dialog (Jira style).
               </p>
               {recentLogs.length > 0 && (
@@ -682,7 +682,7 @@ export default function TaskDetailsSidebar({
                   {recentLogs.map((log) => (
                     <div
                       key={log._id}
-                      className="flex items-center justify-between text-[11px] text-[color:var(--text-muted)]"
+                      className="flex items-center justify-between type-meta"
                     >
                       <span className="truncate">
                         {log.author?.name ?? 'Someone'} ·{' '}
@@ -696,7 +696,7 @@ export default function TaskDetailsSidebar({
                 </div>
               )}
               {workLogs.length === 0 && (
-                <p className="text-[11px] text-[color:var(--text-muted)]">
+                <p className="type-meta">
                   No work logged yet. Use this quick form or the Time tab in Activity.
                 </p>
               )}
@@ -704,7 +704,7 @@ export default function TaskDetailsSidebar({
 
             {/* Sprint */}
             <div className="px-4 py-3 space-y-2">
-              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider">
+              <label className="block type-label-caps">
                 Sprint
               </label>
               <InlineSelect
@@ -724,11 +724,11 @@ export default function TaskDetailsSidebar({
 
             {/* Timestamps */}
             <div className="px-4 py-3 bg-[color:var(--bg-elevated)]">
-              <div className="flex justify-between text-[10px] text-[color:var(--text-muted)]">
+              <div className="flex justify-between type-meta">
                 <span>Created</span>
                 <span className="text-[color:var(--text-primary)]">{formatDate(issue.createdAt)}</span>
               </div>
-              <div className="flex justify-between text-[10px] text-[color:var(--text-muted)] mt-1">
+              <div className="flex justify-between type-meta mt-1">
                 <span>Updated</span>
                 <span className="text-[color:var(--text-primary)]">{formatDate(issue.updatedAt)}</span>
               </div>
@@ -736,7 +736,7 @@ export default function TaskDetailsSidebar({
 
             {/* Labels */}
             <div className="px-4 py-3">
-              <label className="block text-[10px] font-medium text-[color:var(--text-muted)] uppercase tracking-wider mb-1.5">
+              <label className="block type-label-caps mb-1.5">
                 Labels
               </label>
               <div className="flex flex-wrap gap-1.5 mb-2">
@@ -815,7 +815,7 @@ function VersionMultiSelect({
   if (editing) {
     return (
       <div ref={ref}>
-        <span className="block text-[10px] text-[color:var(--text-muted)] mb-1">Affects versions</span>
+        <span className="block type-sub-label mb-1">Affects versions</span>
         <select
           multiple
           value={value}
@@ -834,14 +834,14 @@ function VersionMultiSelect({
             </option>
           ))}
         </select>
-        <p className="text-[10px] text-[color:var(--text-muted)] mt-1">Ctrl+click for multiple</p>
+        <p className="type-meta mt-1">Ctrl+click for multiple</p>
       </div>
     );
   }
 
   return (
     <div>
-      <span className="block text-[10px] text-[color:var(--text-muted)] mb-1">Affects versions</span>
+      <span className="block type-sub-label mb-1">Affects versions</span>
       <button
         type="button"
         onClick={() => !disabled && setEditing(true)}

@@ -7,7 +7,7 @@ import { VideoEmbed } from '../issue/VideoEmbed';
 import { AttachmentDownloadLinks } from '../attachment/AttachmentDownloadLinks';
 
 const PROSE =
-  'prose prose-invert prose-sm max-w-none break-words [&_img]:max-w-full [&_img]:max-h-[480px] [&_img]:object-contain [&_img]:w-auto [&_img]:cursor-zoom-in [&_img]:rounded-lg [&_img]:border [&_img]:border-[color:var(--border-subtle)] [&_table]:border-collapse [&_table]:w-full [&_table]:my-3 [&_table]:text-sm [&_th]:border [&_th]:border-[color:var(--border-subtle)] [&_th]:bg-[color:var(--bg-elevated)] [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-[color:var(--border-subtle)] [&_td]:px-2 [&_td]:py-1.5 [&_tr]:border-b [&_tr]:border-[color:var(--border-subtle)] [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-[color:var(--accent)] [&_blockquote]:border-l-4 [&_blockquote]:border-[color:var(--border-subtle)] [&_blockquote]:pl-4 [&_pre]:bg-[color:var(--bg-elevated)] [&_pre]:rounded-md [&_pre]:p-3';
+  'prose-content max-w-none break-words [&_img]:max-w-full [&_img]:max-h-[480px] [&_img]:object-contain [&_img]:w-auto [&_img]:cursor-zoom-in [&_img]:rounded-lg [&_img]:border [&_img]:border-[color:var(--border-subtle)] [&_table]:border-collapse [&_table]:w-full [&_table]:my-3 [&_table]:text-sm [&_th]:border [&_th]:border-[color:var(--border-subtle)] [&_th]:bg-[color:var(--bg-elevated)] [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-[color:var(--border-subtle)] [&_td]:px-2 [&_td]:py-1.5 [&_tr]:border-b [&_tr]:border-[color:var(--border-subtle)] [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-[color:var(--accent)] [&_blockquote]:border-l-4 [&_blockquote]:border-[color:var(--border-subtle)] [&_blockquote]:pl-4 [&_pre]:bg-[color:var(--bg-elevated)] [&_pre]:rounded-md [&_pre]:p-3';
 
 function splitHtmlByAttachmentBlocks(
   html: string
@@ -206,11 +206,25 @@ function fixAnchorHref(html: string): string {
   });
 }
 
+function stripMentionPrefixInHtml(html: string): string {
+  let next = html.replace(
+    /(<span\b[^>]*\bdata-type="mention"[^>]*>)([^<]*)(<\/span>)/gi,
+    (_full, open, text, close) => `${open}${String(text).replace(/^@+/, '')}${close}`
+  );
+  next = next.replace(
+    /(<a\b[^>]*\bhref="[a-fA-F0-9]{24}"[^>]*>)([^<]*)(<\/a>)/gi,
+    (_full, open, text, close) => `${open}${String(text).replace(/^@+/, '')}${close}`
+  );
+  return next;
+}
+
 function HtmlSegment({ html }: { html: string }) {
-  const clean = fixAnchorHref(injectImageDownloadControls(fixImgSrcInHtml(sanitizeRichHtml(html))));
+  const clean = fixAnchorHref(
+    injectImageDownloadControls(stripMentionPrefixInHtml(fixImgSrcInHtml(sanitizeRichHtml(html))))
+  );
   return (
     <div
-      className={`${PROSE} [&_p[style*='text-align']]:max-w-none [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg`}
+      className={`${PROSE} [&_p[style*='text-align']]:max-w-none`}
       dangerouslySetInnerHTML={{ __html: clean }}
     />
   );
@@ -268,15 +282,16 @@ function MarkdownRichBody({ body }: { body: string }) {
                 const rawHref = href || '';
                 const isMentionId = /^[a-fA-F0-9]{24}$/.test(rawHref);
                 if (isMentionId) {
-                  const name =
+                  const rawName =
                     typeof children === 'string'
                       ? children
                       : Array.isArray(children) && children.every((c) => typeof c === 'string')
                         ? children.join('')
                         : 'User';
+                  const name = String(rawName).replace(/^@+/, '').trim() || 'User';
                   return (
                     <span className="inline-flex items-center rounded-md bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] px-2 py-0.5 text-xs text-[color:var(--text-primary)] font-medium">
-                      @{String(name).trim() || 'User'}
+                      {name}
                     </span>
                   );
                 }

@@ -39,7 +39,7 @@ export default function DescriptionEditor({
     editorProps: {
       attributes: {
         class: editorContentClass(
-          'min-h-[120px] px-3 py-2 bg-[color:var(--bg-page)] text-[color:var(--text-primary)] text-xs leading-relaxed outline-none rounded-b-md'
+          'min-h-[120px] px-3 py-2 bg-[color:var(--bg-page)] text-[color:var(--text-primary)] text-sm leading-[1.7] outline-none rounded-b-md'
         ),
       },
       handleDrop(_view, event) {

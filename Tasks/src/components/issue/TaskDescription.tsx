@@ -34,7 +34,7 @@ export default function TaskDescription({ issue, onUpdateDescription }: TaskDesc
     return (
       <section className="rounded-lg bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] card-shadow overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">
+          <span className="type-label-caps">
             Description
           </span>
           <div className="flex items-center gap-2">
@@ -69,7 +69,7 @@ export default function TaskDescription({ issue, onUpdateDescription }: TaskDesc
   return (
     <section className="rounded-lg bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] card-shadow overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">
+        <span className="type-label-caps">
           Description
         </span>
         {onUpdateDescription && (
@@ -89,7 +89,7 @@ export default function TaskDescription({ issue, onUpdateDescription }: TaskDesc
         {issue.description ? (
           <RichTextContent body={issue.description} />
         ) : (
-          <p className="text-sm text-[color:var(--text-muted)] italic py-6 text-center">
+          <p className="type-meta italic py-6 text-center">
             {onUpdateDescription ? 'Add a description…' : 'No description.'}
           </p>
         )}

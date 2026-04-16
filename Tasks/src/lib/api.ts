@@ -148,6 +148,7 @@ export interface ProjectStatus {
   isClosed?: boolean;
   icon?: string;
   color?: string;
+  fontColor?: string;
 }
 
 export interface ProjectIssueType {
@@ -156,6 +157,7 @@ export interface ProjectIssueType {
   order: number;
   icon?: string;
   color?: string;
+  fontColor?: string;
 }
 
 export interface ProjectPriority {
@@ -164,6 +166,7 @@ export interface ProjectPriority {
   order: number;
   icon?: string;
   color?: string;
+  fontColor?: string;
 }
 
 export type CustomFieldType = 'text' | 'number' | 'date' | 'select' | 'multiselect' | 'user';
@@ -268,9 +271,9 @@ export interface ProjectTemplate {
   _id: string;
   name: string;
   description?: string;
-  statuses?: Array<{ id: string; name: string; order: number }>;
-  issueTypes?: Array<{ id: string; name: string; order: number }>;
-  priorities?: Array<{ id: string; name: string; order: number }>;
+  statuses?: Array<{ id: string; name: string; order: number; isClosed?: boolean; icon?: string; color?: string; fontColor?: string }>;
+  issueTypes?: Array<{ id: string; name: string; order: number; icon?: string; color?: string; fontColor?: string }>;
+  priorities?: Array<{ id: string; name: string; order: number; icon?: string; color?: string; fontColor?: string }>;
 }
 
 /* In-app notifications */
