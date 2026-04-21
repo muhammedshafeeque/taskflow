@@ -4,6 +4,7 @@ const boardTypeEnum = z.enum(['Kanban', 'Scrum']);
 const columnSchema = z.object({
   name: z.string().min(1),
   statusId: z.string().min(1),
+  visibleStatuses: z.array(z.string().min(1)).optional(),
   order: z.number().int().min(0),
 });
 
