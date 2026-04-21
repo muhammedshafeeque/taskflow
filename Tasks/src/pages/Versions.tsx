@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
@@ -131,6 +131,10 @@ export default function Versions() {
   const releaseNotesContentRef = useRef<HTMLDivElement>(null);
   const releaseNotesExportRef = useRef<HTMLDivElement>(null);
   const environments = project?.environments ?? [];
+  const versionsNewestFirst = useMemo(
+    () => [...versions].sort((a, b) => (b.order ?? 0) - (a.order ?? 0)),
+    [versions]
+  );
 
   useEffect(() => {
     if (!projectId) {
@@ -500,7 +504,7 @@ export default function Versions() {
           </div>
         ) : (
             <ul className="space-y-3">
-              {versions.map((v) => (
+              {versionsNewestFirst.map((v) => (
                 <li
                   key={v.id}
                   className={`rounded-xl border overflow-hidden transition ${
