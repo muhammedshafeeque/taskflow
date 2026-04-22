@@ -844,3 +844,50 @@ export async function findByJql(opts: FindByJqlOptions): Promise<PaginatedResult
     totalPages: Math.ceil(total / safeLimit) || 1,
   };
 }
+
+export async function getQuickFilterCounts(userId: string, projectId?: string): Promise<{ my: number; open: number; all: number }> {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  let projectFilter: Record<string, unknown> = {};
+
+  if (projectId) {
+    projectFilter.project = projectId;
+  } else {
+    const projectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
+    if (projectIds.length === 0) return { my: 0, open: 0, all: 0 };
+    projectFilter.project = { $in: projectIds };
+  }
+
+  // Get closed statuses for the relevant projects
+  let closedStatuses: string[] = [];
+  if (projectId) {
+    closedStatuses = await getClosedStatusNamesForProject(projectId);
+  } else {
+    const projectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
+    const projects = await Project.find({ _id: { $in: projectIds } }).select('statuses').lean();
+    const fromDb = new Set<string>();
+    for (const p of projects) {
+      let names = getClosedStatusNamesFromStatuses((p as { statuses?: Array<{ name?: string; isClosed?: boolean }> }).statuses);
+      if (names.length === 0) names = ['Done', 'Closed', 'Resolved'];
+      names.forEach((n) => fromDb.add(n));
+    }
+    closedStatuses = Array.from(fromDb);
+  }
+  if (closedStatuses.length === 0) closedStatuses = ['Done', 'Closed', 'Resolved'];
+  const loweredClosed = closedStatuses.map((s) => s.trim().toLowerCase()).filter(Boolean);
+
+  const notClosedFilter = {
+    $expr: {
+      $not: {
+        $in: [{ $toLower: { $ifNull: ['$status', ''] } }, loweredClosed],
+      },
+    },
+  };
+
+  const [all, open, my] = await Promise.all([
+    Issue.countDocuments(projectFilter),
+    Issue.countDocuments({ ...projectFilter, ...notClosedFilter }),
+    Issue.countDocuments({ ...projectFilter, ...notClosedFilter, assignee: userId })
+  ]);
+
+  return { my, open, all };
+}

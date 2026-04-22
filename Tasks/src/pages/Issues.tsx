@@ -88,6 +88,7 @@ export default function Issues() {
   const [project, setProject] = useState<Project | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [total, setTotal] = useState(0);
+  const [totalCounts, setTotalCounts] = useState<{ my: number; open: number; all: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
@@ -419,6 +420,10 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
         setJqlError(res.message ?? 'JQL query failed');
       }
     });
+
+    issuesApi.getQuickFilterCounts(token, projectId).then((res) => {
+      if (res.success && res.data) setTotalCounts(res.data);
+    });
   }, [token, projectId, searchParams.toString(), refreshTrigger]);
 
   useEffect(() => {
@@ -728,6 +733,7 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
           applySavedFilter={applySavedFilter}
           removeSavedFilter={removeSavedFilter}
           onSavedEmptyClick={() => setFiltersOpen(true)}
+          totalCounts={totalCounts}
         />
 
         <IssuesToolbar

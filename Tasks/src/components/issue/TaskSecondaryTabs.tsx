@@ -64,7 +64,7 @@ const TaskSecondaryTabs = forwardRef<TaskSecondaryTabsHandle, TaskSecondaryTabsP
   }));
 
   const addSubtaskUrl = projectId
-    ? `/projects/${projectId}/issues?create=1&parent=${issue._id}`
+    ? `?create=1&parent=${issue._id}`
     : '#';
 
   return (

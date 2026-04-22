@@ -102,7 +102,7 @@ export default function TaskHeader({
         <div className="flex items-center gap-1 shrink-0">
           {projectId ? (
             <Link
-              to={`/projects/${projectId}/issues?create=1`}
+              to={`?create=1`}
               className="btn-primary btn-primary-sm h-7 px-3 text-[11px] font-semibold inline-flex items-center gap-1.5"
             >
               <FiPlus className={actionIcon} />
@@ -118,7 +118,7 @@ export default function TaskHeader({
           <div className="w-px h-4 bg-[color:var(--border-subtle)] mx-1 shrink-0" />
 
           {projectId ? (
-            <Link to={`/projects/${projectId}/issues?create=1&parent=${issueId}`} className={ghostBtnClass} title="Add sub-work item">
+            <Link to={`?create=1&parent=${issueId}`} className={ghostBtnClass} title="Add sub-work item">
               <FiCornerDownRight className={actionIcon} />
               <span className="hidden lg:inline">Sub-item</span>
             </Link>

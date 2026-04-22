@@ -54,6 +54,14 @@ export async function getIssues(req: Request & { user?: AuthPayload }, res: Resp
   res.status(200).json({ success: true, data: result });
 }
 
+export async function getQuickFilterCounts(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
+  const userId = req.user?.id;
+  if (!userId) throw new ApiError(401, 'Unauthorized');
+  const project = req.query.project ? String(req.query.project) : undefined;
+  const data = await issuesService.getQuickFilterCounts(userId, project);
+  res.status(200).json({ success: true, data });
+}
+
 export async function exportIssuesExcel(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
   const userId = req.user?.id;
   if (!userId) throw new ApiError(401, 'Unauthorized');

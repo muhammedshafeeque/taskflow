@@ -20,6 +20,7 @@ import {
   searchGlobalQueryHandler,
   jqlQueryHandler,
   updateIssueHandler,
+  getQuickFilterCounts,
   deleteIssue,
   bulkUpdateHandler,
   bulkDeleteHandler,
@@ -36,6 +37,7 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get('/', asyncHandler(getIssues));
+router.get('/quick-filters/counts', asyncHandler(getQuickFilterCounts));
 router.get('/search', searchIssuesQueryHandler, asyncHandler(searchIssues));
 router.get('/jql', ...jqlQueryHandler, asyncHandler(searchByJql));
 router.get('/search-global', ...searchGlobalQueryHandler);

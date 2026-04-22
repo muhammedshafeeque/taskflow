@@ -85,6 +85,7 @@ export default function GlobalIssues() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [total, setTotal] = useState(0);
+  const [totalCounts, setTotalCounts] = useState<{ my: number; open: number; all: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [modalUsers, setModalUsers] = useState<User[]>([]);
@@ -295,6 +296,10 @@ export default function GlobalIssues() {
       } else if (useJql && !res.success) {
         setJqlError(res.message ?? 'JQL query failed');
       }
+    });
+
+    issuesApi.getQuickFilterCounts(token).then((res) => {
+      if (res.success && res.data) setTotalCounts(res.data);
     });
   }, [token, searchParams.toString()]);
 
@@ -624,6 +629,7 @@ export default function GlobalIssues() {
             savedFiltersError={null}
             applySavedFilter={() => {}}
             removeSavedFilter={() => {}}
+            totalCounts={totalCounts}
           />
 
           <IssuesToolbar

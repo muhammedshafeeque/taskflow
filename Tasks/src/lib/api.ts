@@ -968,6 +968,10 @@ export const issuesApi = {
     const q = new URLSearchParams(p as Record<string, string>).toString();
     return api.get<Paginated<Issue>>(`/issues?${q}`, token);
   },
+  getQuickFilterCounts: (token: string, projectId?: string) => {
+    const q = projectId ? `?project=${projectId}` : '';
+    return api.get<{ my: number; open: number; all: number }>(`/issues/quick-filters/counts${q}`, token);
+  },
   get: (id: string, token: string) => api.get<Issue>(`/issues/${id}`, token),
   getByKey: (projectId: string, key: string, token: string) =>
     api.get<Issue>(`/issues/by-key?${new URLSearchParams({ project: projectId, key })}`, token),

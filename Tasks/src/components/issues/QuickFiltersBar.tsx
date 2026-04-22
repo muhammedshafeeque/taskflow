@@ -32,7 +32,7 @@ interface QuickFiltersBarProps {
   applySavedFilter: (sf: SavedFilter) => void;
   removeSavedFilter: (id: string) => void;
   /** When there are no saved filters, clicking "Saved" can open the filter modal or save dialog. */
-  onSavedEmptyClick?: () => void;
+  totalCounts: { my: number; open: number; all: number } | null;
 }
 
 export function QuickFiltersBar({
@@ -44,6 +44,7 @@ export function QuickFiltersBar({
   applySavedFilter,
   removeSavedFilter,
   onSavedEmptyClick,
+  totalCounts,
 }: QuickFiltersBarProps) {
   const [savedDropdownOpen, setSavedDropdownOpen] = useState(false);
   const savedDropdownRef = useRef<HTMLDivElement>(null);
@@ -73,7 +74,7 @@ export function QuickFiltersBar({
           }`}
         >
           <FiUser className={qfIcon} aria-hidden />
-          My open issues
+          My open issues {totalCounts && <span className={'ml-0.5 ' + (quickFilter === 'my' ? 'opacity-80' : 'opacity-60')}>({totalCounts.my})</span>}
         </button>
         <button
           type="button"
@@ -85,7 +86,7 @@ export function QuickFiltersBar({
           }`}
         >
           <FiEye className={qfIcon} aria-hidden />
-          Open issues
+          Open issues {totalCounts && <span className={'ml-0.5 ' + (quickFilter === 'open' ? 'opacity-80' : 'opacity-60')}>({totalCounts.open})</span>}
         </button>
         <button
           type="button"
@@ -97,7 +98,7 @@ export function QuickFiltersBar({
           }`}
         >
           <FiGrid className={qfIcon} aria-hidden />
-          All issues
+          All issues {totalCounts && <span className={'ml-0.5 ' + (quickFilter === 'all' ? 'opacity-80' : 'opacity-60')}>({totalCounts.all})</span>}
         </button>
       </div>
 

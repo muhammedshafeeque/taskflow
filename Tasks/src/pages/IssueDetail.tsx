@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   issuesApi,
@@ -17,6 +17,7 @@ import {
   getIssueKey,
 } from '../lib/api';
 import ConfirmModal from '../components/ConfirmModal';
+import { IssueCreateEditModal } from '../components/issues';
 import {
   TaskHeader,
   TaskDescription,
@@ -34,6 +35,7 @@ const DEFAULT_PRIORITIES = ['Lowest', 'Low', 'Medium', 'High', 'Highest'];
 export default function IssueDetail() {
   const { projectId, ticketId } = useParams<{ projectId?: string; ticketId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { token, user } = useAuth();
   const secondaryTabsRef = useRef<TaskSecondaryTabsHandle>(null);
   const [issue, setIssue] = useState<Issue | null>(null);
@@ -56,6 +58,111 @@ export default function IssueDetail() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [timeLogOpen, setTimeLogOpen] = useState(false);
   const [sprints, setSprints] = useState<Sprint[]>([]);
+
+  const [modalOpen, setModalOpen] = useState<'create' | 'edit' | null>(null);
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    type: 'Task',
+    priority: 'Medium',
+    status: 'Backlog',
+    project: projectId ?? '',
+    assignee: '',
+    sprint: '',
+    storyPoints: '',
+    parent: '',
+    milestone: '',
+    customFieldValues: {} as Record<string, unknown>,
+    fixVersion: '',
+    affectsVersions: [] as string[],
+    labels: [] as string[],
+  });
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [submittingModal, setSubmittingModal] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+
+  const PARAM_CREATE = 'create';
+  const PARAM_PARENT = 'parent';
+
+  useEffect(() => {
+    const createParam = searchParams.get(PARAM_CREATE);
+    const parentParam = searchParams.get(PARAM_PARENT);
+    if (createParam === '1' && projectId && !modalOpen) {
+      setForm((prev) => ({
+        ...prev,
+        parent: parentParam ?? '',
+        project: projectId,
+        type: project?.issueTypes?.[0]?.name ?? DEFAULT_TYPES[0],
+        priority: project?.priorities?.[Math.min(2, (project.priorities.length || 1) - 1)]?.name ?? 'Medium',
+        status: project?.statuses?.[0]?.name ?? 'Backlog',
+      }));
+      setSubmitError('');
+      setPendingFiles([]);
+      setModalOpen('create');
+      const next = new URLSearchParams(searchParams);
+      next.delete(PARAM_CREATE);
+      next.delete(PARAM_PARENT);
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams.get(PARAM_CREATE), searchParams.get(PARAM_PARENT), projectId, project]);
+
+  async function handleModalSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    setSubmittingModal(true);
+    setSubmitError('');
+    if (modalOpen === 'create') {
+      const res = await issuesApi.create(
+        {
+          title: form.title,
+          description: form.description,
+          type: form.type,
+          priority: form.priority,
+          status: form.status,
+          project: form.project,
+          assignee: form.assignee || undefined,
+          sprint: form.sprint || null,
+          storyPoints: form.storyPoints === '' ? null : Number(form.storyPoints),
+          parent: form.parent || undefined,
+          milestone: form.milestone || undefined,
+          customFieldValues: Object.keys(form.customFieldValues).length ? form.customFieldValues : undefined,
+          fixVersion: form.fixVersion || undefined,
+          affectsVersions: form.affectsVersions.length ? form.affectsVersions : undefined,
+          labels: form.labels.length ? form.labels : undefined,
+        },
+        token
+      );
+      if (res.success && res.data) {
+        if (pendingFiles.length > 0) {
+          const issueId = res.data._id;
+          await Promise.all(
+            pendingFiles.map(async (file) => {
+              const formData = new FormData();
+              formData.append('file', file);
+              const { uploadFile } = await import('../lib/api');
+              const up = await uploadFile(file, token);
+              if (up.success && up.data) {
+                await attachmentsApi.add(
+                  issueId,
+                  { url: up.data.url, originalName: up.data.originalName, mimeType: up.data.mimeType, size: up.data.size },
+                  token
+                );
+              }
+            })
+          );
+        }
+        setModalOpen(null);
+        if (form.parent === issue?._id) {
+          issuesApi.getSubtasks(issue._id, token).then((r) => {
+            if (r.success && r.data) setSubtasks(Array.isArray(r.data) ? r.data : []);
+          });
+        }
+      } else {
+        setSubmitError(res.message ?? 'Failed to create issue');
+      }
+    }
+    setSubmittingModal(false);
+  }
 
   useEffect(() => {
     if (!token || !projectId || !ticketId) return;
@@ -435,6 +542,32 @@ export default function IssueDetail() {
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete(false)}
       />
+
+      {project && (
+        <IssueCreateEditModal
+          modal={modalOpen}
+          setModal={setModalOpen}
+          form={form}
+          setForm={setForm}
+          submitError={submitError}
+          submitting={submittingModal}
+          handleSubmit={handleModalSubmit}
+          typeList={typeList}
+          priorityList={priorityList}
+          statusList={statusList}
+          users={users}
+          parentCandidates={[]} 
+          project={project}
+          getIssueKey={getIssueKey}
+          projects={[project]}
+          showProjectSelector={false}
+          milestones={[]} 
+          sprints={sprints}
+          labelSuggestions={[]}
+          pendingFiles={pendingFiles}
+          onPendingFilesChange={setPendingFiles}
+        />
+      )}
     </div>
   );
 }
