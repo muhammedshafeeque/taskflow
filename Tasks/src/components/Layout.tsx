@@ -42,15 +42,6 @@ interface NavItem {
 
 function buildGlobalNav(user: { mustChangePassword?: boolean; permissions?: string[]; role?: string } | null): NavItem[] {
   const perms = user?.permissions ?? [];
-  const firstLogin = user?.mustChangePassword === true;
-  if (firstLogin) {
-    return [
-      { to: '/inbox', label: 'Inbox', icon: <InboxIcon /> },
-      { to: '/projects', label: 'Projects', icon: <ProjectsIcon /> },
-      { to: '/project-templates', label: 'Templates', icon: <PackageIcon /> },
-      { to: '/profile', label: 'Profile', icon: <ProfileIcon /> },
-    ];
-  }
   const nav: NavItem[] = [
     { to: '/', label: 'Dashboard', icon: <DashboardIcon />, end: true },
     { to: '/inbox', label: 'Inbox', icon: <InboxIcon /> },

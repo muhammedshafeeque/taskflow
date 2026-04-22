@@ -23,11 +23,6 @@ export default function ProtectedRoute() {
 
   if (user?.userType === 'customer') return <Navigate to="/portal" replace />;
 
-  const mustChangePassword = user?.mustChangePassword ?? false;
-  const allowed = FIRST_LOGIN_ALLOWED.some((p) => pathname === p || pathname.startsWith(p + '/'));
-  if (mustChangePassword && !allowed) {
-    return <Navigate to="/inbox" replace />;
-  }
 
   return (
     <Layout>

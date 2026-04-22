@@ -75,9 +75,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [updateUser]);
 
   useEffect(() => {
-    if (!token) setLoading(false);
-    else setLoading(false);
-  }, [token]);
+    let mounted = true;
+    if (!token) {
+      setLoading(false);
+    } else {
+      refreshUser().finally(() => {
+        if (mounted) setLoading(false);
+      });
+    }
+    return () => { mounted = false; };
+  }, [refreshUser]); // runs when the component mounts or refreshUser is re-created
 
   const login = useCallback(
     async (email: string, password: string) => {

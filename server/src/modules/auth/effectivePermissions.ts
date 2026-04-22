@@ -35,8 +35,5 @@ export function resolveEffectiveGlobalPermissions(input: {
     effective.push('auth.user.list');
   }
 
-  if (input.mustChangePassword && effective.includes('project.project.create')) {
-    return effective.filter((p) => p !== 'project.project.create');
-  }
   return effective;
 }

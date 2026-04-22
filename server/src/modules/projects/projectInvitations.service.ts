@@ -353,3 +353,28 @@ export async function declineInvitation(invitationId: string, userId: string): P
   if (inviteeId !== userId) throw new ApiError(403, 'You can only decline invitations sent to you.');
   await ProjectInvitation.findByIdAndUpdate(invitationId, { $set: { status: 'declined' } });
 }
+
+export async function ensureUserIsDefaultProjectMember(projectId: string, userId: string): Promise<void> {
+  const defaultDesignation = await ProjectDesignation.findOne({ projectId, code: 'project_member' }).lean();
+
+  const userObjectId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+  const projectObjectId = mongoose.Types.ObjectId.isValid(projectId)
+    ? new mongoose.Types.ObjectId(projectId)
+    : projectId;
+
+  const existing = await ProjectMember.findOne({ project: projectObjectId, user: userObjectId }).lean();
+  if (existing) {
+    return;
+  }
+
+  const memberPerms = defaultDesignation?.permissions || DEFAULT_MEMBER_PERMS_DOT;
+
+  await ProjectInvitation.deleteMany({ project: projectObjectId, user: userObjectId });
+
+  await ProjectMember.create({
+    project: projectObjectId,
+    user: userObjectId,
+    designationId: defaultDesignation?._id,
+    permissions: memberPerms,
+  });
+}

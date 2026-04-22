@@ -208,6 +208,7 @@ export default function Users() {
     if (res.success && res.data) {
       setUsers((prev) => prev.map((u) => (u._id === editUser._id ? { ...u, permissionOverrides: (res.data as User).permissionOverrides } : u)));
       if (currentUser?.id === editUser._id) await refreshUser();
+      setEditUser(null);
     } else {
       setPermError((res as { message?: string }).message ?? 'Failed to save permissions');
     }

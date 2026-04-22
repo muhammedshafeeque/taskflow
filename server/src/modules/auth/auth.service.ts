@@ -83,7 +83,7 @@ async function toAuthUser(user: IUser & { roleId?: unknown; mustChangePassword?:
   const mustChange = user.mustChangePassword ?? false;
   const overrides = (user as IUser & { permissionOverrides?: { granted?: string[]; revoked?: string[] } }).permissionOverrides;
   const stored = (user as IUser).permissions;
-  const permissions =
+  let permissions =
     Array.isArray(stored) && stored.length > 0
       ? mergeTaskflowPermissionFloor(stored)
       : mergeTaskflowPermissionFloor(

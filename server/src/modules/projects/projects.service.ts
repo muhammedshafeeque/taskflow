@@ -11,6 +11,7 @@ import * as projectDesignationService from './projectDesignation.service';
 import type { CreateProjectBody, UpdateProjectBody } from './projects.validation';
 import { userHasPermission, mapLegacyProjectOrGlobalPermissions } from '../../shared/constants/legacyPermissionMap';
 import { PROJECT_PERMISSIONS } from '../../shared/constants/permissions';
+import { hasProjectFullAccess } from '../../middleware/requireProjectPermission';
 
 export interface PaginationOptions {
   page: number;
@@ -74,6 +75,18 @@ export async function create(
     await projectInvitationsService.ensureUserHasFullProjectAccess(projectId, creatorUserId);
   }
 
+  // Automatically add all users who have global project CRUD permissions as default members
+  const globalAccessUsers = await User.find({ enabled: true }).select('_id permissions').lean();
+  const globalUserIds = globalAccessUsers
+    .filter((u) => hasProjectFullAccess(u.permissions || []))
+    .map((u) => String(u._id));
+
+  for (const uid of globalUserIds) {
+    if (uid !== leadUserId && uid !== creatorUserId) {
+      await projectInvitationsService.ensureUserIsDefaultProjectMember(projectId, uid);
+    }
+  }
+
   return project;
 }
 
@@ -130,10 +143,11 @@ export async function findAllForUser(
   const dataWithPerms = (data as Record<string, unknown>[]).map((p) => {
     const pid = (p._id as mongoose.Types.ObjectId).toString();
     const perms = permissionsByProject.get(pid) ?? [];
+    const isGlobalAdmin = hasProjectFullAccess(_permissions);
     return {
       ...p,
-      canEdit: userHasPermission(perms, PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.UPDATE),
-      canDelete: userHasPermission(perms, PROJECT_PERMISSIONS.SCOPE.DELETE),
+      canEdit: isGlobalAdmin || userHasPermission(perms, PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.UPDATE),
+      canDelete: isGlobalAdmin || userHasPermission(perms, PROJECT_PERMISSIONS.SCOPE.DELETE),
     };
   });
 

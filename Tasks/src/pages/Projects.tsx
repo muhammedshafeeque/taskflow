@@ -138,8 +138,7 @@ export default function Projects() {
       <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
-          {!user?.mustChangePassword &&
-            Array.isArray(user?.permissions) &&
+          {Array.isArray(user?.permissions) &&
             user.permissions.includes('project.project.create') && (
               <button
                 type="button"

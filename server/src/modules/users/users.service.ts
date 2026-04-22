@@ -4,14 +4,49 @@ import { Role } from '../roles/role.model';
 import { mapLegacyProjectOrGlobalPermissions } from '../../shared/constants/legacyPermissionMap';
 import { mergeTaskflowPermissionFloor } from '../auth/permissionMerge';
 import { ProjectMember } from '../projects/projectMember.model';
+import { resolveEffectiveGlobalPermissions } from '../auth/effectivePermissions';
 import { ApiError } from '../../utils/ApiError';
 import type { PaginationOptions, PaginatedResult } from '../projects/projects.service';
 import type { UpdateUserBody, InviteUserBody } from './users.validation';
 import { sendInviteEmail } from '../../services/email.service';
 import * as inboxService from '../inbox/inbox.service';
+import { Project } from '../projects/project.model';
+import * as projectInvitationsService from '../projects/projectInvitations.service';
+import { hasProjectFullAccess } from '../../middleware/requireProjectPermission';
 
 import dotenv from 'dotenv';
 dotenv.config();
+
+async function ensureGlobalProjectMembership(user: any) {
+  if (!user) return;
+  let perms = user.permissions;
+  if (!perms || perms.length === 0) {
+    let rolePerms = [];
+    if (user.roleId && user.roleId.permissions) {
+      rolePerms = user.roleId.permissions;
+    } else if (user.roleId) {
+      const role = await Role.findById(user.roleId).lean();
+      rolePerms = role?.permissions || [];
+    }
+    perms = mergeTaskflowPermissionFloor(
+      resolveEffectiveGlobalPermissions({
+        rolePermissions: rolePerms,
+        role: user.role,
+        mustChangePassword: false,
+        permissionOverrides: user.permissionOverrides,
+      })
+    );
+    // Persist calculated permissions if missing
+    await User.findByIdAndUpdate(user._id, { $set: { permissions: perms } });
+  }
+
+  if (hasProjectFullAccess(perms)) {
+    const projects = await Project.find().select('_id').lean();
+    for (const p of projects) {
+      await projectInvitationsService.ensureUserIsDefaultProjectMember(String(p._id), String(user._id));
+    }
+  }
+}
 
 export async function findAll(
   pagination: PaginationOptions = { page: 1, limit: 20 }
@@ -82,12 +117,18 @@ export async function update(
   if (input.name !== undefined) updateData.name = input.name;
   if (input.role !== undefined) updateData.role = input.role;
   if (input.roleId !== undefined) {
+    const existingUser = await User.findById(id).select('role').lean();
     updateData.roleId = input.roleId || null;
     const newRole = input.roleId ? await Role.findById(input.roleId).lean() : null;
-    const rolePermsDot = mapLegacyProjectOrGlobalPermissions(
-      Array.isArray(newRole?.permissions) ? (newRole.permissions as string[]) : []
+    const rolePerms = Array.isArray(newRole?.permissions) ? (newRole.permissions as string[]) : [];
+    updateData.permissions = mergeTaskflowPermissionFloor(
+      resolveEffectiveGlobalPermissions({
+        rolePermissions: rolePerms,
+        role: (input.role ?? existingUser?.role ?? 'user') as any,
+        mustChangePassword: false,
+        permissionOverrides: { granted: [], revoked: [] }
+      })
     );
-    updateData.permissions = mergeTaskflowPermissionFloor(rolePermsDot);
     updateData.permissionOverrides = { granted: [], revoked: [] };
   }
   if (input.enabled !== undefined) updateData.enabled = input.enabled;
@@ -97,6 +138,10 @@ export async function update(
     .populate('roleId', 'name')
     .lean();
 
+  if (user) {
+    await ensureGlobalProjectMembership(user);
+  }
+
   return user ?? null;
 }
 
@@ -104,14 +149,39 @@ export async function updatePermissionOverrides(
   id: string,
   overrides: { granted: string[]; revoked: string[] }
 ): Promise<unknown | null> {
+  const existingUser = await User.findById(id).populate('roleId', 'permissions').lean();
+  if (!existingUser) return null;
+
+  const role = existingUser.roleId as any;
+  const rolePerms = Array.isArray(role?.permissions) ? role.permissions : [];
+  
+  const mergedPerms = mergeTaskflowPermissionFloor(
+    resolveEffectiveGlobalPermissions({
+      rolePermissions: rolePerms,
+      role: existingUser.role,
+      mustChangePassword: false,
+      permissionOverrides: overrides,
+    })
+  );
+
   const user = await User.findByIdAndUpdate(
     id,
-    { $set: { permissionOverrides: { granted: overrides.granted, revoked: overrides.revoked } } },
+    { 
+      $set: { 
+        permissionOverrides: { granted: overrides.granted, revoked: overrides.revoked },
+        permissions: mergedPerms
+      } 
+    },
     { new: true, runValidators: true }
   )
     .select('-password')
     .populate('roleId', 'name permissions')
     .lean();
+
+  if (user) {
+    await ensureGlobalProjectMembership(user);
+  }
+
   return user ?? null;
 }
 
@@ -131,8 +201,14 @@ export async function invite(input: InviteUserBody): Promise<unknown> {
 
   const plainPassword = crypto.randomBytes(10).toString('base64').replace(/[+/=]/g, '').slice(0, 14);
 
-  const rolePermsDot = mapLegacyProjectOrGlobalPermissions(
-    Array.isArray(role.permissions) ? role.permissions : []
+  const rolePerms = Array.isArray(role.permissions) ? role.permissions : [];
+  const initialPerms = mergeTaskflowPermissionFloor(
+    resolveEffectiveGlobalPermissions({
+      rolePermissions: rolePerms,
+      role: 'user',
+      mustChangePassword: false,
+      permissionOverrides: null,
+    })
   );
   const user = await User.create({
     email: input.email.toLowerCase().trim(),
@@ -142,7 +218,7 @@ export async function invite(input: InviteUserBody): Promise<unknown> {
     role: 'user',
     roleId: input.roleId,
     mustChangePassword: true,
-    permissions: mergeTaskflowPermissionFloor(rolePermsDot),
+    permissions: initialPerms,
   });
 
   await sendInviteEmail({
@@ -160,6 +236,13 @@ export async function invite(input: InviteUserBody): Promise<unknown> {
       body: 'Your account has been created. Please change your password from your profile or use Forgot password after signing out.',
     })
     .catch((err) => console.error('Failed to create welcome message:', err));
+
+  if (hasProjectFullAccess(user.permissions || [])) {
+    const projects = await Project.find().select('_id').lean();
+    for (const p of projects) {
+      await projectInvitationsService.ensureUserIsDefaultProjectMember(String(p._id), String(user._id));
+    }
+  }
 
   const doc = await User.findById(user._id).select('-password').populate('roleId', 'name').lean();
   return doc ?? user.toObject();
