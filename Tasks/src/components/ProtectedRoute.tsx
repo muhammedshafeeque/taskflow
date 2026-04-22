@@ -1,13 +1,9 @@
 import { Navigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from './Layout';
-
-const FIRST_LOGIN_ALLOWED = ['/inbox', '/profile', '/projects'];
-
 export default function ProtectedRoute() {
   const { token, user, loading } = useAuth();
   const location = useLocation();
-  const pathname = location.pathname;
 
   if (loading) {
     return (
