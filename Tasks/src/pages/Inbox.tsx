@@ -179,9 +179,6 @@ export default function Inbox() {
     }
   }
 
-  const isInvitationPending = (m: InboxMessage) =>
-    m.type === 'project_invitation' && m.meta?.invitationId && m.meta?.status !== 'accepted';
-
   const displayMessages = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     let list = messages;
@@ -209,7 +206,7 @@ export default function Inbox() {
   const showReadingPanel = !isCompact || !!selectedMessage;
 
   return (
-    <div className="flex flex-col w-full min-h-0 p-4 sm:p-6 min-h-[calc(100dvh-6.5rem)] max-h-[calc(100dvh-3rem)]">
+    <div className="flex flex-1 min-h-0 flex-col w-full min-w-0 px-2 sm:px-3 py-2 sm:py-3 max-h-[min(100dvh,100%)]">
       {/* Toolbar — Gmail-style */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-b border-[color:var(--border-subtle)] pb-3">
         <div className="flex items-center gap-2 min-w-0">
@@ -236,7 +233,7 @@ export default function Inbox() {
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search mail"
+              placeholder="Search inbox"
               className="w-full h-9 pl-8 pr-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] text-xs text-[color:var(--text-primary)] placeholder:text-[color:var(--text-subtle)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40 focus:border-[color:var(--accent)]"
             />
           </div>
@@ -276,15 +273,12 @@ export default function Inbox() {
       </div>
 
       {/* Split: list + reading pane */}
-      <div
-        className="mt-3 flex-1 min-h-0 flex border border-[color:var(--border-subtle)] rounded-lg bg-[color:var(--bg-surface)] overflow-hidden shadow-sm"
-        style={{ minHeight: 'min(70vh, 640px)' }}
-      >
+      <div className="mt-2 sm:mt-3 flex-1 min-h-0 flex border border-[color:var(--border-subtle)] rounded-lg bg-[color:var(--bg-surface)] overflow-hidden shadow-sm">
         {/* Thread list */}
         {showListPanel && (
           <div
             className={`flex flex-col min-w-0 min-h-0 border-[color:var(--border-subtle)] ${
-              isCompact ? 'w-full' : 'w-[min(100%,420px)] shrink-0 border-r'
+              isCompact ? 'w-full' : 'w-[min(100%,min(22rem,36vw))] shrink-0 border-r'
             }`}
           >
             {loading ? (
@@ -317,7 +311,7 @@ export default function Inbox() {
                       <button
                         type="button"
                         onClick={() => openMessage(m)}
-                        className={`w-full text-left border-b border-[color:var(--border-subtle)] pl-0 pr-2 py-2.5 min-h-[52px] flex gap-0 transition
+                        className={`w-full text-left border-b border-[color:var(--border-subtle)] pl-0 pr-2 py-1.5 flex gap-0 transition
                           ${
                             selected
                               ? 'bg-[color:var(--accent-subtle)]'
@@ -337,42 +331,27 @@ export default function Inbox() {
                                 : 'transparent',
                           }}
                         />
-                        <div className="min-w-0 flex-1 pl-2 flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
-                          <div className="flex items-baseline justify-between gap-2 min-w-0 sm:contents">
+                        <div className="min-w-0 flex-1 pl-2 flex flex-col">
+                          <div className="flex items-baseline justify-between gap-2 min-w-0">
                             <span
-                              className={`text-[13px] shrink-0 sm:w-28 ${
-                                unread ? 'font-semibold text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)]'
+                              className={`text-[13px] min-w-0 truncate ${
+                                unread ? 'text-[color:var(--text-primary)] font-semibold' : 'text-[color:var(--text-primary)]'
                               }`}
                             >
-                              {getInboxTypeLabel(m.type)}
+                              {m.title}
                             </span>
                             <time
-                              className="text-[11px] text-[color:var(--text-muted)] tabular-nums shrink-0 sm:order-3 sm:ml-auto sm:pl-2"
+                              className="text-[11px] text-[color:var(--text-muted)] tabular-nums shrink-0 pl-2"
                               dateTime={m.createdAt}
                             >
                               {formatGmailListDate(m.createdAt)}
                             </time>
                           </div>
-                          <div className="min-w-0 sm:flex-1 sm:min-w-0 pt-0.5 sm:pt-0">
-                            <span
-                              className={`text-[13px] ${
-                                unread ? 'text-[color:var(--text-primary)] font-semibold' : 'text-[color:var(--text-primary)]'
-                              } break-words`}
-                            >
-                              {m.title}
-                            </span>
-                            {m.body && (
-                              <span className="text-[13px] text-[color:var(--text-muted)] font-normal">
-                                <span className="text-[color:var(--text-subtle)]"> — </span>
-                                {messageSnippet(m.body)}
-                              </span>
-                            )}
-                            {isInvitationPending(m) && (
-                              <span className="ml-1.5 text-[10px] font-medium uppercase tracking-wide text-[color:var(--accent)]">
-                                Action
-                              </span>
-                            )}
-                          </div>
+                          {m.body && (
+                            <p className="mt-0.5 text-[12px] text-[color:var(--text-muted)] line-clamp-1">
+                              {messageSnippet(m.body)}
+                            </p>
+                          )}
                         </div>
                       </button>
                     </li>
@@ -406,7 +385,7 @@ export default function Inbox() {
                   </div>
                 )}
                 <div className="inbox-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-                  <div className="p-4 sm:p-5 max-w-3xl">
+                  <div className="p-3 sm:px-4 sm:py-4 w-full min-w-0 max-w-full">
                     {actionError && (
                       <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
                         {actionError}
@@ -417,25 +396,18 @@ export default function Inbox() {
                       <h2 className="text-lg sm:text-xl font-normal text-[color:var(--text-primary)] leading-snug pr-2">
                         {selectedMessage.title}
                       </h2>
-                      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--text-muted)]">
-                        <span>
-                          <span className="text-[color:var(--text-subtle)]">From </span>
-                          <span className="text-[color:var(--text-primary)]">{getInboxTypeLabel(selectedMessage.type)}</span>
-                        </span>
-                        <span className="text-[color:var(--border-subtle)]" aria-hidden>
-                          |
-                        </span>
-                        <time dateTime={selectedMessage.createdAt}>
+                      <div className="mt-3 flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-[color:var(--text-muted)]">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className="text-[color:var(--text-primary)]">
+                            {getInboxTypeLabel(selectedMessage.type)}
+                          </span>
+                          {!selectedMessage.readAt && (
+                            <span className="text-[color:var(--accent)] font-medium">Unread</span>
+                          )}
+                        </div>
+                        <time className="shrink-0 tabular-nums" dateTime={selectedMessage.createdAt}>
                           {selectedMessage.createdAt ? formatDateTimeDDMMYYYY(selectedMessage.createdAt) : '—'}
                         </time>
-                        {!selectedMessage.readAt && (
-                          <>
-                            <span className="text-[color:var(--border-subtle)]" aria-hidden>
-                              |
-                            </span>
-                            <span className="text-[color:var(--accent)] font-medium">Unread</span>
-                          </>
-                        )}
                       </div>
                     </div>
 
