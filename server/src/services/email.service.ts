@@ -242,7 +242,255 @@ export async function sendWatcherNotificationEmail(to: string, params: WatcherNo
   await sendEmail(to, params.title, renderWatcherNotificationEmail(params));
 }
 
-// ── Customer Portal Email Templates ──────────────────────────────────────────
+// ── Customer Portal request emails (shared layout) ─────────────────────────
+
+function crDetailTable(rows: { label: string; value: string }[]): string {
+  const body = rows
+    .map(
+      (r) => `
+    <tr>
+      <td style="padding:10px 14px;border:1px solid #e2e8f0;background:#f1f5f9;color:#64748b;font-size:12px;font-weight:600;vertical-align:top;width:34%;">${escapeHtml(r.label)}</td>
+      <td style="padding:10px 14px;border:1px solid #e2e8f0;font-size:14px;color:#0f172a;vertical-align:top;line-height:1.5;">${
+        r.value ? escapeHtml(r.value) : '—'
+      }</td>
+    </tr>`
+    )
+    .join('');
+  return `<table role="presentation" style="width:100%;border-collapse:collapse;border-radius:10px;overflow:hidden;margin:18px 0;">${body}</table>`;
+}
+
+function crCtaBlock(url: string, label: string): string {
+  return `<p style="margin:20px 0 8px 0;">
+  <a href="${escapeHtml(url)}" style="display:inline-block;background:#4f46e5;color:#fff !important;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;font-size:14px;box-shadow:0 2px 6px rgba(79,70,229,0.35);">${escapeHtml(label)}</a>
+</p>
+<p style="font-size:12px;color:#64748b;margin:0;">or copy: <a href="${escapeHtml(url)}" style="color:#4f46e5;word-break:break-all;">${escapeHtml(url)}</a></p>`;
+}
+
+function crNextStepsBox(title: string, lines: string[]): string {
+  if (lines.length === 0) return '';
+  const items = lines
+    .map(
+      (line) => `<li style="margin:0 0 6px 0; padding-left:2px; line-height:1.5;">${escapeHtml(line)}</li>`
+    )
+    .join('');
+  return `<div style="background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%);border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin:20px 0;">
+  <p style="margin:0 0 8px 0; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#475569;">${escapeHtml(title)}</p>
+  <ul style="margin:0; padding-left:18px; color:#334155; font-size:14px;">${items}</ul>
+</div>`;
+}
+
+function crBodyWrap(inner: string, accent: 'indigo' | 'green' | 'red' = 'indigo'): string {
+  const top =
+    accent === 'green'
+      ? 'linear-gradient(90deg, #16a34a, #22c55e)'
+      : accent === 'red'
+        ? 'linear-gradient(90deg, #b91c1c, #ef4444)'
+        : 'linear-gradient(90deg, #4f46e5, #7c3aed)';
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width" /></head>
+<body style="margin:0;padding:0;background:#f1f5f9;">
+  <div style="max-width:600px;margin:0 auto;padding:24px 16px 40px;font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;">
+    <div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(15,23,42,0.08);border:1px solid #e2e8f0;">
+      <div style="height:5px;background:${top};"></div>
+      <div style="padding:28px 24px 32px; color:#0f172a; line-height:1.6;">
+        ${inner}
+        <p style="margin:28px 0 0; padding-top:20px; border-top:1px solid #e2e8f0; font-size:12px; color:#64748b;">This is an automated message from TaskFlow. Please do not reply to this email.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export interface CustomerRequestSubmittedParams {
+  requesterName: string;
+  requestTitle: string;
+  orgName: string;
+  appUrl: string;
+  requestId: string;
+  projectLabel: string;
+  typeLabel: string;
+  priorityLabel: string;
+  /** What happens next (org admin path vs direct to TaskFlow) */
+  routingMessage: string;
+}
+
+export function renderCustomerRequestSubmittedEmail(p: CustomerRequestSubmittedParams): string {
+  const detailUrl = `${p.appUrl}/portal/requests/${p.requestId}`;
+  const inner = `<p style="font-size:15px; margin:0 0 8px; color:#334155;">Hi ${escapeHtml(p.requesterName)},</p>
+<p style="font-size:16px; font-weight:600; margin:0 0 16px; color:#0f172a;">We’ve received your request and pulled it into the queue.</p>
+<p style="margin:0 0 4px; color:#475569; font-size:14px;">You’ll get another email when the status changes. Here’s a snapshot of what you sent:</p>
+${crDetailTable([
+  { label: 'Title', value: p.requestTitle },
+  { label: 'Organisation', value: p.orgName },
+  { label: 'Project', value: p.projectLabel },
+  { label: 'Type', value: p.typeLabel },
+  { label: 'Priority', value: p.priorityLabel },
+])}
+${crNextStepsBox('What happens next', [p.routingMessage, 'You can add comments and track every step in the customer portal.'])}
+${crCtaBlock(detailUrl, 'View request in portal')}`;
+  return crBodyWrap(inner, 'indigo');
+}
+
+export interface CustomerRequestApprovedByOrgParams {
+  requesterName: string;
+  requestTitle: string;
+  orgName: string;
+  appUrl: string;
+  requestId: string;
+  projectLabel: string;
+  typeLabel: string;
+  priorityLabel: string;
+  reviewerName: string;
+  adminNote?: string;
+}
+
+export function renderCustomerRequestApprovedByOrgAdminEmail(p: CustomerRequestApprovedByOrgParams): string {
+  const detailUrl = `${p.appUrl}/portal/requests/${p.requestId}`;
+  const noteBlock =
+    p.adminNote && p.adminNote.trim()
+      ? `<div style="border-left:4px solid #4f46e5;padding:10px 14px;margin:16px 0;background:#eef2ff;border-radius:0 8px 8px 0;">
+        <p style="margin:0; font-size:12px; font-weight:600; color:#4338ca;">Note from your organisation</p>
+        <p style="margin:6px 0 0; font-size:14px; color:#312e81; white-space:pre-wrap;">${escapeHtml(p.adminNote.trim())}</p>
+      </div>`
+      : '';
+  const inner = `<p style="font-size:15px; margin:0 0 8px; color:#334155;">Hi ${escapeHtml(p.requesterName)},</p>
+<p style="font-size:16px; font-weight:600; margin:0 0 12px; color:#16a34a;">Your organisation has approved this request</p>
+<p style="margin:0 0 16px; color:#475569; font-size:14px;">It’s been forwarded to the <strong>TaskFlow</strong> team for technical review. You don’t need to do anything for now — we’ll notify you if we need more information or when work begins.</p>
+${crDetailTable([
+  { label: 'Title', value: p.requestTitle },
+  { label: 'Organisation', value: p.orgName },
+  { label: 'Project', value: p.projectLabel },
+  { label: 'Type / Priority', value: `${p.typeLabel} · ${p.priorityLabel}` },
+  { label: 'Approved by', value: p.reviewerName },
+])}
+${noteBlock}
+${crNextStepsBox('What happens next', [
+  'TaskFlow reviewers will accept or decline the work based on scope and capacity.',
+  'If accepted, a ticket is created in the project and you’ll receive the ticket key by email.',
+])}
+${crCtaBlock(detailUrl, 'Open request in portal')}`;
+  return crBodyWrap(inner, 'green');
+}
+
+export interface CustomerRequestRejectedByOrgParams {
+  requesterName: string;
+  requestTitle: string;
+  orgName: string;
+  appUrl: string;
+  requestId: string;
+  projectLabel: string;
+  typeLabel: string;
+  priorityLabel: string;
+  reason: string;
+  adminNote?: string;
+}
+
+export function renderCustomerRequestRejectedEmail(p: CustomerRequestRejectedByOrgParams): string {
+  const listUrl = `${p.appUrl}/portal/requests`;
+  const reasonBlock = p.reason.trim()
+    ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px 16px;margin:16px 0;">
+        <p style="margin:0; font-size:12px; font-weight:700; text-transform:uppercase; color:#b91c1c;">Reason provided</p>
+        <p style="margin:8px 0 0; font-size:14px; color:#7f1d1d; white-space:pre-wrap;">${escapeHtml(p.reason.trim())}</p>
+      </div>`
+    : '';
+  const noteBlock =
+    p.adminNote && p.adminNote.trim()
+      ? `<p style="margin:12px 0 0; font-size:13px; color:#64748b;"><strong>Additional note:</strong> ${escapeHtml(
+          p.adminNote.trim()
+        )}</p>`
+      : '';
+  const inner = `<p style="font-size:15px; margin:0 0 8px; color:#334155;">Hi ${escapeHtml(p.requesterName)},</p>
+<p style="font-size:16px; font-weight:600; margin:0 0 12px; color:#b91c1c;">This request was not approved at your organisation</p>
+<p style="margin:0 0 16px; color:#475569; font-size:14px;">Your organisation admin decided not to send this to TaskFlow. You can submit a new request with more detail, or ask your admin if you have questions about this decision.</p>
+${crDetailTable([
+  { label: 'Request', value: p.requestTitle },
+  { label: 'Project', value: p.projectLabel },
+  { label: 'Type / Priority', value: `${p.typeLabel} · ${p.priorityLabel}` },
+  { label: 'Organisation', value: p.orgName },
+])}
+${reasonBlock}
+${noteBlock}
+${crCtaBlock(listUrl, 'View all your requests')}`;
+  return crBodyWrap(inner, 'red');
+}
+
+export interface CustomerTicketCreatedEmailParams {
+  recipientName: string;
+  requestTitle: string;
+  issueKey: string;
+  orgName: string;
+  appUrl: string;
+  requestId: string;
+  projectLabel: string;
+  typeLabel: string;
+  priorityLabel: string;
+}
+
+export function renderTicketCreatedEmail(p: CustomerTicketCreatedEmailParams): string {
+  const detailUrl = `${p.appUrl}/portal/requests/${p.requestId}`;
+  const inner = `<p style="font-size:15px; margin:0 0 8px; color:#334155;">Hi ${escapeHtml(p.recipientName)},</p>
+<p style="font-size:16px; font-weight:600; margin:0 0 12px; color:#16a34a;">Your work is officially on the board</p>
+<p style="margin:0 0 16px; color:#475569; font-size:14px;">TaskFlow approved your request and created a <strong>ticket</strong> in the project. The team can track, estimate, and discuss it with the same tools they use for all internal work.</p>
+${crDetailTable([
+  { label: 'Ticket', value: p.issueKey },
+  { label: 'From request', value: p.requestTitle },
+  { label: 'Project', value: p.projectLabel },
+  { label: 'Type / Priority', value: `${p.typeLabel} · ${p.priorityLabel}` },
+  { label: 'Organisation', value: p.orgName },
+])}
+${crNextStepsBox('What you can do', [
+  'Watch this request in the portal for status updates and comments from the team.',
+  'You can add portal comments; mention @issue if a comment should sync to the ticket for engineers.',
+])}
+${crCtaBlock(detailUrl, 'View request in portal')}`;
+  return crBodyWrap(inner, 'green');
+}
+
+export interface CustomerTfRejectedEmailParams {
+  requesterName: string;
+  requestTitle: string;
+  orgName: string;
+  appUrl: string;
+  requestId: string;
+  projectLabel: string;
+  typeLabel: string;
+  priorityLabel: string;
+  reason: string;
+  teamNote?: string;
+}
+
+export function renderTfRejectedEmail(p: CustomerTfRejectedEmailParams): string {
+  const listUrl = `${p.appUrl}/portal/requests`;
+  const teamNoteBlock =
+    p.teamNote && p.teamNote.trim()
+      ? `<p style="margin:14px 0 0; font-size:14px; color:#334155; white-space:pre-wrap; border-left:3px solid #e2e8f0; padding-left:12px;">${escapeHtml(
+          p.teamNote.trim()
+        )}</p>`
+      : '';
+  const reasonBlock = p.reason.trim()
+    ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px 16px;margin:16px 0;">
+        <p style="margin:0; font-size:12px; font-weight:700; text-transform:uppercase; color:#b91c1c;">Decline reason</p>
+        <p style="margin:8px 0 0; font-size:14px; color:#7f1d1d; white-space:pre-wrap;">${escapeHtml(p.reason.trim())}</p>
+      </div>`
+    : '';
+  const inner = `<p style="font-size:15px; margin:0 0 8px; color:#334155;">Hi ${escapeHtml(p.requesterName)},</p>
+<p style="font-size:16px; font-weight:600; margin:0 0 12px; color:#b91c1c;">The TaskFlow team could not take this request forward</p>
+<p style="margin:0 0 16px; color:#475569; font-size:14px;">This isn’t a reflection on you — the team may decline when work is out of scope, duplicates existing effort, or can’t be scheduled right now. You can refine the description and try again, or work with your organisation on another approach.</p>
+${crDetailTable([
+  { label: 'Request', value: p.requestTitle },
+  { label: 'Project', value: p.projectLabel },
+  { label: 'Type / Priority', value: `${p.typeLabel} · ${p.priorityLabel}` },
+  { label: 'Organisation', value: p.orgName },
+])}
+${reasonBlock}
+${teamNoteBlock}
+${crCtaBlock(listUrl, 'Back to your requests')}`;
+  return crBodyWrap(inner, 'red');
+}
+
+// ── Customer Portal Email Templates (invites) ────────────────────────────────
 
 export function renderCustomerOrgAdminInviteEmail(
   name: string,
@@ -287,122 +535,6 @@ export function renderCustomerMemberInviteEmail(
   <p><strong>Email:</strong> ${escapeHtml(email)}<br><strong>Temporary Password:</strong> <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">${escapeHtml(password)}</code></p>
   <p>Please change your password after your first login.</p>
   <p><a href="${escapeHtml(appUrl)}/portal/login" style="color: #4f46e5;">Sign in to Customer Portal</a></p>
-  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
-  <p style="font-size: 12px; color: #64748b;">This is an automated message. Do not reply.</p>
-</body>
-</html>
-  `.trim();
-}
-
-export function renderCustomerRequestSubmittedEmail(
-  requesterName: string,
-  requestTitle: string,
-  orgName: string,
-  appUrl: string
-): string {
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Request Submitted</title></head>
-<body style="font-family: system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2 style="color: #4f46e5;">Request Submitted</h2>
-  <p>Hi ${escapeHtml(requesterName)},</p>
-  <p>Your request <strong>${escapeHtml(requestTitle)}</strong> has been submitted to <strong>${escapeHtml(orgName)}</strong> and is pending approval.</p>
-  <p><a href="${escapeHtml(appUrl)}/portal/requests" style="color: #4f46e5;">View your requests</a></p>
-  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
-  <p style="font-size: 12px; color: #64748b;">This is an automated message. Do not reply.</p>
-</body>
-</html>
-  `.trim();
-}
-
-export function renderCustomerRequestApprovedByOrgAdminEmail(
-  requesterName: string,
-  requestTitle: string,
-  orgName: string,
-  appUrl: string
-): string {
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Request Approved</title></head>
-<body style="font-family: system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2 style="color: #4f46e5;">Request Approved by Org Admin</h2>
-  <p>Hi ${escapeHtml(requesterName)},</p>
-  <p>Your request <strong>${escapeHtml(requestTitle)}</strong> from <strong>${escapeHtml(orgName)}</strong> has been approved by your organization admin and is now pending TaskFlow review.</p>
-  <p><a href="${escapeHtml(appUrl)}/portal/requests" style="color: #4f46e5;">View your requests</a></p>
-  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
-  <p style="font-size: 12px; color: #64748b;">This is an automated message. Do not reply.</p>
-</body>
-</html>
-  `.trim();
-}
-
-export function renderCustomerRequestRejectedEmail(
-  requesterName: string,
-  requestTitle: string,
-  reason: string,
-  orgName: string,
-  appUrl: string
-): string {
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Request Rejected</title></head>
-<body style="font-family: system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2 style="color: #ef4444;">Request Rejected</h2>
-  <p>Hi ${escapeHtml(requesterName)},</p>
-  <p>Your request <strong>${escapeHtml(requestTitle)}</strong> from <strong>${escapeHtml(orgName)}</strong> has been rejected.</p>
-  ${reason ? `<p><strong>Reason:</strong> ${escapeHtml(reason)}</p>` : ''}
-  <p><a href="${escapeHtml(appUrl)}/portal/requests" style="color: #4f46e5;">View your requests</a></p>
-  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
-  <p style="font-size: 12px; color: #64748b;">This is an automated message. Do not reply.</p>
-</body>
-</html>
-  `.trim();
-}
-
-export function renderTicketCreatedEmail(
-  requesterName: string,
-  requestTitle: string,
-  issueKey: string,
-  orgName: string,
-  appUrl: string
-): string {
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Ticket Created</title></head>
-<body style="font-family: system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2 style="color: #22c55e;">Ticket Created: ${escapeHtml(issueKey)}</h2>
-  <p>Hi ${escapeHtml(requesterName)},</p>
-  <p>Your request <strong>${escapeHtml(requestTitle)}</strong> from <strong>${escapeHtml(orgName)}</strong> has been approved and a ticket has been created: <strong>${escapeHtml(issueKey)}</strong>.</p>
-  <p>Our team will begin working on it shortly.</p>
-  <p><a href="${escapeHtml(appUrl)}/portal/requests" style="color: #4f46e5;">View your requests</a></p>
-  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
-  <p style="font-size: 12px; color: #64748b;">This is an automated message. Do not reply.</p>
-</body>
-</html>
-  `.trim();
-}
-
-export function renderTfRejectedEmail(
-  requesterName: string,
-  requestTitle: string,
-  reason: string,
-  orgName: string,
-  appUrl: string
-): string {
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Request Declined</title></head>
-<body style="font-family: system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2 style="color: #ef4444;">Request Declined by TaskFlow</h2>
-  <p>Hi ${escapeHtml(requesterName)},</p>
-  <p>Your request <strong>${escapeHtml(requestTitle)}</strong> from <strong>${escapeHtml(orgName)}</strong> has been declined by the TaskFlow team.</p>
-  ${reason ? `<p><strong>Reason:</strong> ${escapeHtml(reason)}</p>` : ''}
-  <p><a href="${escapeHtml(appUrl)}/portal/requests" style="color: #4f46e5;">View your requests</a></p>
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
   <p style="font-size: 12px; color: #64748b;">This is an automated message. Do not reply.</p>
 </body>

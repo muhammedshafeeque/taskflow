@@ -21,6 +21,14 @@ import {
   renderTicketClosedEmail,
 } from '../../../services/email.service';
 import type { CreateRequestInput } from './customerRequest.validation';
+import {
+  notifyTaskflowRequestQueued,
+  notifyProjectMembersTicketFromCustomerRequest,
+  notifyTaskflowRequestDeclined,
+  formatRequestTypeLabel,
+  formatPriorityLabel,
+} from './customerRequestInbox';
+import { User } from '../../auth/user.model';
 
 export async function createRequest(
   orgId: string,
@@ -60,6 +68,30 @@ export async function createRequest(
     },
     status,
   });
+
+  const requestId = String(request._id);
+
+  const [org, project, requester] = await Promise.all([
+    CustomerOrg.findById(orgId).select('name').lean(),
+    Project.findById(input.projectId).select('name key').lean(),
+    CustomerUser.findById(createdByUserId).select('name email').lean(),
+  ]);
+  const projectLabel = project
+    ? `${(project as { name: string; key: string }).name} (${(project as { name: string; key: string }).key})`
+    : '—';
+
+  if (status === 'pending_taskflow_approval') {
+    notifyTaskflowRequestQueued({
+      requestId,
+      title: input.title,
+      description: input.description,
+      type: input.type,
+      priority: input.priority,
+      orgName: (org as { name?: string } | null)?.name ?? '—',
+      projectLabel,
+      requesterName: requester?.name ?? '—',
+    }).catch((err) => console.error('notifyTaskflowRequestQueued (create):', err));
+  }
 
   return request.toObject();
 }
@@ -299,23 +331,54 @@ export async function customerAdminApprove(
     { new: true }
   ).lean();
 
-  // Notify requester
-  const req = request as { createdBy?: unknown; title?: string };
-  if (req.createdBy) {
-    const requester = await CustomerUser.findById(req.createdBy).select('name email').lean();
-    const org = await CustomerOrg.findById(orgId).select('name').lean();
-    if (requester && org) {
-      sendCustomerEmail(
-        requester.email,
-        `Your request has been approved`,
-        renderCustomerRequestApprovedByOrgAdminEmail(
-          requester.name,
-          req.title ?? '',
-          org.name,
-          env.appUrl
-        )
-      ).catch((err) => console.error('Failed to send approval email:', err));
-    }
+  const r = request as {
+    _id: unknown;
+    createdBy?: unknown;
+    title?: string;
+    description?: string;
+    type?: string;
+    priority?: string;
+    projectId?: unknown;
+  };
+
+  const [requester, org, project, orgAdminReviewer] = await Promise.all([
+    r.createdBy ? CustomerUser.findById(r.createdBy).select('name email').lean() : null,
+    CustomerOrg.findById(orgId).select('name').lean(),
+    r.projectId ? Project.findById(r.projectId).select('name key').lean() : null,
+    CustomerUser.findById(reviewedBy).select('name').lean(),
+  ]);
+  const projectLabel = project
+    ? `${(project as { name: string; key: string }).name} (${(project as { name: string; key: string }).key})`
+    : '—';
+
+  notifyTaskflowRequestQueued({
+    requestId: String(requestId),
+    title: r.title ?? '',
+    description: r.description ?? '',
+    type: (r.type as string) ?? 'other',
+    priority: (r.priority as string) ?? 'medium',
+    orgName: (org as { name?: string } | null)?.name ?? '—',
+    projectLabel,
+    requesterName: requester?.name ?? '—',
+  }).catch((err) => console.error('notifyTaskflowRequestQueued (orgAdminApprove):', err));
+
+  if (requester && org) {
+    sendCustomerEmail(
+      requester.email,
+      `Your request has been approved by your organisation — ${(r.title ?? '').slice(0, 50)}${(r.title ?? '').length > 50 ? '…' : ''}`,
+      renderCustomerRequestApprovedByOrgAdminEmail({
+        requesterName: requester.name,
+        requestTitle: r.title ?? '',
+        orgName: (org as { name: string }).name,
+        appUrl: env.appUrl,
+        requestId: String(requestId),
+        projectLabel,
+        typeLabel: formatRequestTypeLabel((r.type as string) ?? 'other'),
+        priorityLabel: formatPriorityLabel((r.priority as string) ?? 'medium'),
+        reviewerName: orgAdminReviewer?.name ?? 'Organisation admin',
+        adminNote: note,
+      })
+    ).catch((err) => console.error('Failed to send approval email:', err));
   }
 
   return updated;
@@ -350,22 +413,38 @@ export async function customerAdminReject(
     { new: true }
   ).lean();
 
-  // Notify requester
-  const req = request as { createdBy?: unknown; title?: string };
-  if (req.createdBy) {
-    const requester = await CustomerUser.findById(req.createdBy).select('name email').lean();
-    const org = await CustomerOrg.findById(orgId).select('name').lean();
+  const rej = request as {
+    createdBy?: unknown;
+    title?: string;
+    type?: string;
+    priority?: string;
+    projectId?: unknown;
+  };
+  if (rej.createdBy) {
+    const [requester, org, project] = await Promise.all([
+      CustomerUser.findById(rej.createdBy).select('name email').lean(),
+      CustomerOrg.findById(orgId).select('name').lean(),
+      rej.projectId ? Project.findById(rej.projectId).select('name key').lean() : null,
+    ]);
     if (requester && org) {
+      const projectLabel = project
+        ? `${(project as { name: string; key: string }).name} (${(project as { name: string; key: string }).key})`
+        : '—';
       sendCustomerEmail(
         requester.email,
-        `Your request has been rejected`,
-        renderCustomerRequestRejectedEmail(
-          requester.name,
-          req.title ?? '',
-          reason ?? '',
-          org.name,
-          env.appUrl
-        )
+        `Update on your request — ${(rej.title ?? '').slice(0, 45)}${(rej.title ?? '').length > 45 ? '…' : ''}`,
+        renderCustomerRequestRejectedEmail({
+          requesterName: requester.name,
+          requestTitle: rej.title ?? '',
+          orgName: (org as { name: string }).name,
+          appUrl: env.appUrl,
+          requestId: String(requestId),
+          projectLabel,
+          typeLabel: formatRequestTypeLabel((rej.type as string) ?? 'other'),
+          priorityLabel: formatPriorityLabel((rej.priority as string) ?? 'medium'),
+          reason: reason ?? '',
+          adminNote: note,
+        })
       ).catch((err) => console.error('Failed to send rejection email:', err));
     }
   }
@@ -416,7 +495,7 @@ export async function tfApprove(
     { $inc: { nextIssueNumber: 1 } },
     { new: true }
   )
-    .select('key nextIssueNumber statuses issueTypes priorities')
+    .select('name key nextIssueNumber statuses issueTypes priorities')
     .lean();
 
   if (!project) throw new ApiError(404, 'Project not found');
@@ -425,12 +504,14 @@ export async function tfApprove(
   const priorityName = priorityMap[r.priority] ?? 'Medium';
 
   const projectAny = project as {
+    name: string;
     key: string;
     nextIssueNumber: number;
     issueTypes?: Array<{ name?: string }>;
     priorities?: Array<{ name?: string }>;
     statuses?: Array<{ name?: string; isClosed?: boolean }>;
   };
+  const projectLabel = `${projectAny.name} (${projectAny.key})`;
 
   const issueType =
     projectAny.issueTypes?.find((t) => t.name === typeName) ?? projectAny.issueTypes?.[0];
@@ -473,16 +554,19 @@ export async function tfApprove(
     { new: true }
   ).lean();
 
-  // Notify requester and org admin
-  const requester = await CustomerUser.findById(r.createdBy).select('name email').lean();
-  const org = await CustomerOrg.findById(r.customerOrgId).select('name').lean();
-  const orgAdmin = await CustomerUser.findOne({
-    customerOrgId: r.customerOrgId,
-    isOrgAdmin: true,
-    status: 'active',
-  })
-    .select('name email')
-    .lean();
+  // Notify requester and org admin (email)
+  const [requester, org, orgAdmin, approver] = await Promise.all([
+    CustomerUser.findById(r.createdBy).select('name email').lean(),
+    CustomerOrg.findById(r.customerOrgId).select('name').lean(),
+    CustomerUser.findOne({
+      customerOrgId: r.customerOrgId,
+      isOrgAdmin: true,
+      status: 'active',
+    })
+      .select('name email')
+      .lean(),
+    User.findById(reviewedByTfUserId).select('name').lean(),
+  ]);
 
   const notifyUsers = new Set<string>();
   if (requester) notifyUsers.add(requester.email);
@@ -492,10 +576,33 @@ export async function tfApprove(
     const recipientName = email === requester?.email ? requester?.name : orgAdmin?.name ?? 'Admin';
     sendCustomerEmail(
       email,
-      `Ticket created: ${issueKey}`,
-      renderTicketCreatedEmail(recipientName ?? '', r.title, issueKey, org?.name ?? '', env.appUrl)
+      `Ticket created: ${issueKey} — ${r.title.length > 40 ? `${r.title.slice(0, 37)}…` : r.title}`,
+      renderTicketCreatedEmail({
+        recipientName: recipientName ?? '',
+        requestTitle: r.title,
+        issueKey,
+        orgName: org?.name ?? '',
+        appUrl: env.appUrl,
+        requestId: r._id.toString(),
+        projectLabel,
+        typeLabel: formatRequestTypeLabel(r.type),
+        priorityLabel: formatPriorityLabel(r.priority),
+      })
     ).catch((err) => console.error('Failed to send ticket created email:', err));
   }
+
+  notifyProjectMembersTicketFromCustomerRequest({
+    projectId: String(r.projectId),
+    customerRequestId: r._id.toString(),
+    requestTitle: r.title,
+    orgName: org?.name ?? '—',
+    projectLabel,
+    issueKey,
+    type: r.type,
+    priority: r.priority,
+    approvedByName: approver?.name ?? 'TaskFlow',
+    reviewerNote: note,
+  }).catch((err) => console.error('notifyProjectMembersTicketFromCustomerRequest:', err));
 
   return updated;
 }
@@ -514,9 +621,14 @@ export async function tfReject(
   if (!request) throw new ApiError(404, 'Request not found or not pending TF approval');
 
   const r = request as {
+    _id: unknown;
     createdBy?: unknown;
     title?: string;
+    description?: string;
+    type?: string;
+    priority?: string;
     customerOrgId?: unknown;
+    projectId?: unknown;
   };
 
   const updated = await CustomerRequest.findByIdAndUpdate(
@@ -533,23 +645,47 @@ export async function tfReject(
     { new: true }
   ).lean();
 
-  // Notify requester
-  if (r.createdBy) {
-    const requester = await CustomerUser.findById(r.createdBy).select('name email').lean();
-    const org = await CustomerOrg.findById(r.customerOrgId).select('name').lean();
-    if (requester && org) {
-      sendCustomerEmail(
-        requester.email,
-        `Your request has been declined`,
-        renderTfRejectedEmail(
-          requester.name,
-          r.title ?? '',
-          reason ?? '',
-          org.name,
-          env.appUrl
-        )
-      ).catch((err) => console.error('Failed to send TF rejection email:', err));
-    }
+  const [org, project, requester, tfReviewer] = await Promise.all([
+    r.customerOrgId ? CustomerOrg.findById(r.customerOrgId).select('name').lean() : null,
+    r.projectId ? Project.findById(r.projectId).select('name key').lean() : null,
+    r.createdBy ? CustomerUser.findById(r.createdBy).select('name email').lean() : null,
+    User.findById(reviewedByTfUserId).select('name').lean(),
+  ]);
+  const projectLabel = project
+    ? `${(project as { name: string; key: string }).name} (${(project as { name: string; key: string }).key})`
+    : '—';
+
+  notifyTaskflowRequestDeclined({
+    requestId: String(requestId),
+    title: r.title ?? '',
+    description: r.description ?? '',
+    type: (r.type as string) ?? 'other',
+    priority: (r.priority as string) ?? 'medium',
+    orgName: (org as { name?: string } | null)?.name ?? '—',
+    projectLabel,
+    requesterName: requester?.name ?? '—',
+    reason: reason ?? '',
+    teamNote: note,
+    reviewedByName: tfReviewer?.name ?? 'TaskFlow',
+  }).catch((err) => console.error('notifyTaskflowRequestDeclined:', err));
+
+  if (requester && org) {
+    sendCustomerEmail(
+      requester.email,
+      `Update on your request — ${(r.title ?? '').slice(0, 45)}${(r.title ?? '').length > 45 ? '…' : ''}`,
+      renderTfRejectedEmail({
+        requesterName: requester.name,
+        requestTitle: r.title ?? '',
+        orgName: (org as { name: string }).name,
+        appUrl: env.appUrl,
+        requestId: String(r._id),
+        projectLabel,
+        typeLabel: formatRequestTypeLabel((r.type as string) ?? 'other'),
+        priorityLabel: formatPriorityLabel((r.priority as string) ?? 'medium'),
+        reason: reason ?? '',
+        teamNote: note,
+      })
+    ).catch((err) => console.error('Failed to send TF rejection email:', err));
   }
 
   return updated;

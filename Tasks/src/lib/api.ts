@@ -882,7 +882,20 @@ export interface InboxMessage {
   body?: string;
   readAt?: string;
   createdAt: string;
-  meta?: { invitationId?: string; status?: string };
+  /** Present when the API returns full documents (e.g. lean with timestamps) */
+  updatedAt?: string;
+  meta?: {
+    invitationId?: string;
+    status?: string;
+    url?: string;
+    projectId?: string;
+    versionId?: string;
+    versionName?: string;
+    environmentId?: string;
+    environmentName?: string;
+    issueCount?: number;
+    permissions?: string[];
+  } & Record<string, unknown>;
 }
 
 export const inboxApi = {

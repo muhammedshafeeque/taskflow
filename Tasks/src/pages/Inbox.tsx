@@ -15,6 +15,9 @@ const VISIBLE_INBOX_TYPES = new Set([
   'release_notes',
   'announcement',
   'permission_granted',
+  'customer_portal_request_queued',
+  'customer_portal_ticket_created',
+  'customer_portal_request_declined',
 ]);
 
 function isVisibleInboxItem(type: string): boolean {
@@ -27,6 +30,9 @@ function getInboxTypeLabel(type: string): string {
   if (type === 'release_notes') return 'Release notes';
   if (type === 'announcement') return 'Announcement';
   if (type === 'permission_granted') return 'Permission update';
+  if (type === 'customer_portal_request_queued') return 'Customer request';
+  if (type === 'customer_portal_ticket_created') return 'Customer ticket';
+  if (type === 'customer_portal_request_declined') return 'Request declined';
   return 'Inbox';
 }
 
@@ -57,6 +63,32 @@ function messageSnippet(body: string | undefined, max = 90): string {
   const one = body.replace(/\s+/g, ' ').trim();
   if (one.length <= max) return one;
   return `${one.slice(0, max).trimEnd()}…`;
+}
+
+function InboxMessageMetaPanel({ message: m }: { message: InboxMessage }) {
+  const meta = m.meta;
+  if (!meta || typeof meta !== 'object') return null;
+
+  if (m.type === 'permission_granted' && Array.isArray((meta as { permissions?: unknown }).permissions)) {
+    const perms = (meta as { permissions: unknown[] }).permissions.filter((p): p is string => typeof p === 'string');
+    if (perms.length === 0) return null;
+    return (
+      <div className="mb-5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/50 px-4 py-3.5">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">
+          Granted permissions
+        </h3>
+        <ul className="mt-2.5 list-disc pl-4 space-y-1.5 text-[13px] text-[color:var(--text-primary)]">
+          {perms.map((p) => (
+            <li key={p} className="font-mono break-all">
+              {p}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 type InboxFilter = 'all' | 'unread';
@@ -393,32 +425,48 @@ export default function Inbox() {
                     )}
 
                     <div className="border-b border-[color:var(--border-subtle)] pb-4 mb-4">
-                      <h2 className="text-lg sm:text-xl font-normal text-[color:var(--text-primary)] leading-snug pr-2">
+                      <h2 className="text-lg sm:text-xl font-semibold text-[color:var(--text-primary)] leading-snug pr-2">
                         {selectedMessage.title}
                       </h2>
-                      <div className="mt-3 flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-[color:var(--text-muted)]">
+                      <div className="mt-3 flex w-full min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-2 text-xs text-[color:var(--text-muted)]">
                         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                          <span className="text-[color:var(--text-primary)]">
+                          <span className="text-[color:var(--text-primary)] font-medium">
                             {getInboxTypeLabel(selectedMessage.type)}
                           </span>
                           {!selectedMessage.readAt && (
                             <span className="text-[color:var(--accent)] font-medium">Unread</span>
                           )}
                         </div>
-                        <time className="shrink-0 tabular-nums" dateTime={selectedMessage.createdAt}>
-                          {selectedMessage.createdAt ? formatDateTimeDDMMYYYY(selectedMessage.createdAt) : '—'}
-                        </time>
+                        <div className="shrink-0 text-right text-[11px] leading-relaxed tabular-nums">
+                          <div>
+                            <span className="text-[color:var(--text-subtle)]">Sent </span>
+                            <time dateTime={selectedMessage.createdAt}>
+                              {selectedMessage.createdAt ? formatDateTimeDDMMYYYY(selectedMessage.createdAt) : '—'}
+                            </time>
+                          </div>
+                          {selectedMessage.readAt && (
+                            <div className="mt-1">
+                              <span className="text-[color:var(--text-subtle)]">Read </span>
+                              <time dateTime={selectedMessage.readAt}>
+                                {formatDateTimeDDMMYYYY(selectedMessage.readAt)}
+                              </time>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
+
+                    <InboxMessageMetaPanel message={selectedMessage} />
 
                     {selectedMessage.type === 'release_notes' && (selectedMessage.body?.trim() ?? '') ? (
                       <ReleaseNotesMarkdownBody
                         notes={selectedMessage.body!}
-                        projectId={(selectedMessage.meta as { projectId?: string })?.projectId}
+                        projectId={selectedMessage.meta?.projectId}
+                        className="text-[15px] leading-[1.75]"
                       />
                     ) : (
-                      <div className="text-[color:var(--text-primary)] text-sm whitespace-pre-wrap leading-[1.65]">
-                        {selectedMessage.body || '—'}
+                      <div className="text-[color:var(--text-primary)] text-[15px] whitespace-pre-wrap leading-[1.75] break-words">
+                        {selectedMessage.body?.trim() ? selectedMessage.body : '—'}
                       </div>
                     )}
 
