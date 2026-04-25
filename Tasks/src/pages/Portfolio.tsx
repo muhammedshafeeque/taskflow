@@ -25,7 +25,7 @@ export default function Portfolio() {
       setLoading(false);
       if (res.success && res.data) setEntries(Array.isArray(res.data) ? res.data : []);
     });
-  }, [token]);
+  }, [token, workspaceKey]);
 
   const chartData = entries.map((e) => ({
     name: e.projectKey || e.projectName,
