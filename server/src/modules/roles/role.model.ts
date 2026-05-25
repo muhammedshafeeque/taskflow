@@ -19,7 +19,7 @@ function isValidRolePermissionSet(perms: string[]): boolean {
 const roleSchema = new Schema<IRole>(
   {
     name: { type: String, required: true, trim: true },
-    code: { type: String, lowercase: true, trim: true, sparse: true },
+    code: { type: String, lowercase: true, trim: true },
     permissions: {
       type: [String],
       default: [],

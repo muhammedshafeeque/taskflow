@@ -6,6 +6,7 @@ import { taskflowAppSettingsHref } from '../lib/appSettingsHref';
 import { SunIcon, MoonIcon, InboxIcon, LogOutIcon, DashboardIcon, SettingsIcon } from '../components/icons/NavigationIcons';
 import { APP_VERSION } from '../appVersion';
 import { organizationsApi, projectsApi, inboxApi, type TaskflowOrganizationSummary } from '../lib/api';
+import { canAccessTaskflowWorkspaceSettings } from '../utils/taskflowWorkspaceSettingsAccess';
 
 type TabId = 'home' | 'inbox' | 'shortcuts';
 
@@ -62,6 +63,7 @@ export default function StandaloneAppSettings() {
   }, []);
 
   const perms = user?.permissions ?? [];
+  const workspaceSettingsAllowed = canAccessTaskflowWorkspaceSettings(user);
   const shortcutLinks = useMemo(() => {
     const items: { label: string; path: string }[] = [{ label: 'Dashboard', path: '/' }];
     if (hasPerm(perms, 'auth.user.list') || hasPerm(perms, 'auth.user.create') || hasPerm(perms, 'users:list') || hasPerm(perms, 'users:invite')) {
@@ -73,10 +75,12 @@ export default function StandaloneAppSettings() {
     if (canSeeCustomerOrgs(perms)) {
       items.push({ label: 'Customer organisations', path: '/admin/customer-orgs' });
     }
-    items.push({ label: 'Workspace', path: '/settings/workspace' });
+    if (workspaceSettingsAllowed) {
+      items.push({ label: 'Workspace', path: '/settings/workspace' });
+    }
     items.push({ label: 'Profile', path: '/profile' });
     return items;
-  }, [perms]);
+  }, [perms, workspaceSettingsAllowed]);
 
   const orgs: TaskflowOrganizationSummary[] = user?.organizations ?? [];
   const activeOrgId = user?.activeOrganizationId ?? orgs[0]?.id;

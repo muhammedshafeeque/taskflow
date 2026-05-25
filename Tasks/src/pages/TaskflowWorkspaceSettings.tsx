@@ -11,6 +11,7 @@ import {
 } from '../lib/api';
 import { userHasPermission } from '../utils/permissions';
 import { TASK_FLOW_PERMISSIONS } from '@shared/constants/permissions';
+import { canAccessTaskflowWorkspaceSettings } from '../utils/taskflowWorkspaceSettingsAccess';
 
 type TabId = 'organization' | 'integrations';
 
@@ -36,6 +37,7 @@ export default function TaskflowWorkspaceSettings() {
   const orgs = user?.organizations ?? [];
   const activeOrgId = user?.activeOrganizationId ?? orgs[0]?.id;
   const showIntegrationsTab = canViewIntegrationsConfig(user);
+  const workspaceSettingsAllowed = canAccessTaskflowWorkspaceSettings(user);
 
   useEffect(() => {
     if (!showIntegrationsTab && tab === 'integrations') setTab('organization');
@@ -169,6 +171,20 @@ export default function TaskflowWorkspaceSettings() {
 
   if (!token) {
     return null;
+  }
+
+  if (!workspaceSettingsAllowed) {
+    return (
+      <div className="w-full px-4 lg:px-6 xl:px-8 py-6 space-y-4">
+        <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">Workspace settings</h1>
+        <p className="text-sm text-[color:var(--text-muted)]">
+          You do not have permission to view workspace settings.
+        </p>
+        <Link to="/" className="inline-block text-sm text-[color:var(--accent)] hover:underline">
+          Back to Project Manager →
+        </Link>
+      </div>
+    );
   }
 
   if (orgs.length === 0) {

@@ -9,6 +9,7 @@ import ConfirmModal from './ConfirmModal';
 import { taskflowAppSettingsHref } from '../lib/appSettingsHref';
 import { projectsApi, issuesApi, type Project, type Issue, getIssueKey } from '../lib/api';
 import { APP_VERSION } from '../appVersion';
+import { canAccessTaskflowWorkspaceSettings } from '../utils/taskflowWorkspaceSettingsAccess';
 import {
   DashboardIcon,
   InboxIcon,
@@ -100,7 +101,13 @@ function buildGlobalNav(
   if (has('taskflow.customer_portal.request.approve') || has('customer-requests:approve')) {
     nav.push({ to: '/admin/customer-requests', label: 'Customer Requests', icon: <IssuesIcon /> });
   }
-  if (user && 'userType' in user && user.userType === 'taskflow' && (user.organizations?.length ?? 0) > 0) {
+  if (
+    user &&
+    'userType' in user &&
+    user.userType === 'taskflow' &&
+    (user.organizations?.length ?? 0) > 0 &&
+    canAccessTaskflowWorkspaceSettings(user)
+  ) {
     nav.push({ to: '/settings/workspace', label: 'Workspace', icon: <AppHubSettingsIcon /> });
   }
   nav.push({ to: '/profile', label: 'Profile', icon: <ProfileIcon /> });
