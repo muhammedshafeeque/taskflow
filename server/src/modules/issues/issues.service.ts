@@ -11,6 +11,10 @@ import { notifyProjectRefresh } from '../../websocket';
 import * as watchersService from '../watchers/watchers.service';
 import { getClosedStatusNamesForProject, getClosedStatusNamesFromStatuses } from '../projects/statusClassification';
 import * as issueNotification from './issueNotification.service';
+import {
+  normalizeFixVersionsInput,
+  withNormalizedFixVersion,
+} from './issueVersionFields';
 
 const DEFAULT_STATUS = 'Backlog';
 
@@ -85,7 +89,10 @@ export async function create(
     timeEstimateMinutes: input.timeEstimateMinutes,
     checklist: input.checklist ?? [],
     customFieldValues: input.customFieldValues ?? {},
-    fixVersion: input.fixVersion ?? undefined,
+    fixVersion: (() => {
+      const ids = normalizeFixVersionsInput(input.fixVersion);
+      return ids?.length ? ids : undefined;
+    })(),
     affectsVersions: input.affectsVersions ?? undefined,
     parent: input.parent ?? undefined,
     milestone: input.milestone ?? undefined,
@@ -113,7 +120,7 @@ export async function create(
     }
   }
 
-  return doc.toObject();
+  return withNormalizedFixVersion(doc.toObject() as unknown as Record<string, unknown>);
 }
 
 export interface ListIssuesFilters {
@@ -346,7 +353,7 @@ export async function findAll(
   return {
     data: (
       data as Array<{ _id: unknown; key?: string; project?: { key?: string } | unknown }>
-    ).map(withIssueKey),
+    ).map((row) => mapIssue(row as Record<string, unknown>)),
     total,
     page,
     limit,
@@ -365,6 +372,12 @@ function withIssueKey(
   return { ...issue, key };
 }
 
+function mapIssue(issue: Record<string, unknown>): Record<string, unknown> & { key: string } {
+  return withNormalizedFixVersion(
+    withIssueKey(issue as { _id: unknown; key?: string; project?: { key?: string } | unknown })
+  ) as Record<string, unknown> & { key: string };
+}
+
 export async function findById(id: string): Promise<unknown | null> {
   const issue = await Issue.findById(id)
     .populate('reporter', 'name email')
@@ -374,7 +387,7 @@ export async function findById(id: string): Promise<unknown | null> {
     .populate('parent', 'key title _id')
     .populate('milestone', 'name dueDate status')
     .lean();
-  return issue ? withIssueKey(issue as { _id: unknown; key?: string; project?: { key?: string } }) : null;
+  return issue ? mapIssue(issue as Record<string, unknown>) : null;
 }
 
 export async function findChildren(parentId: string): Promise<unknown[]> {
@@ -446,8 +459,11 @@ export async function update(
   if (input.sprint === null || input.sprint === '') unset.sprint = 1;
   if (input.dueDate === null || input.dueDate === '') unset.dueDate = 1;
   if (input.startDate === null || input.startDate === '') unset.startDate = 1;
-  if (input.fixVersion === null || input.fixVersion === '') unset.fixVersion = 1;
-  if (input.fixVersion !== undefined && input.fixVersion !== null && input.fixVersion !== '') updateData.fixVersion = input.fixVersion;
+  if (input.fixVersion !== undefined) {
+    const fixVersions = normalizeFixVersionsInput(input.fixVersion);
+    if (!fixVersions?.length) unset.fixVersion = 1;
+    else updateData.fixVersion = fixVersions;
+  }
   if (input.affectsVersions !== undefined) updateData.affectsVersions = input.affectsVersions;
   if (input.parent !== undefined) {
     await validateParent(input.parent, String(oldDoc.project), id);
@@ -498,7 +514,10 @@ export async function update(
   if (input.checklist !== undefined && !arraysEqual(oldRaw.checklist as unknown[] | undefined, input.checklist)) {
     addChange('checklist', oldRaw.checklist, input.checklist);
   }
-  if (input.fixVersion !== undefined) addChange('fixVersion', oldRaw.fixVersion, input.fixVersion || undefined);
+  if (input.fixVersion !== undefined) {
+    const nextFix = normalizeFixVersionsInput(input.fixVersion);
+    addChange('fixVersion', oldRaw.fixVersion, nextFix?.length ? nextFix : undefined);
+  }
   if (input.affectsVersions !== undefined && !arraysEqual(oldRaw.affectsVersions as unknown[] | undefined, input.affectsVersions)) {
     addChange('affectsVersions', oldRaw.affectsVersions, input.affectsVersions);
   }
@@ -615,7 +634,7 @@ export async function update(
     syncIssueStatus(id, statuses, String(issue.status)).catch(() => {});
   }
 
-  return issue ? withIssueKey(issue as { _id: unknown; key?: string; project?: { key?: string } }) : null;
+  return issue ? mapIssue(issue as Record<string, unknown>) : null;
 }
 
 export async function remove(id: string): Promise<boolean> {
@@ -662,7 +681,7 @@ export interface BulkUpdateInput {
   labels?: string[];
   type?: string;
   priority?: string;
-  fixVersion?: string | null;
+  fixVersion?: string[] | string | null;
 }
 
 export async function bulkUpdate(
@@ -704,8 +723,9 @@ export async function bulkUpdate(
   if (updates.type !== undefined) updateData.type = updates.type;
   if (updates.priority !== undefined) updateData.priority = updates.priority;
   if (updates.fixVersion !== undefined) {
-    if (updates.fixVersion === null || updates.fixVersion === '') unset.fixVersion = 1;
-    else updateData.fixVersion = updates.fixVersion;
+    const fixVersions = normalizeFixVersionsInput(updates.fixVersion);
+    if (!fixVersions?.length) unset.fixVersion = 1;
+    else updateData.fixVersion = fixVersions;
   }
   if (updates.status !== undefined) updateData.boardColumn = updates.status;
 
@@ -825,7 +845,7 @@ export async function findByProjectAndKey(projectId: string, key: string): Promi
     .populate('sprint', 'name status')
     .populate('parent', 'key title _id')
     .lean();
-  return issue ? withIssueKey(issue as { _id: unknown; key?: string; project?: { key?: string } }) : null;
+  return issue ? mapIssue(issue as Record<string, unknown>) : null;
 }
 
 export interface SearchIssuesOptions {
@@ -866,7 +886,7 @@ export async function search(
   return {
     data: (
       data as Array<{ _id: unknown; key?: string; project?: { key?: string } | unknown }>
-    ).map(withIssueKey),
+    ).map((row) => mapIssue(row as Record<string, unknown>)),
     total,
     page,
     limit: safeLimit,
@@ -920,7 +940,7 @@ export async function searchGlobal(
   return {
     data: (
       data as Array<{ _id: unknown; key?: string; project?: { key?: string } | unknown }>
-    ).map(withIssueKey),
+    ).map((row) => mapIssue(row as Record<string, unknown>)),
     total,
     page,
     limit: safeLimit,
@@ -1008,7 +1028,7 @@ export async function findByJql(opts: FindByJqlOptions): Promise<PaginatedResult
   return {
     data: (
       data as Array<{ _id: unknown; key?: string; project?: { key?: string } | unknown }>
-    ).map(withIssueKey),
+    ).map((row) => mapIssue(row as Record<string, unknown>)),
     total,
     page,
     limit: safeLimit,

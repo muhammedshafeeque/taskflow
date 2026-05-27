@@ -27,6 +27,7 @@ import {
   getIssueKey,
 } from '../lib/api';
 import ConfirmModal from '../components/ConfirmModal';
+import { normalizeFixVersionIds } from '../lib/issueVersions';
 import {
   parseFiltersFromSearchParams,
   buildSearchParams,
@@ -121,7 +122,7 @@ export default function Issues() {
     parent: '',
     milestone: '',
     customFieldValues: {} as Record<string, unknown>,
-    fixVersion: '',
+    fixVersion: [] as string[],
     affectsVersions: [] as string[],
     labels: [] as string[],
   });
@@ -517,7 +518,7 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
       parent: initialParent ?? '',
       milestone: '',
       customFieldValues: {},
-      fixVersion: '',
+      fixVersion: [] as string[],
       affectsVersions: [],
       labels: [],
     });
@@ -542,7 +543,7 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
       parent: resolveIssueParentId(issue.parent),
       milestone: typeof issue.milestone === 'object' && issue.milestone ? issue.milestone._id : '',
       customFieldValues: { ...(issue.customFieldValues ?? {}) },
-      fixVersion: issue.fixVersion ?? '',
+      fixVersion: normalizeFixVersionIds(issue.fixVersion),
       affectsVersions: issue.affectsVersions ?? [],
       labels: issue.labels ?? [],
     });
@@ -668,7 +669,7 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
           parent: form.parent || undefined,
           milestone: form.milestone || undefined,
           customFieldValues: Object.keys(form.customFieldValues).length ? form.customFieldValues : undefined,
-          fixVersion: form.fixVersion || undefined,
+          fixVersion: form.fixVersion.length ? form.fixVersion : undefined,
           affectsVersions: form.affectsVersions.length ? form.affectsVersions : undefined,
           labels: form.labels.length ? form.labels : undefined,
         },
@@ -717,7 +718,7 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
           parent: form.parent || null,
           milestone: form.milestone || null,
           customFieldValues: form.customFieldValues,
-          fixVersion: form.fixVersion || undefined,
+          fixVersion: form.fixVersion.length ? form.fixVersion : undefined,
           affectsVersions: form.affectsVersions.length ? form.affectsVersions : undefined,
           labels: form.labels,
         },

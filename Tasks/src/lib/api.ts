@@ -1077,7 +1077,7 @@ export interface Issue {
   timeEstimateMinutes?: number;
   checklist?: ChecklistItem[];
   customFieldValues?: Record<string, unknown>;
-  fixVersion?: string;
+  fixVersion?: string[];
   affectsVersions?: string[];
   createdAt?: string;
   updatedAt?: string;
@@ -1135,7 +1135,7 @@ export const issuesApi = {
       parent?: string;
       milestone?: string;
       customFieldValues?: Record<string, unknown>;
-      fixVersion?: string;
+      fixVersion?: string[];
       affectsVersions?: string[];
       labels?: string[];
     },
@@ -1154,7 +1154,7 @@ export const issuesApi = {
       milestone?: string | null;
       checklist?: ChecklistItem[];
       customFieldValues?: Record<string, unknown>;
-      fixVersion?: string | null;
+      fixVersion?: string[] | null;
       affectsVersions?: string[];
     },
     token: string
@@ -1185,7 +1185,7 @@ export const issuesApi = {
     ),
   bulkUpdate: (
     issueIds: string[],
-    updates: { status?: string; assignee?: string | null; sprint?: string | null; storyPoints?: number | null; labels?: string[]; type?: string; priority?: string; fixVersion?: string | null },
+    updates: { status?: string; assignee?: string | null; sprint?: string | null; storyPoints?: number | null; labels?: string[]; type?: string; priority?: string; fixVersion?: string[] | null },
     token: string
   ) => api.patch<{ updated: number; errors: string[] }>('/issues/bulk', { issueIds, updates }, token),
   bulkDelete: (issueIds: string[], token: string) =>

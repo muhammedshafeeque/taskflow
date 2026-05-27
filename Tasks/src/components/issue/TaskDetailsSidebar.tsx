@@ -6,6 +6,7 @@ import { formatMinutes, parseDuration } from './WorkLogInput';
 import WatchButton from './WatchButton';
 import DateInputDDMMYYYY from '../DateInputDDMMYYYY';
 import { formatDateDDMMYYYY, toIsoDatePart } from '../../lib/dateFormat';
+import { normalizeFixVersionIds } from '../../lib/issueVersions';
 
 function formatDate(s: string | undefined) {
   if (!s) return '—';
@@ -19,6 +20,13 @@ function getInitials(name: string) {
     .slice(0, 2)
     .join('')
     .toUpperCase();
+}
+
+function getAvatarBg(name: string): string {
+  const palette = ['#388bfd', '#3fb950', '#d29922', '#bc8cff', '#f85149', '#e8912d', '#58b9de', '#79c0ff'];
+  let hash = 0;
+  for (const char of name) hash = char.charCodeAt(0) + ((hash << 5) - hash);
+  return palette[Math.abs(hash) % palette.length];
 }
 
 interface TaskDetailsSidebarProps {
@@ -43,9 +51,10 @@ interface TaskDetailsSidebarProps {
   newLabel: string;
   workLogs: WorkLog[];
   onUpdateField: (
-    field: 'status' | 'type' | 'priority' | 'assignee' | 'dueDate' | 'startDate' | 'storyPoints' | 'fixVersion' | 'timeEstimateMinutes' | 'sprint',
+    field: 'status' | 'type' | 'priority' | 'assignee' | 'dueDate' | 'startDate' | 'storyPoints' | 'timeEstimateMinutes' | 'sprint',
     value: string | number | null
   ) => void;
+  onUpdateFixVersions: (versions: string[]) => void;
   onUpdateAffectsVersions: (versions: string[]) => void;
   onAddLabel: () => void;
   onRemoveLabel: (label: string) => void;
@@ -364,6 +373,7 @@ export default function TaskDetailsSidebar({
   newLabel,
   workLogs,
   onUpdateField,
+  onUpdateFixVersions,
   onUpdateAffectsVersions,
   onAddLabel,
   onRemoveLabel,
@@ -372,7 +382,6 @@ export default function TaskDetailsSidebar({
   sprints = [],
 }: TaskDetailsSidebarProps) {
   const assigneeId = typeof issue.assignee === 'object' && issue.assignee ? issue.assignee._id : '';
-  const assignee = users.find((u) => u._id === assigneeId);
   const reporterName =
     typeof issue.reporter === 'object' && issue.reporter ? issue.reporter.name : '—';
 
@@ -381,7 +390,7 @@ export default function TaskDetailsSidebar({
 
   return (
     <aside className="lg:order-none order-first w-full lg:max-w-[340px] lg:min-h-0 lg:flex lg:flex-col lg:overflow-hidden">
-      <div className="space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1 [scrollbar-width:thin] [scrollbar-color:var(--border-subtle)_transparent]">
+      <div className="space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
         <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b-2 border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
             <span className="type-label-caps">Details</span>
@@ -501,9 +510,12 @@ export default function TaskDetailsSidebar({
                     disabled={!!updatingField}
                     renderOption={({ label }) => (
                       <span className="flex items-center gap-2">
-                        {assignee && label !== 'Unassigned' ? (
+                        {label !== 'Unassigned' ? (
                           <>
-                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[color:var(--accent-subtle)] border border-[color:var(--accent)]/20 text-[10px] font-bold text-[color:var(--accent)] shrink-0">
+                            <span
+                              className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white shrink-0"
+                              style={{ backgroundColor: getAvatarBg(label) }}
+                            >
                               {getInitials(label)}
                             </span>
                             <span className="text-[color:var(--text-primary)] truncate">{label}</span>
@@ -517,9 +529,19 @@ export default function TaskDetailsSidebar({
                 </div>
                 <div>
                   <span className="block type-sub-label mb-1">Reporter</span>
-                  <p className="px-3 py-2 text-xs text-[color:var(--text-primary)] bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] rounded-md">
-                    {reporterName}
-                  </p>
+                  {reporterName !== '—' ? (
+                    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md min-h-[34px]">
+                      <span
+                        className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white shrink-0"
+                        style={{ backgroundColor: getAvatarBg(reporterName) }}
+                      >
+                        {getInitials(reporterName)}
+                      </span>
+                      <span className="text-xs text-[color:var(--text-primary)] truncate">{reporterName}</span>
+                    </div>
+                  ) : (
+                    <p className="px-3 py-2 text-xs text-[color:var(--text-muted)]">—</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -550,7 +572,8 @@ export default function TaskDetailsSidebar({
                     return (
                       <span
                         key={w.user._id}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[color:var(--accent-subtle)] border border-[color:var(--accent)]/20 text-[10px] font-bold text-[color:var(--accent)]"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white shrink-0"
+                        style={{ backgroundColor: getAvatarBg(w.user.name) }}
                         title={tooltip}
                       >
                         {getInitials(w.user.name)}
@@ -593,24 +616,15 @@ export default function TaskDetailsSidebar({
               </label>
               {project?.versions && project.versions.length > 0 ? (
                 <div className="space-y-2">
-                  <div>
-                    <span className="block type-sub-label mb-1">Fix version</span>
-                    <InlineSelect
-                      value={issue.fixVersion ?? ''}
-                      options={[
-                        { value: '', label: 'None' },
-                        ...project.versions.map((v) => ({ value: v.id, label: v.name })),
-                      ]}
-                      onChange={(v) => onUpdateField('fixVersion', v || null)}
-                      disabled={!!updatingField}
-                      renderOption={({ label }) => (
-                        <span className={label === 'None' ? 'text-[color:var(--text-muted)]' : 'text-[color:var(--text-primary)]'}>
-                          {label}
-                        </span>
-                      )}
-                    />
-                  </div>
                   <VersionMultiSelect
+                    label="Fix version"
+                    value={normalizeFixVersionIds(issue.fixVersion)}
+                    options={project.versions}
+                    onChange={onUpdateFixVersions}
+                    disabled={!!updatingField}
+                  />
+                  <VersionMultiSelect
+                    label="Affects versions"
                     value={issue.affectsVersions ?? []}
                     options={project.versions}
                     onChange={onUpdateAffectsVersions}
@@ -787,11 +801,13 @@ export default function TaskDetailsSidebar({
 }
 
 function VersionMultiSelect({
+  label,
   value,
   options,
   onChange,
   disabled,
 }: {
+  label: string;
   value: string[];
   options: { id: string; name: string }[];
   onChange: (ids: string[]) => void;
@@ -815,7 +831,7 @@ function VersionMultiSelect({
   if (editing) {
     return (
       <div ref={ref}>
-        <span className="block type-sub-label mb-1">Affects versions</span>
+        <span className="block type-sub-label mb-1">{label}</span>
         <select
           multiple
           value={value}
@@ -841,7 +857,7 @@ function VersionMultiSelect({
 
   return (
     <div>
-      <span className="block type-sub-label mb-1">Affects versions</span>
+      <span className="block type-sub-label mb-1">{label}</span>
       <button
         type="button"
         onClick={() => !disabled && setEditing(true)}

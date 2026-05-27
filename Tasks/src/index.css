@@ -56,6 +56,12 @@
     --color-warning: #d29922;
     --color-success: #3fb950;
     --color-info: #388bfd;
+    /* Scrollbars */
+    --scrollbar-size: 10px;
+    --scrollbar-track: var(--bg-elevated);
+    --scrollbar-thumb: #484f58;
+    --scrollbar-thumb-hover: var(--accent-muted);
+    --scrollbar-thumb-active: var(--accent);
   }
 
   :root[data-theme='light'] {
@@ -108,6 +114,10 @@
     --color-warning: #9a6700;
     --color-success: #1a7f37;
     --color-info: #0969da;
+    --scrollbar-track: #eaeef2;
+    --scrollbar-thumb: #afb8c1;
+    --scrollbar-thumb-hover: var(--accent);
+    --scrollbar-thumb-active: var(--accent-muted);
   }
 
   :root[data-theme='dark'] {
@@ -154,6 +164,10 @@
     --color-warning: #d29922;
     --color-success: #3fb950;
     --color-info: #388bfd;
+    --scrollbar-track: var(--bg-elevated);
+    --scrollbar-thumb: #484f58;
+    --scrollbar-thumb-hover: var(--accent-muted);
+    --scrollbar-thumb-active: var(--accent);
   }
 
   html {
@@ -173,6 +187,47 @@
     height: 100%;
   }
 
+  /* App-wide themed scrollbars (Firefox + WebKit) */
+  *:not(.no-scrollbar):not(.kanban-scroll-main) {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+
+  *:not(.no-scrollbar):not(.kanban-scroll-main)::-webkit-scrollbar {
+    width: var(--scrollbar-size);
+    height: var(--scrollbar-size);
+  }
+
+  *:not(.no-scrollbar):not(.kanban-scroll-main)::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: 999px;
+  }
+
+  *:not(.no-scrollbar):not(.kanban-scroll-main)::-webkit-scrollbar-thumb {
+    background: linear-gradient(
+      180deg,
+      var(--scrollbar-thumb-active) 0%,
+      var(--scrollbar-thumb) 100%
+    );
+    border-radius: 999px;
+    border: 2px solid var(--scrollbar-track);
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  *:not(.no-scrollbar):not(.kanban-scroll-main)::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+    border-color: color-mix(in srgb, var(--scrollbar-track) 60%, var(--bg-surface));
+  }
+
+  *:not(.no-scrollbar):not(.kanban-scroll-main)::-webkit-scrollbar-thumb:active {
+    background: var(--scrollbar-thumb-active);
+  }
+
+  *:not(.no-scrollbar):not(.kanban-scroll-main)::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
   /* Kanban: main horizontal scroll uses top synced bar; hide duplicate bottom bar */
   .kanban-scroll-main {
     scrollbar-width: none;
@@ -182,38 +237,20 @@
     display: none;
   }
 
-  .kanban-scroll-top {
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-subtle) transparent;
-  }
-
-  /* Inbox: polished scrollbars (list + reading pane) */
+  /* Inbox: reserve space so layout does not shift when scrollbar appears */
   .inbox-scroll {
     scrollbar-gutter: stable;
-    scrollbar-width: thin;
-    scrollbar-color: var(--accent-muted) var(--bg-elevated);
   }
-  .inbox-scroll::-webkit-scrollbar {
-    width: 9px;
-    height: 9px;
+
+  /* Hide scrollbar but keep scroll (tab strips, etc.) */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
-  .inbox-scroll::-webkit-scrollbar-track {
-    background: var(--bg-elevated);
-    border-radius: 999px;
-    margin: 5px 0;
-  }
-  .inbox-scroll::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, var(--accent) 0%, var(--accent-muted) 100%);
-    border-radius: 999px;
-    border: 2px solid var(--bg-elevated);
-    min-height: 32px;
-  }
-  .inbox-scroll::-webkit-scrollbar-thumb:hover {
-    background: var(--accent);
-    border-color: var(--bg-surface);
-  }
-  .inbox-scroll::-webkit-scrollbar-corner {
-    background: transparent;
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 }
 
@@ -478,6 +515,14 @@ button:focus-visible,
 }
 
 @layer utilities {
+  /* Explicit opt-in alias (same as global themed scrollbars) */
+  .app-scrollbar,
+  .custom-scrollbar {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+
   /* Section headers: "ACTIVITY", "DESCRIPTION", "DETAILS", "STATUS" */
   .type-label-caps {
     font-size: 0.6875rem; font-weight: 600; line-height: 1rem;

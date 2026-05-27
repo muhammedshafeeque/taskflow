@@ -422,14 +422,18 @@ export async function releaseVersionToEnvironment(
     if (useSelection && selectedIds.length > 0) {
       await Issue.updateMany(
         { project: projectId, fixVersion: versionId, _id: { $nin: selectedIds } },
-        { $unset: { fixVersion: 1 } }
+        { $pull: { fixVersion: versionId } }
       );
     } else if (useSelection && selectedIds.length === 0) {
       await Issue.updateMany(
         { project: projectId, fixVersion: versionId },
-        { $unset: { fixVersion: 1 } }
+        { $pull: { fixVersion: versionId } }
       );
     }
+    await Issue.updateMany(
+      { project: projectId, fixVersion: { $exists: true, $size: 0 } },
+      { $unset: { fixVersion: 1 } }
+    );
   }
 
   // Group by issue type (dynamic from project issue types); section headings = type names

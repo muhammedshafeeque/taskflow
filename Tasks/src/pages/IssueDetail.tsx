@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { FiAlertCircle } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationsContext';
 import {
@@ -76,7 +77,7 @@ export default function IssueDetail() {
     parent: '',
     milestone: '',
     customFieldValues: {} as Record<string, unknown>,
-    fixVersion: '',
+    fixVersion: [] as string[],
     affectsVersions: [] as string[],
     labels: [] as string[],
   });
@@ -129,7 +130,7 @@ export default function IssueDetail() {
           parent: form.parent || undefined,
           milestone: form.milestone || undefined,
           customFieldValues: Object.keys(form.customFieldValues).length ? form.customFieldValues : undefined,
-          fixVersion: form.fixVersion || undefined,
+          fixVersion: form.fixVersion.length ? form.fixVersion : undefined,
           affectsVersions: form.affectsVersions.length ? form.affectsVersions : undefined,
           labels: form.labels.length ? form.labels : undefined,
         },
@@ -336,7 +337,6 @@ export default function IssueDetail() {
       | 'dueDate'
       | 'startDate'
       | 'storyPoints'
-      | 'fixVersion'
       | 'timeEstimateMinutes'
       | 'sprint',
     value: string | number | null
@@ -354,6 +354,13 @@ export default function IssueDetail() {
               ? { sprint: value === '' ? null : value }
               : { [field]: value };
     await updateIssue(payload);
+    setUpdatingField(null);
+  }
+
+  async function updateFixVersions(fixVersion: string[]) {
+    if (!token || !issue?._id) return;
+    setUpdatingField('fixVersion');
+    await updateIssue({ fixVersion });
     setUpdatingField(null);
   }
 
@@ -417,13 +424,75 @@ export default function IssueDetail() {
     else setWatchersError(res.message ?? 'Failed to unwatch');
   }
 
-  if (loading || !issue) {
+  if (loading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center p-8">
-        {loading ? (
-          <div className="text-[color:var(--text-muted)] animate-pulse">Loading…</div>
-        ) : (
-          <div className="text-[color:var(--text-muted)]">Issue not found.</div>
+      <div className="flex flex-1 flex-col min-h-0">
+        <div className="flex flex-1 min-h-0 w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-6">
+          <div className="grid flex-1 min-h-0 grid-cols-1 lg:grid-cols-[1fr_minmax(260px,340px)] gap-4 lg:gap-6">
+            {/* Left skeleton */}
+            <div className="space-y-4">
+              <div className="space-y-3 pb-4 border-b border-[color:var(--border-subtle)]/60">
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-20 rounded bg-[color:var(--bg-elevated)] animate-pulse" />
+                  <div className="h-3 w-3 rounded-sm bg-[color:var(--bg-elevated)] animate-pulse" />
+                  <div className="h-5 w-16 rounded-md bg-[color:var(--bg-elevated)] animate-pulse" />
+                </div>
+                <div className="h-9 w-4/5 rounded-lg bg-[color:var(--bg-elevated)] animate-pulse" />
+                <div className="h-7 w-2/3 rounded-lg bg-[color:var(--bg-elevated)] animate-pulse" />
+                <div className="flex gap-2">
+                  <div className="h-6 w-16 rounded-full bg-[color:var(--bg-elevated)] animate-pulse" />
+                  <div className="h-6 w-14 rounded-full bg-[color:var(--bg-elevated)] animate-pulse" />
+                  <div className="h-6 w-20 rounded-full bg-[color:var(--bg-elevated)] animate-pulse" />
+                </div>
+              </div>
+              {[1, 2].map((i) => (
+                <div key={i} className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-hidden">
+                  <div className="h-10 bg-[color:var(--bg-elevated)] border-b border-[color:var(--border-subtle)] animate-pulse" />
+                  <div className="px-4 py-4 space-y-2.5">
+                    <div className="h-3 w-full rounded bg-[color:var(--bg-elevated)] animate-pulse" />
+                    <div className="h-3 w-5/6 rounded bg-[color:var(--bg-elevated)] animate-pulse" />
+                    <div className="h-3 w-3/4 rounded bg-[color:var(--bg-elevated)] animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Right sidebar skeleton */}
+            <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-hidden">
+              <div className="h-11 bg-[color:var(--bg-elevated)] border-b border-[color:var(--border-subtle)] animate-pulse" />
+              <div className="divide-y divide-[color:var(--border-subtle)]/70">
+                {Array.from({ length: 7 }).map((_, i) => (
+                  <div key={i} className="px-4 py-3 space-y-2">
+                    <div className="h-2.5 w-12 rounded bg-[color:var(--bg-elevated)] animate-pulse" />
+                    <div className="h-7 w-full rounded-md bg-[color:var(--bg-elevated)] animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!issue) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-8 text-center">
+        <div className="w-14 h-14 rounded-full bg-[color:var(--bg-elevated)] flex items-center justify-center">
+          <FiAlertCircle className="w-7 h-7 text-[color:var(--text-muted)]" />
+        </div>
+        <div>
+          <p className="text-base font-semibold text-[color:var(--text-primary)]">Issue not found</p>
+          <p className="text-sm text-[color:var(--text-muted)] mt-1">
+            This issue may have been deleted or you don't have permission to view it.
+          </p>
+        </div>
+        {projectId && (
+          <Link
+            to={`/projects/${projectId}/issues`}
+            className="text-sm font-medium text-[color:var(--accent)] hover:underline underline-offset-2"
+          >
+            ← Back to issues
+          </Link>
         )}
       </div>
     );
@@ -449,9 +518,10 @@ export default function IssueDetail() {
                 getPriorityMeta={getPriorityMeta}
                 getStatusMeta={getStatusMeta}
                 onUpdateTitle={updateTitle}
+                onDelete={() => setConfirmDelete(true)}
               />
             </div>
-            <div className="space-y-4 pt-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:pr-1 [scrollbar-width:thin] [scrollbar-color:var(--border-subtle)_transparent]">
+            <div className="space-y-4 pt-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
               <TaskDescription issue={issue} onUpdateDescription={updateDescription} />
               <TaskSecondaryTabs
                 ref={secondaryTabsRef}
@@ -516,6 +586,7 @@ export default function IssueDetail() {
               newLabel={newLabel}
               onOpenTimeLog={() => setTimeLogOpen(true)}
               onUpdateField={updateField}
+              onUpdateFixVersions={updateFixVersions}
               onUpdateAffectsVersions={updateAffectsVersions}
               onAddLabel={addLabel}
               onRemoveLabel={removeLabel}

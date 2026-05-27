@@ -199,9 +199,20 @@ function renderCell(
     );
   }
   if (colId === 'fixVersion') {
-    const versionName =
-      issueProject?.versions?.find((v) => v.id === issue.fixVersion)?.name ?? issue.fixVersion ?? '—';
-    return <span className="text-[color:var(--text-muted)] text-xs truncate block">{versionName}</span>;
+    const ids = Array.isArray(issue.fixVersion)
+      ? issue.fixVersion
+      : issue.fixVersion
+        ? [String(issue.fixVersion)]
+        : [];
+    const names = ids
+      .map((id) => issueProject?.versions?.find((v) => v.id === id)?.name ?? id)
+      .filter(Boolean);
+    const text = names.length ? names.join(', ') : '—';
+    return (
+      <span className="text-[color:var(--text-muted)] text-xs truncate block" title={text}>
+        {text}
+      </span>
+    );
   }
   if (colId === 'affectsVersions') {
     const ids = issue.affectsVersions ?? [];

@@ -44,7 +44,7 @@ export function ActiveFilterChips({
   const dueLabel = (preset: string) => DUE_DATE_PRESET_OPTIONS.find((o) => o.value === preset)?.label ?? preset;
 
   const hasAnyFilter = hasAnyIssueFilters(filters);
-  if (!hasAnyFilter && quickFilter !== 'open') return null;
+  if (!hasAnyFilter && quickFilter === 'all') return null;
 
   const handleRemoveQuick = () => updateUrl({ quickFilter: 'all', page: 1 });
 

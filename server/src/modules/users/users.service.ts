@@ -263,8 +263,6 @@ async function upsertActiveOrgMember(organizationId: string, userId: mongoose.Ty
       $setOnInsert: {
         organization: organizationId,
         user: userId,
-        role: 'org_member',
-        status: 'active',
       },
     },
     { upsert: true }

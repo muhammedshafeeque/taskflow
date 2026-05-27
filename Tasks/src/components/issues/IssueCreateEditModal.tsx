@@ -18,7 +18,7 @@ export interface IssueForm {
   parent: string;
   milestone: string;
   customFieldValues: Record<string, unknown>;
-  fixVersion: string;
+  fixVersion: string[];
   affectsVersions: string[];
   labels: string[];
 }
@@ -53,6 +53,8 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
   const showParentField = form.type !== 'Epic';
   const parentOptions = parentCandidates.filter((p) => p._id !== editingIssueId);
   if (!modal) return null;
+  const [fixOpen, setFixOpen] = useState(false);
+  const fixRef = useRef<HTMLDivElement | null>(null);
   const [affectsOpen, setAffectsOpen] = useState(false);
   const affectsRef = useRef<HTMLDivElement | null>(null);
   const [labelInput, setLabelInput] = useState('');
@@ -75,12 +77,16 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
 
   const inputCls =
     'w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 transition-colors';
+  const selectedFix = (project?.versions || []).filter((v) => form.fixVersion.includes(v.id));
   const selectedAffects = (project?.versions || []).filter((v) => form.affectsVersions.includes(v.id));
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node | null;
       if (!target) return;
+      if (fixRef.current && !fixRef.current.contains(target)) {
+        setFixOpen(false);
+      }
       if (affectsRef.current && !affectsRef.current.contains(target)) {
         setAffectsOpen(false);
       }
@@ -272,12 +278,52 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
           </div>
           {project?.versions && project.versions.length > 0 && (
             <div className="grid grid-cols-1 gap-3 pt-2 min-w-0">
-              <div>
+              <div className="min-w-0">
                 <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Fix version</label>
-                <select value={form.fixVersion} onChange={(e) => setForm((f) => ({ ...f, fixVersion: e.target.value }))} className={inputCls}>
-                  <option value="">None</option>
-                  {project.versions.map((v) => <option key={v.id} value={v.id}>{v.name} {v.status !== 'unreleased' ? `(${v.status})` : ''}</option>)}
-                </select>
+                <div className="relative" ref={fixRef}>
+                  <button
+                    type="button"
+                    onClick={() => setFixOpen((v) => !v)}
+                    className={inputCls + ' min-h-[34px] text-left flex items-center justify-between hover:bg-[color:var(--bg-surface)]'}
+                  >
+                    <span className="truncate pr-3">
+                      {selectedFix.length === 0
+                        ? 'None'
+                        : selectedFix.length <= 2
+                          ? selectedFix.map((v) => v.name).join(', ')
+                          : `${selectedFix.length} selected`}
+                    </span>
+                    <span className="text-[10px] text-[color:var(--text-muted)]">{fixOpen ? '▲' : '▼'}</span>
+                  </button>
+                  {fixOpen && (
+                    <div className="absolute z-30 mt-1 w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] shadow-xl p-1 max-h-56 overflow-auto">
+                      {project.versions.map((v) => {
+                        const checked = form.fixVersion.includes(v.id);
+                        return (
+                          <label
+                            key={v.id}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-[color:var(--bg-page)] transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setForm((f) => {
+                                  const set = new Set(f.fixVersion);
+                                  if (e.target.checked) set.add(v.id);
+                                  else set.delete(v.id);
+                                  return { ...f, fixVersion: Array.from(set) };
+                                });
+                              }}
+                              className="accent-[color:var(--accent)]"
+                            />
+                            <span className="text-xs text-[color:var(--text-primary)]">{v.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="min-w-0">
                 <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Affects versions</label>

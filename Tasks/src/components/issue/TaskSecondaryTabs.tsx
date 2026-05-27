@@ -1,5 +1,6 @@
 import { useState, forwardRef, useImperativeHandle, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { FiPlus } from 'react-icons/fi';
 import type { Issue, Attachment, IssueLink } from '../../lib/api';
 import TaskSubtasks from './TaskSubtasks';
 import TaskIssueLinks, { type TaskIssueLinksHandle } from './TaskIssueLinks';
@@ -9,20 +10,13 @@ interface TaskSecondaryTabsProps {
   issue: Issue;
   projectId: string | undefined;
   token: string | null;
-  
-  // Subtasks
   subtasks: Issue[];
   getStatusMeta: (name: string) => { color?: string; icon?: string } | undefined;
-
-  // Links
   links: IssueLink[];
   onLinksChange: () => void;
   onParentRemoved?: () => void;
-
-  // Attachments
   attachments: Attachment[];
   onAttachmentsChange: () => void;
-
   currentUserId?: string;
 }
 
@@ -63,55 +57,47 @@ const TaskSecondaryTabs = forwardRef<TaskSecondaryTabsHandle, TaskSecondaryTabsP
     },
   }));
 
-  const addSubtaskUrl = projectId
-    ? `?create=1&parent=${issue._id}`
-    : '#';
+  const addSubtaskUrl = projectId ? `?create=1&parent=${issue._id}` : '#';
+
+  const tabClass = (tab: Tab) =>
+    `inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
+      activeTab === tab
+        ? 'bg-[color:var(--accent)] text-white font-semibold shadow-sm'
+        : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)] hover:text-[color:var(--text-primary)]'
+    }`;
+
+  const badgeClass = (tab: Tab) =>
+    `min-w-[1.1rem] h-[1.1rem] px-1 inline-flex items-center justify-center rounded-full text-[9px] font-bold ${
+      activeTab === tab
+        ? 'bg-white/25 text-white'
+        : 'bg-[color:var(--bg-elevated)] text-[color:var(--text-muted)]'
+    }`;
 
   return (
     <section className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] overflow-x-auto no-scrollbar">
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] overflow-x-auto no-scrollbar">
         <div className="flex gap-1 min-w-max">
-          <button
-            type="button"
-            onClick={() => setActiveTab('subtasks')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
-              activeTab === 'subtasks'
-                ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] border border-[color:var(--border-subtle)] shadow-sm font-semibold'
-                : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'
-            }`}
-          >
-            Subtasks ({subtasks.length})
+          <button type="button" onClick={() => setActiveTab('subtasks')} className={tabClass('subtasks')}>
+            Subtasks
+            <span className={badgeClass('subtasks')}>{subtasks.length}</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('links')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
-              activeTab === 'links'
-                ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] border border-[color:var(--border-subtle)] shadow-sm font-semibold'
-                : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'
-            }`}
-          >
-            Links ({links.length})
+          <button type="button" onClick={() => setActiveTab('links')} className={tabClass('links')}>
+            Links
+            <span className={badgeClass('links')}>{links.length}</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('attachments')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
-              activeTab === 'attachments'
-                ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] border border-[color:var(--border-subtle)] shadow-sm font-semibold'
-                : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]'
-            }`}
-          >
-            Attachments ({attachments.length})
+          <button type="button" onClick={() => setActiveTab('attachments')} className={tabClass('attachments')}>
+            Attachments
+            <span className={badgeClass('attachments')}>{attachments.length}</span>
           </button>
         </div>
 
-        <div className="ml-4 shrink-0">
+        <div className="ml-3 shrink-0">
           {activeTab === 'subtasks' && projectId && (
             <Link
               to={addSubtaskUrl}
-              className="text-[11px] font-medium px-2 py-1 rounded bg-[color:var(--accent)] text-white hover:bg-[color:var(--accent)]/90 transition-colors"
+              className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md bg-[color:var(--accent)] text-white hover:opacity-90 transition-opacity"
             >
+              <FiPlus className="h-3 w-3" />
               Add subtask
             </Link>
           )}
@@ -119,8 +105,9 @@ const TaskSecondaryTabs = forwardRef<TaskSecondaryTabsHandle, TaskSecondaryTabsP
             <button
               type="button"
               onClick={() => issueLinksRef.current?.openLinkModal()}
-              className="text-[11px] font-medium px-2 py-1 rounded bg-[color:var(--accent)] text-white hover:bg-[color:var(--accent)]/90 transition-colors"
+              className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md bg-[color:var(--accent)] text-white hover:opacity-90 transition-opacity"
             >
+              <FiPlus className="h-3 w-3" />
               Link issue
             </button>
           )}
@@ -128,8 +115,9 @@ const TaskSecondaryTabs = forwardRef<TaskSecondaryTabsHandle, TaskSecondaryTabsP
             <button
               type="button"
               onClick={() => attachmentsRef.current?.openFilePicker()}
-              className="text-[11px] font-medium px-2 py-1 rounded bg-[color:var(--accent)] text-white hover:bg-[color:var(--accent)]/90 transition-colors"
+              className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md bg-[color:var(--accent)] text-white hover:opacity-90 transition-opacity"
             >
+              <FiPlus className="h-3 w-3" />
               Add attachment
             </button>
           )}

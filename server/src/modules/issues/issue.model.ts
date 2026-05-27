@@ -29,7 +29,7 @@ export interface IIssue extends Document {
   timeEstimateMinutes?: number;
   checklist: IChecklistItem[];
   customFieldValues: Record<string, unknown>;
-  fixVersion?: string;       // project version id (e.g. "1.0" or version id)
+  fixVersion?: string[];     // project version ids targeted for fix
   affectsVersions?: string[]; // project version ids this issue affects
   parent?: mongoose.Types.ObjectId; // parent issue (Epic/Story only)
   milestone?: mongoose.Types.ObjectId; // milestone
@@ -65,7 +65,7 @@ const issueSchema = new Schema<IIssue>(
       default: [],
     },
     customFieldValues: { type: Schema.Types.Mixed, default: {} },
-    fixVersion: { type: String },
+    fixVersion: { type: [String], default: undefined },
     affectsVersions: { type: [String], default: undefined },
     parent: { type: Schema.Types.ObjectId, ref: 'Issue' },
     milestone: { type: Schema.Types.ObjectId, ref: 'Milestone' },
