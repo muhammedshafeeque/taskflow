@@ -9,6 +9,15 @@ import { projectsApi, issuesApi, type Project, type ProjectVersion, type Issue, 
 import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '../lib/dateFormat';
 import { EditIcon, TrashIcon, WarningIcon, PackageIcon } from '../components/icons/NavigationIcons';
 import { ReleaseNotesMarkdownBody } from '../components/ReleaseNotesMarkdown';
+import {
+  canReleaseToEnvironment,
+  getNextReleaseEnvironment,
+  hasPendingPromotion,
+  isReleasedToEnvironment,
+  sortEnvironmentsAsc,
+  sortEnvironmentsDesc,
+  validateEnvironmentReleaseOrder,
+} from '../lib/environmentHierarchy';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -63,6 +72,8 @@ export default function Versions() {
   const releaseNotesContentRef = useRef<HTMLDivElement>(null);
   const releaseNotesExportRef = useRef<HTMLDivElement>(null);
   const environments = project?.environments ?? [];
+  const environmentsAsc = useMemo(() => sortEnvironmentsAsc(environments), [environments]);
+  const environmentsDesc = useMemo(() => sortEnvironmentsDesc(environments), [environments]);
   const versionsNewestFirst = useMemo(
     () => [...versions].sort((a, b) => (b.order ?? 0) - (a.order ?? 0)),
     [versions]
@@ -204,7 +215,8 @@ export default function Versions() {
   useEffect(() => {
     if (!releaseModalVersion || !token || !projectId) return;
     setReleaseModalLoading(true);
-    setReleaseModalSelectedEnvId(environments[0]?.id ?? '');
+    const nextEnv = getNextReleaseEnvironment(environmentsAsc, releaseModalVersion);
+    setReleaseModalSelectedEnvId(nextEnv?.id ?? environmentsAsc[0]?.id ?? '');
     issuesApi
       .list({ project: projectId, fixVersion: releaseModalVersion.id, limit: 500, token })
       .then((res) => {
@@ -222,7 +234,7 @@ export default function Versions() {
         setReleaseModalIssues([]);
         setReleaseModalCheckedIds(new Set());
       });
-  }, [releaseModalVersion?.id, projectId, token]);
+  }, [releaseModalVersion?.id, projectId, token, environmentsAsc]);
 
   function openReleaseModal(version: ProjectVersion) {
     setReleaseModalVersion(version);
@@ -253,6 +265,19 @@ export default function Versions() {
 
   async function submitReleaseModal() {
     if (!token || !projectId || !releaseModalVersion || !releaseModalSelectedEnvId) return;
+    const orderCheck = validateEnvironmentReleaseOrder(
+      environmentsAsc,
+      releaseModalVersion,
+      releaseModalSelectedEnvId
+    );
+    if (!orderCheck.ok) {
+      setError(orderCheck.message);
+      return;
+    }
+    if (!canReleaseToEnvironment(environmentsAsc, releaseModalVersion, releaseModalSelectedEnvId)) {
+      setError('This environment is not available for release or promotion.');
+      return;
+    }
     setReleaseModalSubmitting(true);
     setError('');
     const issueIds = Array.from(releaseModalCheckedIds);
@@ -395,7 +420,7 @@ export default function Versions() {
         <div className="min-w-0 flex-1">
           <h1 className="text-xl md:text-2xl font-semibold text-[color:var(--text-primary)] tracking-tight">Versions & releases</h1>
           <p className="text-[color:var(--text-muted)] text-sm mt-1 max-w-xl">
-            Create versions, set environments and release rules, then release to QA or Production. Issues linked to a version get updated and release notes are generated automatically.
+            Create one version, release to the lowest environment first, then promote the same version up the chain (QA → Staging → Production) without creating a new version.
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
@@ -489,36 +514,55 @@ export default function Versions() {
                       </div>
                     </div>
                     <div className="flex items-center justify-end sm:justify-center shrink-0">
-                      {v.status !== 'released' && (
+                      {environmentsAsc.length > 0 && hasPendingPromotion(environmentsAsc, v) && (
                         <button
                           type="button"
                           onClick={() => openReleaseModal(v)}
                           className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-primary)] hover:bg-[color:var(--bg-surface)] transition"
                         >
-                          Release
+                          {Object.keys(v.releasedAtByEnvironment ?? {}).length > 0 ? 'Promote' : 'Release'}
                         </button>
                       )}
                     </div>
                   </div>
-                  {environments.length > 0 && (v.status !== 'released' || Object.keys(v.releasedAtByEnvironment ?? {}).length > 0) && (
-                    <div className="px-5 pb-4 pt-0 flex flex-wrap gap-2">
-                      {environments.map((env) => {
+                  {environmentsAsc.length > 0 && (
+                    <div className="px-5 pb-4 pt-0 flex flex-wrap items-center gap-2">
+                      {environmentsDesc.map((env, tierIdx) => {
                         const releasedAt = v.releasedAtByEnvironment?.[env.id];
+                        const tierLabel =
+                          tierIdx === 0 ? 'Upper' : tierIdx === environmentsDesc.length - 1 ? 'Lower' : '';
                         return (
                           <div key={env.id} className="flex items-center gap-2">
-                            {releasedAt && (
+                            {releasedAt ? (
                               <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[color:var(--bg-button-secondary)]/50 text-[color:var(--text-primary)] text-sm">
-                                <span className="text-emerald-400">✓</span> {env.name}: {formatDateDDMMYYYY(releasedAt)}
+                                <span className="text-emerald-400">✓</span>
+                                {tierLabel && (
+                                  <span className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">{tierLabel}</span>
+                                )}
+                                {env.name}: {formatDateDDMMYYYY(releasedAt)}
                                 {v.releaseNotesByEnvironment?.[env.id] && (
                                   <button
                                     type="button"
-                                    onClick={() => setReleaseNotesModal({ versionName: v.name, envName: env.name, notes: v.releaseNotesByEnvironment?.[env.id] ?? '', updatedCount: 0 })}
+                                    onClick={() =>
+                                      setReleaseNotesModal({
+                                        versionName: v.name,
+                                        envName: env.name,
+                                        notes: v.releaseNotesByEnvironment?.[env.id] ?? '',
+                                        updatedCount: 0,
+                                      })
+                                    }
                                     className="text-indigo-400 hover:underline font-medium"
                                   >
                                     View notes
                                   </button>
                                 )}
                               </span>
+                            ) : (
+                              canReleaseToEnvironment(environmentsAsc, v, env.id) && (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-[color:var(--border-subtle)] text-[11px] text-[color:var(--text-muted)]">
+                                  {env.name} — pending
+                                </span>
+                              )
                             )}
                           </div>
                         );
@@ -621,8 +665,13 @@ export default function Versions() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in" onClick={closeReleaseModal}>
           <div className="bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] rounded-2xl shadow-2xl w-full flex flex-col max-h-[90vh] animate-scale-in" style={{ maxWidth: 'min(36rem, calc(100vw - 2rem))' }} onClick={(e) => e.stopPropagation()}>
             <div className="px-6 pt-6 pb-3 border-b border-[color:var(--border-subtle)] shrink-0">
-              <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">Release version {releaseModalVersion.name}</h3>
-              <p className="text-[color:var(--text-muted)] text-xs mt-1">Choose environment and which issues to include. Unchecked items will have this version removed from their Fix version.</p>
+              <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">
+                {Object.keys(releaseModalVersion.releasedAtByEnvironment ?? {}).length > 0 ? 'Promote' : 'Release'} version{' '}
+                {releaseModalVersion.name}
+              </h3>
+              <p className="text-[color:var(--text-muted)] text-xs mt-1">
+                Release to the lowest tier first, then promote the same version to upper environments. On first release, unchecked issues lose this fix version; when promoting upward, fix versions are kept.
+              </p>
             </div>
             <div className="p-6 space-y-4 flex-1 min-h-0 flex flex-col overflow-hidden">
               {environments.length === 0 ? (
@@ -650,11 +699,13 @@ export default function Versions() {
                       onChange={(e) => setReleaseModalSelectedEnvId(e.target.value)}
                       className={inputClass}
                     >
-                      {environments.map((e) => {
-                        const alreadyReleased = releaseModalVersion.releasedAtByEnvironment?.[e.id];
+                      {environmentsAsc.map((e) => {
+                        const released = isReleasedToEnvironment(releaseModalVersion, e.id);
+                        const allowed = canReleaseToEnvironment(environmentsAsc, releaseModalVersion, e.id);
                         return (
-                          <option key={e.id} value={e.id}>
-                            {e.name}{alreadyReleased ? ' (Released)' : ''}
+                          <option key={e.id} value={e.id} disabled={released || !allowed}>
+                            {e.name}
+                            {released ? ' ✓ released' : !allowed ? ' — release lower tier first' : ''}
                           </option>
                         );
                       })}
@@ -711,16 +762,22 @@ export default function Versions() {
                     )}
                   </div>
                   <div className="flex flex-wrap items-center gap-3 pt-2 shrink-0 border-t border-[color:var(--border-subtle)]">
-                    {releaseModalVersion.releasedAtByEnvironment?.[releaseModalSelectedEnvId] && (
-                      <p className="text-amber-400 text-xs">Already released to this environment.</p>
-                    )}
+                    {error && <p className="text-red-400 text-xs w-full">{error}</p>}
                     <button
                       type="button"
                       onClick={submitReleaseModal}
-                      disabled={!releaseModalSelectedEnvId || releaseModalSubmitting || !!releaseModalVersion.releasedAtByEnvironment?.[releaseModalSelectedEnvId]}
+                      disabled={
+                        !releaseModalSelectedEnvId ||
+                        releaseModalSubmitting ||
+                        !canReleaseToEnvironment(environmentsAsc, releaseModalVersion, releaseModalSelectedEnvId)
+                      }
                       className="px-4 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-xs text-[color:var(--text-primary)] font-medium hover:bg-[color:var(--bg-surface)] disabled:opacity-50 transition"
                     >
-                      {releaseModalSubmitting ? 'Releasing…' : 'Create release'}
+                      {releaseModalSubmitting
+                        ? 'Working…'
+                        : Object.keys(releaseModalVersion.releasedAtByEnvironment ?? {}).length > 0
+                          ? 'Promote'
+                          : 'Release'}
                     </button>
                     <button type="button" onClick={closeReleaseModal} className="px-4 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)] transition">
                       Cancel

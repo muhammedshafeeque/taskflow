@@ -87,6 +87,7 @@ import {
   type CustomFieldType,
   type Milestone,
 } from '../lib/api';
+import { sortEnvironmentsAsc, sortEnvironmentsDesc } from '../lib/environmentHierarchy';
 import { EditIcon, TrashIcon } from '../components/icons/NavigationIcons';
 import { userHasPermission } from '../utils/permissions';
 import { PROJECT_PERMISSIONS } from '@shared/constants/permissions';
@@ -1056,6 +1057,21 @@ export default function ProjectSettings() {
       ...f,
       notifyUserIds: f.notifyUserIds.includes(userId) ? f.notifyUserIds.filter((id) => id !== userId) : [...f.notifyUserIds, userId],
     }));
+  }
+
+  function moveEnvironmentTier(envId: string, direction: 'up' | 'down') {
+    const sorted = sortEnvironmentsAsc(environments);
+    const idx = sorted.findIndex((e) => e.id === envId);
+    if (idx < 0) return;
+    const swapIdx = direction === 'up' ? idx + 1 : idx - 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    const swapped = sorted.map((e) => ({ ...e }));
+    const aOrder = swapped[idx].order;
+    swapped[idx] = { ...swapped[idx], order: swapped[swapIdx].order };
+    swapped[swapIdx] = { ...swapped[swapIdx], order: aOrder };
+    const normalized = sortEnvironmentsAsc(swapped).map((e, i) => ({ ...e, order: i }));
+    setEnvironments(normalized);
+    saveEnvironments(normalized);
   }
 
   async function saveEnvironments(next?: ProjectEnvironment[]) {
@@ -2065,7 +2081,7 @@ export default function ProjectSettings() {
                 <div className="p-6 border-b border-[color:var(--border-subtle)]">
                   <h2 className="text-sm font-semibold text-[color:var(--text-primary)]">Environments</h2>
                   <p className="text-[color:var(--text-muted)] text-xs mt-0.5">
-                    Define deployment environments (e.g. QA, Staging, Production). Use these on the Versions page when releasing.
+                    Order tiers from lower (bottom) to upper (top), e.g. Dev → QA → Production. Release a version to the lowest tier first, then promote the same version upward on the Versions page.
                   </p>
                 </div>
                 <div className="p-6 space-y-6">
@@ -2126,13 +2142,37 @@ export default function ProjectSettings() {
                       </div>
                     ) : (
                       <ul className="rounded-xl border border-[color:var(--border-subtle)] overflow-hidden divide-y divide-[color:var(--border-subtle)]/70">
-                        {environments.map((env) => (
+                        {sortEnvironmentsDesc(environments).map((env, tierIdx) => {
+                          const asc = sortEnvironmentsAsc(environments);
+                          const ascIdx = asc.findIndex((e) => e.id === env.id);
+                          const tierLabel =
+                            tierIdx === 0 ? 'Upper' : tierIdx === environments.length - 1 ? 'Lower' : 'Middle';
+                          return (
                           <li
                             key={env.id}
                             className="flex items-center justify-between gap-2 px-4 py-3 bg-[color:var(--bg-surface)] hover:bg-[color:var(--bg-elevated)] transition group"
                           >
-                            <span className="font-medium text-[color:var(--text-primary)] text-sm">{env.name}</span>
-                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                            <div className="min-w-0 flex items-center gap-2">
+                              <span className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)] w-12 shrink-0">
+                                {tierLabel}
+                              </span>
+                              <span className="font-medium text-[color:var(--text-primary)] text-sm truncate">{env.name}</span>
+                            </div>
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              <IconButton
+                                title="Move up (higher tier)"
+                                onClick={() => moveEnvironmentTier(env.id, 'up')}
+                                disabled={ascIdx >= asc.length - 1}
+                              >
+                                <FiArrowUp className="w-3.5 h-3.5" />
+                              </IconButton>
+                              <IconButton
+                                title="Move down (lower tier)"
+                                onClick={() => moveEnvironmentTier(env.id, 'down')}
+                                disabled={ascIdx <= 0}
+                              >
+                                <FiArrowDown className="w-3.5 h-3.5" />
+                              </IconButton>
                               <IconButton
                                 title="Edit"
                                 onClick={() => {
@@ -2147,7 +2187,8 @@ export default function ProjectSettings() {
                               </IconButton>
                             </div>
                           </li>
-                        ))}
+                          );
+                        })}
                       </ul>
                     )}
                   </div>

@@ -1,5 +1,9 @@
 import mongoose from 'mongoose';
 import { Project } from './project.model';
+import {
+  isPromoteToEnvironment,
+  validateEnvironmentReleaseOrder,
+} from './environmentHierarchy';
 import { ProjectMember } from './projectMember.model';
 import { Issue } from '../issues/issue.model';
 import { User } from '../auth/user.model';
@@ -374,11 +378,24 @@ export async function releaseVersionToEnvironment(
   }).lean();
   if (!rawProject) throw new ApiError(404, 'Project not found');
   const project = withProjectDefaults(rawProject as Record<string, unknown>) as Record<string, unknown>;
-  const p = project as { versions?: Array<{ id: string; name: string }>; environments?: Array<{ id: string; name: string }>; releaseRules?: Array<{ environmentId: string; statusName: string }>; statuses?: Array<{ name: string }>; issueTypes?: Array<{ name: string; order: number }> };
+  const p = project as {
+    versions?: Array<{ id: string; name: string; releasedAtByEnvironment?: Record<string, string> }>;
+    environments?: Array<{ id: string; name: string; order: number }>;
+    releaseRules?: Array<{ environmentId: string; statusName: string }>;
+    statuses?: Array<{ name: string }>;
+    issueTypes?: Array<{ name: string; order: number }>;
+  };
   const version = p.versions?.find((v) => v.id === versionId);
   if (!version) throw new ApiError(404, 'Version not found');
-  const env = p.environments?.find((e) => e.id === environmentId);
+  const envList = p.environments ?? [];
+  const env = envList.find((e) => e.id === environmentId);
   if (!env) throw new ApiError(404, 'Environment not found');
+  const hierarchyCheck = validateEnvironmentReleaseOrder(envList, version, environmentId);
+  if (!hierarchyCheck.ok) throw new ApiError(400, hierarchyCheck.message);
+  const promoteRelease = isPromoteToEnvironment(envList, version, environmentId);
+  if (version.releasedAtByEnvironment?.[environmentId]) {
+    throw new ApiError(400, `Version is already released to "${env.name}". Choose a higher environment to promote.`);
+  }
   const rule = p.releaseRules?.find((r) => r.environmentId === environmentId);
   if (!rule) throw new ApiError(400, `No release rule for environment "${env.name}". Configure it in Project settings → Release rules.`);
   const validStatuses = (p.statuses ?? []).map((s) => s.name);
@@ -400,18 +417,19 @@ export async function releaseVersionToEnvironment(
 
   await Issue.updateMany(queryIncluded, { $set: { status: rule.statusName } });
 
-  // If user selected a subset, clear fixVersion from issues not in selection
-  if (useSelection && selectedIds.length > 0) {
-    await Issue.updateMany(
-      { project: projectId, fixVersion: versionId, _id: { $nin: selectedIds } },
-      { $unset: { fixVersion: 1 } }
-    );
-  } else if (useSelection && selectedIds.length === 0) {
-    // User unchecked all: remove version from every issue that had it
-    await Issue.updateMany(
-      { project: projectId, fixVersion: versionId },
-      { $unset: { fixVersion: 1 } }
-    );
+  // Promoting to a higher tier: keep fixVersion on issues not in selection (same version, no new version row).
+  if (!promoteRelease) {
+    if (useSelection && selectedIds.length > 0) {
+      await Issue.updateMany(
+        { project: projectId, fixVersion: versionId, _id: { $nin: selectedIds } },
+        { $unset: { fixVersion: 1 } }
+      );
+    } else if (useSelection && selectedIds.length === 0) {
+      await Issue.updateMany(
+        { project: projectId, fixVersion: versionId },
+        { $unset: { fixVersion: 1 } }
+      );
+    }
   }
 
   // Group by issue type (dynamic from project issue types); section headings = type names
@@ -445,7 +463,8 @@ export async function releaseVersionToEnvironment(
   const now = new Date();
   const projectName = (rawProject as { name?: string }).name ?? 'Project';
   const releasedAtFormatted = now.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-  let releaseNotes = `# Release ${version.name} → ${env.name}\n\n`;
+  const actionLabel = promoteRelease ? 'Promotion' : 'Release';
+  let releaseNotes = `# ${actionLabel} ${version.name} → ${env.name}\n\n`;
   releaseNotes += `**Project:** ${projectName}\n\n`;
   releaseNotes += `**Release date & time:** ${releasedAtFormatted}\n\n`;
   releaseNotes += `*Issues in this release have been updated.*\n\n`;
