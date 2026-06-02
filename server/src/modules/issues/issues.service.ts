@@ -699,6 +699,12 @@ export interface BulkUpdateInput {
   type?: string;
   priority?: string;
   fixVersion?: string[] | string | null;
+  affectsVersions?: string[];
+  milestone?: string | null;
+  dueDate?: string | null;
+  startDate?: string | null;
+  timeEstimateMinutes?: number | null;
+  parent?: string | null;
 }
 
 export async function bulkUpdate(
@@ -744,7 +750,37 @@ export async function bulkUpdate(
     if (!fixVersions?.length) unset.fixVersion = 1;
     else updateData.fixVersion = fixVersions;
   }
+  if (updates.affectsVersions !== undefined) updateData.affectsVersions = updates.affectsVersions;
+  if (updates.milestone !== undefined) {
+    if (updates.milestone === null || updates.milestone === '') unset.milestone = 1;
+    else updateData.milestone = updates.milestone;
+  }
+  if (updates.dueDate !== undefined) {
+    if (updates.dueDate === null || updates.dueDate === '') unset.dueDate = 1;
+    else updateData.dueDate = new Date(updates.dueDate);
+  }
+  if (updates.startDate !== undefined) {
+    if (updates.startDate === null || updates.startDate === '') unset.startDate = 1;
+    else updateData.startDate = new Date(updates.startDate);
+  }
+  if (updates.timeEstimateMinutes !== undefined) {
+    if (updates.timeEstimateMinutes === null) unset.timeEstimateMinutes = 1;
+    else updateData.timeEstimateMinutes = updates.timeEstimateMinutes;
+  }
+  if (updates.parent !== undefined) {
+    if (updates.parent === null || updates.parent === '') unset.parent = 1;
+    else updateData.parent = updates.parent;
+  }
   if (updates.status !== undefined) updateData.boardColumn = updates.status;
+
+  if (updates.parent !== undefined && updates.parent) {
+    for (const before of issuesBefore) {
+      const projectId = String(
+        (before.project as { _id?: unknown })?._id ?? before.project
+      );
+      await validateParent(updates.parent, projectId, String(before._id));
+    }
+  }
 
   const updateOp = Object.keys(unset).length
     ? { $set: updateData, $unset: unset }
@@ -823,6 +859,28 @@ export async function bulkUpdate(
     if (updates.type !== undefined) changes.push({ field: 'type', fromValue: null, toValue: updates.type });
     if (updates.priority !== undefined) changes.push({ field: 'priority', fromValue: null, toValue: updates.priority });
     if (updates.fixVersion !== undefined) changes.push({ field: 'fixVersion', fromValue: null, toValue: updates.fixVersion || undefined });
+    if (updates.affectsVersions !== undefined) {
+      changes.push({ field: 'affectsVersions', fromValue: null, toValue: updates.affectsVersions });
+    }
+    if (updates.milestone !== undefined) {
+      changes.push({ field: 'milestone', fromValue: null, toValue: updates.milestone || undefined });
+    }
+    if (updates.dueDate !== undefined) {
+      changes.push({ field: 'dueDate', fromValue: null, toValue: updates.dueDate || undefined });
+    }
+    if (updates.startDate !== undefined) {
+      changes.push({ field: 'startDate', fromValue: null, toValue: updates.startDate || undefined });
+    }
+    if (updates.timeEstimateMinutes !== undefined) {
+      changes.push({
+        field: 'timeEstimateMinutes',
+        fromValue: null,
+        toValue: updates.timeEstimateMinutes ?? undefined,
+      });
+    }
+    if (updates.parent !== undefined) {
+      changes.push({ field: 'parent', fromValue: null, toValue: updates.parent || undefined });
+    }
     if (changes.length > 0) {
       await issueHistoryService.recordFieldChanges(id, userId, changes);
     }

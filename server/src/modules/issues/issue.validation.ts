@@ -181,6 +181,12 @@ export const bulkUpdateSchema = z.object({
       type: z.string().optional(),
       priority: z.string().optional(),
       fixVersion: z.union([z.array(z.string()), z.string(), z.null()]).optional(),
+      affectsVersions: z.array(z.string()).optional(),
+      milestone: z.string().nullable().optional(),
+      dueDate: z.string().nullable().optional(),
+      startDate: z.string().nullable().optional(),
+      timeEstimateMinutes: z.number().nullable().optional(),
+      parent: z.string().nullable().optional(),
     }).refine((u) => Object.keys(u).length > 0, { message: 'At least one update field required' }),
   }),
 });

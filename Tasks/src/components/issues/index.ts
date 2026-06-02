@@ -17,3 +17,4 @@ export { IssuesFilterModal } from './IssuesFilterModal';
 export { ColumnsConfigModal } from './ColumnsConfigModal';
 export { IssueCreateEditModal } from './IssueCreateEditModal';
 export { BulkEditModal } from './BulkEditModal';
+export { buildBulkUpdates, type BulkFormState } from './bulkEditForm';

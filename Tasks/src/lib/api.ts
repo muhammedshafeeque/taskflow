@@ -1185,7 +1185,22 @@ export const issuesApi = {
     ),
   bulkUpdate: (
     issueIds: string[],
-    updates: { status?: string; assignee?: string | null; sprint?: string | null; storyPoints?: number | null; labels?: string[]; type?: string; priority?: string; fixVersion?: string[] | null },
+    updates: {
+      status?: string;
+      assignee?: string | null;
+      sprint?: string | null;
+      storyPoints?: number | null;
+      labels?: string[];
+      type?: string;
+      priority?: string;
+      fixVersion?: string[] | null;
+      affectsVersions?: string[];
+      milestone?: string | null;
+      dueDate?: string | null;
+      startDate?: string | null;
+      timeEstimateMinutes?: number | null;
+      parent?: string | null;
+    },
     token: string
   ) => api.patch<{ updated: number; errors: string[] }>('/issues/bulk', { issueIds, updates }, token),
   bulkDelete: (issueIds: string[], token: string) =>

@@ -58,6 +58,8 @@ import {
   ColumnsConfigModal,
   IssueCreateEditModal,
   BulkEditModal,
+  buildBulkUpdates,
+  type BulkFormState,
 } from '../components/issues';
 
 const GLOBAL_COLUMNS_VISIBLE: Record<string, boolean> = {
@@ -144,7 +146,10 @@ export default function GlobalIssues() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(new Set());
   const [bulkModal, setBulkModal] = useState<'edit' | null>(null);
-  const [bulkForm, setBulkForm] = useState<{ status?: string; assignee?: string; sprint?: string; storyPoints?: string; type?: string; priority?: string }>({});
+  const [bulkForm, setBulkForm] = useState<BulkFormState>({});
+  const [bulkSprints, setBulkSprints] = useState<Sprint[]>([]);
+  const [bulkMilestones, setBulkMilestones] = useState<Milestone[]>([]);
+  const [bulkParentCandidates, setBulkParentCandidates] = useState<Issue[]>([]);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [sprints, setSprints] = useState<Sprint[]>([]);
@@ -293,6 +298,25 @@ export default function GlobalIssues() {
 
   const filterScopeProjectId = filters.project.length === 1 ? filters.project[0] : null;
 
+  const bulkScopeProjectId = useMemo(() => {
+    if (filterScopeProjectId) return filterScopeProjectId;
+    const selected = issues.filter((i) => selectedIssueIds.has(i._id));
+    if (selected.length === 0) return null;
+    const projectIds = new Set(
+      selected.map((i) =>
+        i.project && typeof i.project === 'object' && '_id' in i.project
+          ? String((i.project as { _id: string })._id)
+          : String(i.project ?? '')
+      )
+    );
+    return projectIds.size === 1 ? [...projectIds][0] : null;
+  }, [filterScopeProjectId, issues, selectedIssueIds]);
+
+  const bulkScopeProject = useMemo(
+    () => (bulkScopeProjectId ? projects.find((p) => p._id === bulkScopeProjectId) ?? null : null),
+    [projects, bulkScopeProjectId]
+  );
+
   useEffect(() => {
     if (!token || !filterScopeProjectId) {
       setSprints([]);
@@ -306,6 +330,29 @@ export default function GlobalIssues() {
       if (res.success && res.data) setMilestones(Array.isArray(res.data) ? res.data : []);
     });
   }, [token, filterScopeProjectId]);
+
+  useEffect(() => {
+    if (!token || !bulkScopeProjectId || bulkModal !== 'edit') {
+      setBulkSprints([]);
+      setBulkMilestones([]);
+      setBulkParentCandidates([]);
+      return;
+    }
+    sprintsApi.list(1, 100, bulkScopeProjectId, undefined, token).then((res) => {
+      if (res.success && res.data) setBulkSprints(res.data.data ?? []);
+    });
+    milestonesApi.list(bulkScopeProjectId, token).then((res) => {
+      if (res.success && res.data) setBulkMilestones(Array.isArray(res.data) ? res.data : []);
+    });
+    issuesApi
+      .list({ token, project: bulkScopeProjectId, page: 1, limit: 200 })
+      .then((res) => {
+        if (res.success && res.data) {
+          const list = (res.data.data ?? []).filter((i) => !selectedIssueIds.has(i._id));
+          setBulkParentCandidates(list);
+        }
+      });
+  }, [token, bulkScopeProjectId, bulkModal, selectedIssueIds]);
 
   useEffect(() => {
     if (!token) return;
@@ -506,16 +553,8 @@ export default function GlobalIssues() {
 
   async function handleBulkUpdate() {
     if (!token || selectedIssueIds.size === 0) return;
-    const updates: Parameters<typeof issuesApi.bulkUpdate>[1] = {};
-    if (bulkForm.status) updates.status = bulkForm.status;
-    if (bulkForm.assignee !== undefined) updates.assignee = bulkForm.assignee === '__unassigned__' ? null : bulkForm.assignee || null;
-    if (bulkForm.sprint !== undefined) updates.sprint = bulkForm.sprint === '__backlog__' ? null : bulkForm.sprint || null;
-    if (bulkForm.storyPoints !== undefined) {
-      updates.storyPoints = bulkForm.storyPoints === '__clear__' ? null : Number(bulkForm.storyPoints);
-    }
-    if (bulkForm.type) updates.type = bulkForm.type;
-    if (bulkForm.priority) updates.priority = bulkForm.priority;
-    if (Object.keys(updates).length === 0) return;
+    const updates = buildBulkUpdates(bulkForm);
+    if (!updates) return;
     setBulkSubmitting(true);
     const res = await issuesApi.bulkUpdate(Array.from(selectedIssueIds), updates, token);
     setBulkSubmitting(false);
@@ -900,9 +939,14 @@ export default function GlobalIssues() {
         submitError={submitError}
         statusList={statusList}
         users={users}
-        sprints={sprints}
+        sprints={bulkScopeProjectId ? bulkSprints : sprints}
         typeList={typeList}
         priorityList={priorityList}
+        milestones={bulkScopeProjectId ? bulkMilestones : milestones}
+        versions={bulkScopeProject?.versions ?? (bulkScopeProjectId ? [] : versions)}
+        labelSuggestions={allLabels}
+        parentCandidates={bulkParentCandidates}
+        showProjectScopedFields={Boolean(bulkScopeProjectId)}
       />
 
       <ConfirmModal

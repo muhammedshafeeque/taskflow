@@ -63,6 +63,8 @@ import {
   ColumnsConfigModal,
   IssueCreateEditModal,
   BulkEditModal,
+  buildBulkUpdates,
+  type BulkFormState,
 } from '../components/issues';
 
 export default function Issues() {
@@ -144,7 +146,7 @@ export default function Issues() {
   const [parentCandidates, setParentCandidates] = useState<Issue[]>([]);
   const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(new Set());
   const [bulkModal, setBulkModal] = useState<'edit' | null>(null);
-  const [bulkForm, setBulkForm] = useState<{ status?: string; assignee?: string; sprint?: string; storyPoints?: string; type?: string; priority?: string }>({});
+  const [bulkForm, setBulkForm] = useState<BulkFormState>({});
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [sprints, setSprints] = useState<Sprint[]>([]);
@@ -467,7 +469,8 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
   }, [token, projectId]);
 
   useEffect(() => {
-    if (modal && token && projectId) {
+    const loadParents = (modal === 'create' || modal === 'edit' || bulkModal === 'edit') && token && projectId;
+    if (loadParents) {
       issuesApi
         .list({
           token,
@@ -477,19 +480,21 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
         })
         .then((res) => {
           if (res.success && res.data) {
-            setParentCandidates(
-              filterParentCandidates(
-                res.data.data ?? [],
-                editIssue?._id,
-                resolveIssueParentId(editIssue?.parent)
-              )
+            let list = filterParentCandidates(
+              res.data.data ?? [],
+              editIssue?._id,
+              resolveIssueParentId(editIssue?.parent)
             );
+            if (bulkModal === 'edit' && selectedIssueIds.size > 0) {
+              list = list.filter((i) => !selectedIssueIds.has(i._id));
+            }
+            setParentCandidates(list);
           }
         });
     } else {
       setParentCandidates([]);
     }
-  }, [modal, token, projectId, editIssue?._id]);
+  }, [modal, bulkModal, token, projectId, editIssue?._id, selectedIssueIds]);
 
   async function handleToggleWatch(issueId: string) {
     if (!token) return;
@@ -577,16 +582,8 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
 
   async function handleBulkUpdate() {
     if (!token || selectedIssueIds.size === 0) return;
-    const updates: Parameters<typeof issuesApi.bulkUpdate>[1] = {};
-    if (bulkForm.status) updates.status = bulkForm.status;
-    if (bulkForm.assignee !== undefined) updates.assignee = bulkForm.assignee === '__unassigned__' ? null : bulkForm.assignee || null;
-    if (bulkForm.sprint !== undefined) updates.sprint = bulkForm.sprint === '__backlog__' ? null : bulkForm.sprint || null;
-    if (bulkForm.storyPoints !== undefined) {
-      updates.storyPoints = bulkForm.storyPoints === '__clear__' ? null : Number(bulkForm.storyPoints);
-    }
-    if (bulkForm.type) updates.type = bulkForm.type;
-    if (bulkForm.priority) updates.priority = bulkForm.priority;
-    if (Object.keys(updates).length === 0) return;
+    const updates = buildBulkUpdates(bulkForm);
+    if (!updates) return;
     setBulkSubmitting(true);
     const res = await issuesApi.bulkUpdate(Array.from(selectedIssueIds), updates, token);
     setBulkSubmitting(false);
@@ -1078,6 +1075,11 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
         sprints={sprints}
         typeList={typeList}
         priorityList={priorityList}
+        milestones={milestones}
+        versions={versions}
+        labelSuggestions={allLabels}
+        parentCandidates={parentCandidates}
+        showProjectScopedFields
       />
 
       <ConfirmModal
