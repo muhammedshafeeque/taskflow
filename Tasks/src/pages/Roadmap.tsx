@@ -1,117 +1,44 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsApi, roadmapsApi, milestonesApi, type Project, type Roadmap, type Milestone } from '../lib/api';
-import FrappeGantt from 'frappe-gantt';
+import { projectsApi, roadmapsApi, type Project, type Roadmap, type ProjectTimeline } from '../lib/api';
+import RoadmapLanes, { type LaneMode } from '../components/roadmap/RoadmapLanes';
 
 export default function RoadmapPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { token } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
+  const [timeline, setTimeline] = useState<ProjectTimeline | null>(null);
   const [roadmaps, setRoadmaps] = useState<Roadmap[]>([]);
   const [selectedRoadmapId, setSelectedRoadmapId] = useState<string | null>(null);
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [allMilestones, setAllMilestones] = useState<Milestone[]>([]);
+  const [laneMode, setLaneMode] = useState<LaneMode>('epic');
   const [loading, setLoading] = useState(true);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const ganttRef = useRef<InstanceType<typeof FrappeGantt> | null>(null);
-  const [containerHeight, setContainerHeight] = useState(0);
 
   useEffect(() => {
     if (!token || !projectId) return;
     setLoading(true);
     Promise.all([
       projectsApi.get(projectId, token),
+      projectsApi.getTimeline(projectId, token),
       roadmapsApi.list(projectId, token),
-      milestonesApi.list(projectId, token),
-    ]).then(([projRes, roadRes, mileRes]) => {
+    ]).then(([projRes, tlRes, roadRes]) => {
       setLoading(false);
       if (projRes.success && projRes.data) setProject(projRes.data);
+      if (tlRes.success && tlRes.data) setTimeline(tlRes.data);
       if (roadRes.success && roadRes.data) {
-        setRoadmaps(Array.isArray(roadRes.data) ? roadRes.data : []);
-        if (roadRes.data?.length && !selectedRoadmapId) {
-          setSelectedRoadmapId(roadRes.data[0]._id);
-        }
+        const list = Array.isArray(roadRes.data) ? roadRes.data : [];
+        setRoadmaps(list);
+        if (list.length && !selectedRoadmapId) setSelectedRoadmapId(list[0]._id);
       }
-      if (mileRes.success && mileRes.data) setAllMilestones(Array.isArray(mileRes.data) ? mileRes.data : []);
     });
   }, [token, projectId]);
 
-  useEffect(() => {
-    if (!token || !projectId || !selectedRoadmapId) {
-      setMilestones([]);
-      return;
-    }
-    roadmapsApi.getMilestones(projectId, selectedRoadmapId, token).then((res) => {
-      if (res.success && res.data) setMilestones(Array.isArray(res.data) ? res.data : []);
-      else setMilestones([]);
-    });
-  }, [token, projectId, selectedRoadmapId]);
-
-  const milestonesToShow = !selectedRoadmapId ? allMilestones : milestones;
-  const tasksWithDates = milestonesToShow.filter((m) => m.dueDate);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const updateHeight = () => {
-      const h = el.offsetHeight || el.getBoundingClientRect().height;
-      if (h > 0) setContainerHeight(h);
-    };
-    updateHeight();
-    const ro = new ResizeObserver((entries) => {
-      const { height } = entries[0]?.contentRect ?? {};
-      if (height && height > 0) setContainerHeight(height);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [tasksWithDates.length]);
-
-  useEffect(() => {
-    if (!containerRef.current || tasksWithDates.length === 0 || containerHeight <= 0) {
-      if (ganttRef.current && containerRef.current) {
-        ganttRef.current.clear?.();
-        ganttRef.current = null;
-      }
-      return;
-    }
-
-    const ganttTasks = tasksWithDates.map((m) => {
-      const due = m.dueDate ? new Date(m.dueDate) : new Date();
-      const start = new Date(due);
-      start.setDate(start.getDate() - 7);
-      const status = (m.status ?? '').toLowerCase();
-      const progress = status === 'done' ? 100 : status === 'in progress' ? 50 : 0;
-      return {
-        id: m._id,
-        name: m.name.slice(0, 60),
-        start: start.toISOString().split('T')[0],
-        end: due.toISOString().split('T')[0],
-        progress,
-      };
-    });
-
-    if (ganttRef.current) {
-      ganttRef.current.clear?.();
-      ganttRef.current = null;
-    }
-
-    const container = containerRef.current;
-    if (!container) return;
-
-    const gantt = new FrappeGantt(container, ganttTasks, {
-      view_mode: 'Month',
-      view_modes: ['Day', 'Week', 'Month'],
-      readonly: true,
-      container_height: containerHeight,
-    });
-    ganttRef.current = gantt;
-
-    return () => {
-      gantt.clear?.();
-      ganttRef.current = null;
-    };
-  }, [tasksWithDates, containerHeight]);
+  const milestoneFilterIds = useMemo(() => {
+    if (!selectedRoadmapId) return undefined;
+    const r = roadmaps.find((x) => x._id === selectedRoadmapId);
+    if (!r?.milestoneIds?.length) return undefined;
+    return new Set(r.milestoneIds);
+  }, [selectedRoadmapId, roadmaps]);
 
   if (loading) {
     return (
@@ -127,27 +54,42 @@ export default function RoadmapPage() {
         <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">
           Roadmap {project ? `· ${project.name}` : ''}
         </h1>
-        {roadmaps.length > 1 && (
+        <div className="flex flex-wrap items-center gap-3">
           <select
-            value={selectedRoadmapId ?? ''}
-            onChange={(e) => setSelectedRoadmapId(e.target.value || null)}
-            className="px-3 py-1.5 rounded-md bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] text-sm text-[color:var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
+            value={laneMode}
+            onChange={(e) => setLaneMode(e.target.value as LaneMode)}
+            className="px-3 py-1.5 rounded-md bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] text-sm"
           >
-            <option value="">All milestones</option>
-            {roadmaps.map((r) => (
-              <option key={r._id} value={r._id}>
-                {r.name}
-              </option>
-            ))}
+            <option value="epic">By epic</option>
+            <option value="release">By release</option>
+            <option value="milestone">By milestone</option>
           </select>
-        )}
+          {roadmaps.length > 0 && (
+            <select
+              value={selectedRoadmapId ?? ''}
+              onChange={(e) => setSelectedRoadmapId(e.target.value || null)}
+              className="px-3 py-1.5 rounded-md bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] text-sm"
+            >
+              <option value="">All milestones</option>
+              {roadmaps.map((r) => (
+                <option key={r._id} value={r._id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
-      {tasksWithDates.length === 0 ? (
-        <p className="text-sm text-[color:var(--text-muted)]">
-          No milestones with due dates. Add milestones in Project Settings and set due dates to see them on the roadmap.
-        </p>
+      {!timeline ? (
+        <p className="text-sm text-[color:var(--text-muted)]">Failed to load timeline data.</p>
       ) : (
-        <div ref={containerRef} className="gantt-wrapper flex-1 min-h-0" />
+        <RoadmapLanes
+          timeline={timeline}
+          project={project}
+          projectId={projectId!}
+          laneMode={laneMode}
+          milestoneFilterIds={milestoneFilterIds}
+        />
       )}
     </div>
   );

@@ -51,7 +51,18 @@ interface TaskDetailsSidebarProps {
   newLabel: string;
   workLogs: WorkLog[];
   onUpdateField: (
-    field: 'status' | 'type' | 'priority' | 'assignee' | 'dueDate' | 'startDate' | 'storyPoints' | 'timeEstimateMinutes' | 'sprint',
+    field:
+      | 'status'
+      | 'type'
+      | 'priority'
+      | 'assignee'
+      | 'dueDate'
+      | 'startDate'
+      | 'baselineDueDate'
+      | 'baselineStartDate'
+      | 'storyPoints'
+      | 'timeEstimateMinutes'
+      | 'sprint',
     value: string | number | null
   ) => void;
   onUpdateFixVersions: (versions: string[]) => void;
@@ -603,6 +614,28 @@ export default function TaskDetailsSidebar({
                   <InlineDate
                     value={issue.startDate ?? ''}
                     onChange={(v) => onUpdateField('startDate', v)}
+                    disabled={!!updatingField}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="px-4 py-3 space-y-2 border-t border-[color:var(--border-subtle)]/60">
+              <label className="block type-label-caps">Baseline</label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="block type-sub-label mb-1">Baseline due</span>
+                  <InlineDate
+                    value={issue.baselineDueDate ?? ''}
+                    onChange={(v) => onUpdateField('baselineDueDate', v)}
+                    disabled={!!updatingField}
+                  />
+                </div>
+                <div>
+                  <span className="block type-sub-label mb-1">Baseline start</span>
+                  <InlineDate
+                    value={issue.baselineStartDate ?? ''}
+                    onChange={(v) => onUpdateField('baselineStartDate', v)}
                     disabled={!!updatingField}
                   />
                 </div>

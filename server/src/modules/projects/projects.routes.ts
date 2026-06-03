@@ -22,6 +22,10 @@ import {
   updateMemberDesignation,
   removeMember,
 } from './projects.controller';
+import {
+  getProjectTimeline,
+  snapshotProjectBaseline,
+} from '../timeline/timeline.controller';
 import { importsRoutes } from '../imports/imports.routes';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { milestonesRoutes } from '../milestones/milestones.routes';
@@ -70,6 +74,8 @@ router.use('/:id/test-plans', idParamHandler[0], testPlansRoutes);
 router.use('/:id/traceability', idParamHandler[0], traceabilityRoutes);
 router.get('/:id/sprints/:sprintId/report', requireProjectPermission(PROJECT_PERMISSIONS.SPRINT.SPRINT.READ), ...sprintReportHandler);
 router.get('/:id/link-graph', ...idParamHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.ISSUE.READ), asyncHandler(getProjectIssueGraph));
+router.get('/:id/timeline', ...idParamHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.ISSUE.READ), asyncHandler(getProjectTimeline));
+router.post('/:id/timeline/baseline', ...idParamHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.ISSUE.UPDATE), asyncHandler(snapshotProjectBaseline));
 router.use('/:id/imports', idParamHandler[0], importsRoutes);
 router.delete('/:id', ...idParamHandler, requireProjectPermission(PROJECT_PERMISSIONS.SCOPE.DELETE), asyncHandler(deleteProject));
 

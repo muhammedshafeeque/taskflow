@@ -4,6 +4,8 @@ export interface IMilestone extends Document {
   project: mongoose.Types.ObjectId;
   name: string;
   dueDate?: Date;
+  baselineStartDate?: Date;
+  baselineDueDate?: Date;
   status: string;
   description?: string;
   createdAt: Date;
@@ -15,6 +17,8 @@ const milestoneSchema = new Schema<IMilestone>(
     project: { type: Schema.Types.ObjectId, ref: 'Project', required: true },
     name: { type: String, required: true },
     dueDate: { type: Date },
+    baselineStartDate: { type: Date },
+    baselineDueDate: { type: Date },
     status: { type: String, default: 'open' },
     description: { type: String, default: '' },
   },

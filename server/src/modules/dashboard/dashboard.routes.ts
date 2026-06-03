@@ -15,6 +15,7 @@ import {
   getPerformanceReportHandler,
   exportPerformanceReportExcelHandler,
 } from './dashboard.controller';
+import { getPortfolioTimeline } from '../timeline/timeline.controller';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 
 const router = Router();
@@ -24,6 +25,7 @@ router.use(authMiddleware);
 router.get('/stats', asyncHandler(getDashboardStats));
 router.get('/workload', asyncHandler(getWorkloadStats));
 router.get('/portfolio', asyncHandler(getPortfolioStats));
+router.get('/portfolio/timeline', asyncHandler(getPortfolioTimeline));
 router.get('/executive', asyncHandler(getExecutiveStats));
 router.get('/defect-metrics', asyncHandler(getDefectMetrics));
 router.get('/cost-usage', requirePermission(TASK_FLOW_PERMISSIONS.TASKFLOW.COST_REPORT.VIEW), asyncHandler(getCostUsage));

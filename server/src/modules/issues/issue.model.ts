@@ -25,6 +25,8 @@ export interface IIssue extends Document {
   labels: string[];
   dueDate?: Date;
   startDate?: Date;
+  baselineStartDate?: Date;
+  baselineDueDate?: Date;
   storyPoints?: number;
   timeEstimateMinutes?: number;
   checklist: IChecklistItem[];
@@ -54,6 +56,8 @@ const issueSchema = new Schema<IIssue>(
     labels: { type: [String], default: [] },
     dueDate: { type: Date },
     startDate: { type: Date },
+    baselineStartDate: { type: Date },
+    baselineDueDate: { type: Date },
     storyPoints: { type: Number },
     timeEstimateMinutes: { type: Number },
     checklist: {

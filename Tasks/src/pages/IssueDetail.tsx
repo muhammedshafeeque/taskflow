@@ -392,6 +392,8 @@ export default function IssueDetail() {
       | 'assignee'
       | 'dueDate'
       | 'startDate'
+      | 'baselineDueDate'
+      | 'baselineStartDate'
       | 'storyPoints'
       | 'timeEstimateMinutes'
       | 'sprint',
@@ -402,7 +404,10 @@ export default function IssueDetail() {
     const payload: Record<string, unknown> =
       field === 'assignee'
         ? { assignee: value === '' || value === '__unassigned__' ? '' : value }
-        : field === 'dueDate' || field === 'startDate'
+        : field === 'dueDate' ||
+            field === 'startDate' ||
+            field === 'baselineDueDate' ||
+            field === 'baselineStartDate'
           ? { [field]: value === '' ? null : value }
           : field === 'timeEstimateMinutes'
             ? { timeEstimateMinutes: value }

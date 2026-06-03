@@ -15,6 +15,7 @@ declare module 'frappe-gantt' {
     readonly?: boolean;
     container_height?: number | 'auto';
     on_click?: (task: GanttTask) => void;
+    on_date_change?: (task: GanttTask, start: string, end: string) => void;
     [key: string]: unknown;
   }
 

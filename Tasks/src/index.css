@@ -565,4 +565,41 @@ button:focus-visible,
     padding: 0.75rem 1rem; overflow-x: auto; line-height: 1.6; margin: 0.5rem 0;
     border: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
   }
+
+  .gantt-wrapper .bar.gantt-critical {
+    fill: #ef4444 !important;
+    stroke: #b91c1c;
+  }
+  .gantt-wrapper .bar.gantt-baseline {
+    fill: color-mix(in srgb, var(--text-muted) 35%, transparent) !important;
+    stroke: var(--text-muted);
+    opacity: 0.55;
+  }
+  .gantt-wrapper .bar.gantt-milestone {
+    fill: #a855f7 !important;
+    stroke: #7c3aed;
+  }
+
+  .roadmap-bar-issue {
+    background: color-mix(in srgb, var(--accent) 65%, transparent);
+    border: 1px solid var(--accent);
+  }
+  .roadmap-bar-baseline {
+    background: transparent;
+    border: 1px dashed var(--text-muted);
+    opacity: 0.7;
+    height: 0.75rem !important;
+  }
+  .roadmap-bar-release {
+    background: #f59e0b;
+    width: 3px !important;
+    min-width: 3px;
+    border-radius: 0;
+  }
+  .roadmap-bar-milestone {
+    background: #a855f7;
+    width: 6px !important;
+    min-width: 6px;
+    border-radius: 999px;
+  }
 }

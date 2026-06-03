@@ -482,6 +482,12 @@ export const projectsApi = {
   deleteDesignation: (projectId: string, id: string, token: string) =>
     api.delete(`/projects/${projectId}/designations/${id}`, token),
 
+  getTimeline: (projectId: string, token: string) =>
+    api.get<ProjectTimeline>(`/projects/${projectId}/timeline`, token),
+
+  snapshotTimelineBaseline: (projectId: string, token: string) =>
+    api.post<{ updated: number }>(`/projects/${projectId}/timeline/baseline`, {}, token),
+
   getLinkGraph: (
     projectId: string,
     token: string,
@@ -539,8 +545,53 @@ export interface Milestone {
   _id: string;
   name: string;
   dueDate?: string;
+  baselineStartDate?: string;
+  baselineDueDate?: string;
   status: string;
   description?: string;
+}
+
+export interface ProjectTimeline {
+  range: { start: string; end: string };
+  issues: Array<{
+    id: string;
+    key: string;
+    title: string;
+    type: string;
+    status: string;
+    parentId?: string;
+    milestoneId?: string;
+    fixVersionIds: string[];
+    startDate?: string;
+    dueDate?: string;
+    baselineStartDate?: string;
+    baselineDueDate?: string;
+    progress: number;
+  }>;
+  milestones: Array<{
+    id: string;
+    name: string;
+    dueDate?: string;
+    baselineStartDate?: string;
+    baselineDueDate?: string;
+    status: string;
+  }>;
+  versions: Array<{ id: string; name: string; releaseDate?: string; order?: number }>;
+  dependencies: Array<{ from: string; to: string }>;
+  parentEdges: Array<{ parentId: string; childId: string }>;
+}
+
+export interface PortfolioTimelineLane {
+  projectId: string;
+  projectName: string;
+  projectKey: string;
+  startDate?: string;
+  endDate?: string;
+  milestoneCount: number;
+  nextMilestone?: { name: string; dueDate: string };
+  nextRelease?: { name: string; releaseDate: string };
+  epicCount: number;
+  datedIssueCount: number;
 }
 
 export const milestonesApi = {
@@ -856,6 +907,8 @@ export const dashboardApi = {
   getStats: (token: string) => api.get<DashboardStats>('/dashboard/stats', token),
   getPortfolio: (token: string) =>
     api.get<Array<{ projectId: string; projectName: string; projectKey: string; totalIssues: number; doneCount: number; openCount: number; progressPercent: number }>>('/dashboard/portfolio', token),
+  getPortfolioTimeline: (token: string) =>
+    api.get<PortfolioTimelineLane[]>('/dashboard/portfolio/timeline', token),
   getExecutive: (token: string) =>
     api.get<DashboardStats & { totalProjects: number }>('/dashboard/executive', token),
   getDefectMetrics: (token: string, projectId?: string) =>
@@ -1157,6 +1210,8 @@ export interface Issue {
   labels?: string[];
   dueDate?: string;
   startDate?: string;
+  baselineStartDate?: string;
+  baselineDueDate?: string;
   storyPoints?: number;
   timeEstimateMinutes?: number;
   checklist?: ChecklistItem[];
@@ -1241,6 +1296,8 @@ export const issuesApi = {
       fixVersion?: string[] | null;
       affectsVersions?: string[];
       expectedUpdatedAt?: string;
+      baselineStartDate?: string | null;
+      baselineDueDate?: string | null;
     },
     token: string
   ) => api.patch<Issue>(`/issues/${id}`, body, token),

@@ -444,6 +444,12 @@ export async function update(
   if (input.startDate !== undefined) {
     if (input.startDate) updateData.startDate = new Date(input.startDate);
   }
+  if (input.baselineDueDate !== undefined) {
+    if (input.baselineDueDate) updateData.baselineDueDate = new Date(input.baselineDueDate);
+  }
+  if (input.baselineStartDate !== undefined) {
+    if (input.baselineStartDate) updateData.baselineStartDate = new Date(input.baselineStartDate);
+  }
   if (input.storyPoints !== undefined) {
     if (input.storyPoints === null) unset.storyPoints = 1;
     else updateData.storyPoints = input.storyPoints;
@@ -459,6 +465,8 @@ export async function update(
   if (input.sprint === null || input.sprint === '') unset.sprint = 1;
   if (input.dueDate === null || input.dueDate === '') unset.dueDate = 1;
   if (input.startDate === null || input.startDate === '') unset.startDate = 1;
+  if (input.baselineDueDate === null || input.baselineDueDate === '') unset.baselineDueDate = 1;
+  if (input.baselineStartDate === null || input.baselineStartDate === '') unset.baselineStartDate = 1;
   if (input.fixVersion !== undefined) {
     const fixVersions = normalizeFixVersionsInput(input.fixVersion);
     if (!fixVersions?.length) unset.fixVersion = 1;
@@ -508,6 +516,16 @@ export async function update(
     const oldDate = oldRaw.startDate ? (oldRaw.startDate as Date).toISOString?.()?.slice(0, 10) : null;
     const newDate = input.startDate ? new Date(input.startDate).toISOString().slice(0, 10) : null;
     addChange('startDate', oldDate, newDate);
+  }
+  if (input.baselineDueDate !== undefined) {
+    const oldDate = oldRaw.baselineDueDate ? (oldRaw.baselineDueDate as Date).toISOString?.()?.slice(0, 10) : null;
+    const newDate = input.baselineDueDate ? new Date(input.baselineDueDate).toISOString().slice(0, 10) : null;
+    addChange('baselineDueDate', oldDate, newDate);
+  }
+  if (input.baselineStartDate !== undefined) {
+    const oldDate = oldRaw.baselineStartDate ? (oldRaw.baselineStartDate as Date).toISOString?.()?.slice(0, 10) : null;
+    const newDate = input.baselineStartDate ? new Date(input.baselineStartDate).toISOString().slice(0, 10) : null;
+    addChange('baselineStartDate', oldDate, newDate);
   }
   if (input.storyPoints !== undefined) addChange('storyPoints', oldRaw.storyPoints, input.storyPoints ?? undefined);
   if (input.timeEstimateMinutes !== undefined) addChange('timeEstimateMinutes', oldRaw.timeEstimateMinutes, input.timeEstimateMinutes ?? undefined);
