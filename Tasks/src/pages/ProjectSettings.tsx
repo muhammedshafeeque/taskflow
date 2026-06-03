@@ -1270,6 +1270,12 @@ export default function ProjectSettings() {
                   >
                     View all templates
                   </Link>
+                  <Link
+                    to={`/projects/${projectId}/import`}
+                    className="text-xs text-[color:var(--accent)] hover:underline font-medium"
+                  >
+                    Import issues (ADO / CSV / Jira)
+                  </Link>
                 </div>
               )}
             </div>

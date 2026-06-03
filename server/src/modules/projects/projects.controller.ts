@@ -11,6 +11,7 @@ import { getProjectPermissionsForUser } from '../../middleware/requireProjectPer
 import { ApiError } from '../../utils/ApiError';
 import { logAudit } from '../auditLogs/logAudit';
 import * as analyticsService from '../analytics/analytics.service';
+import * as issueGraphService from '../issues/issueGraph.service';
 
 export async function createProject(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
   const creatorId = req.user?.id;
@@ -196,6 +197,21 @@ export async function getSprintReport(req: Request & { user?: AuthPayload }, res
     sprintReportsService.getSprintSummary(sprintId, projectId, userId),
   ]);
   res.status(200).json({ success: true, data: { burndown, velocity, summary } });
+}
+
+export async function getProjectIssueGraph(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
+  const userId = req.user?.id;
+  if (!userId) throw new ApiError(401, 'Unauthorized');
+  const projectId = req.params.id;
+  const q = req.query;
+  const depthRaw = q.depth != null ? parseInt(String(q.depth), 10) : undefined;
+  const data = await issueGraphService.getProjectIssueGraph(projectId, userId, {
+    linkTypes: q.linkTypes != null ? String(q.linkTypes) : undefined,
+    centerIssueId: q.centerIssueId != null ? String(q.centerIssueId) : undefined,
+    depth: Number.isFinite(depthRaw) ? depthRaw : undefined,
+    includeParentEdges: q.includeParentEdges !== 'false',
+  });
+  res.status(200).json({ success: true, data });
 }
 
 export async function getTimesheet(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {

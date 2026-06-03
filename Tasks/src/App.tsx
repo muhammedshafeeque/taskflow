@@ -44,6 +44,8 @@ import Gantt from './pages/Gantt';
 import Roadmap from './pages/Roadmap';
 import ProjectDashboard from './pages/ProjectDashboard';
 import ProjectSettings from './pages/ProjectSettings';
+import ProjectImport from './pages/ProjectImport';
+import IssueLinkGraph from './pages/IssueLinkGraph';
 import Versions from './pages/Versions';
 import Timesheet from './pages/Timesheet';
 import Users from './pages/Users';
@@ -130,6 +132,8 @@ function AppRoutes() {
           <Route path="dashboard" element={<ProjectDashboard />} />
           <Route path="issues" element={<Issues />} />
           <Route path="issues/:ticketId" element={<IssueDetail />} />
+          <Route path="link-graph" element={<IssueLinkGraph />} />
+          <Route path="import" element={<ProjectImport />} />
           <Route path="boards" element={<Boards />} />
           <Route path="backlog" element={<Backlog />} />
           <Route path="sprints" element={<Sprints />} />

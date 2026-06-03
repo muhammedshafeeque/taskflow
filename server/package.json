@@ -26,6 +26,7 @@
     "@react-email/render": "^2.0.4",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
+    "csv-parse": "^5.6.0",
     "dotenv": "^16.4.5",
     "exceljs": "^4.4.0",
     "express": "^4.21.0",
@@ -44,10 +45,10 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/jest": "^30.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/morgan": "^1.9.10",
     "@types/multer": "^2.0.0",

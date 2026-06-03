@@ -18,9 +18,11 @@ import {
   cancelInvitationParamHandler,
   timesheetHandler,
   sprintReportHandler,
+  getProjectIssueGraph,
   updateMemberDesignation,
   removeMember,
 } from './projects.controller';
+import { importsRoutes } from '../imports/imports.routes';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { milestonesRoutes } from '../milestones/milestones.routes';
 import { roadmapsRoutes } from '../roadmaps/roadmaps.routes';
@@ -67,6 +69,8 @@ router.use('/:id/test-cases', idParamHandler[0], testCasesRoutes);
 router.use('/:id/test-plans', idParamHandler[0], testPlansRoutes);
 router.use('/:id/traceability', idParamHandler[0], traceabilityRoutes);
 router.get('/:id/sprints/:sprintId/report', requireProjectPermission(PROJECT_PERMISSIONS.SPRINT.SPRINT.READ), ...sprintReportHandler);
+router.get('/:id/link-graph', ...idParamHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.ISSUE.READ), asyncHandler(getProjectIssueGraph));
+router.use('/:id/imports', idParamHandler[0], importsRoutes);
 router.delete('/:id', ...idParamHandler, requireProjectPermission(PROJECT_PERMISSIONS.SCOPE.DELETE), asyncHandler(deleteProject));
 
 export const projectsRoutes = router;

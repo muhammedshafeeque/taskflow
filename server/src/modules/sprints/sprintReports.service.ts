@@ -4,6 +4,8 @@ import { ProjectMember } from '../projects/projectMember.model';
 import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError';
 import { getClosedStatusNamesForProject } from '../projects/statusClassification';
+import type { HierarchyIssueRow } from '../issues/issueHierarchy.service';
+import { sumLeafStoryPointsForSubset } from '../issues/issueHierarchy.service';
 
 export interface BurndownPoint {
   date: string; // YYYY-MM-DD
@@ -25,15 +27,26 @@ export async function getSprintBurndown(sprintId: string, projectId: string, use
   const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)));
 
   const closedStatuses = await getClosedStatusNamesForProject(projectId);
-  const isDone = (status: string): boolean => closedStatuses.includes(status);
 
-  const issues = await Issue.find({ sprint: sprintId, project: projectId })
-    .select('storyPoints status')
+  const sprintIssues = await Issue.find({ sprint: sprintId, project: projectId })
+    .select('_id storyPoints status')
     .lean();
-
-  const totalSP = issues.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
-  const remainingIssues = issues.filter((i) => !isDone(i.status));
-  const currentRemainingSP = remainingIssues.reduce((s, i) => s + (i.storyPoints ?? 0), 0);
+  const projectRows = await Issue.find({ project: projectId })
+    .select('_id parent storyPoints status')
+    .lean();
+  const hierarchyRows: HierarchyIssueRow[] = projectRows.map((r) => ({
+    _id: r._id as mongoose.Types.ObjectId,
+    parent: r.parent as mongoose.Types.ObjectId | null | undefined,
+    storyPoints: r.storyPoints as number | null | undefined,
+    status: String(r.status ?? ''),
+  }));
+  const sprintIdSet = new Set(sprintIssues.map((i) => String(i._id)));
+  const { totalSp: totalSP, completedSp } = sumLeafStoryPointsForSubset(
+    hierarchyRows,
+    sprintIdSet,
+    closedStatuses
+  );
+  const currentRemainingSP = totalSP - completedSp;
 
   const points: BurndownPoint[] = [];
   const today = new Date();

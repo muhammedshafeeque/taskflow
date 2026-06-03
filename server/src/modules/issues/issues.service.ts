@@ -361,7 +361,7 @@ export async function findAll(
   };
 }
 
-function withIssueKey(
+export function withIssueKey(
   issue: { _id: unknown; key?: string; project?: { key?: string } | unknown }
 ): typeof issue & { key: string } {
   const key =
@@ -532,11 +532,13 @@ export async function update(
     ? { $set: updateData, $unset: unset }
     : { $set: updateData };
 
-  const issue = await Issue.findByIdAndUpdate(
-    id,
-    updateOp,
-    { new: true, runValidators: true }
-  )
+  const expectedUpdatedAt = input.expectedUpdatedAt;
+  const filter: Record<string, unknown> = { _id: id };
+  if (expectedUpdatedAt) {
+    filter.updatedAt = new Date(expectedUpdatedAt);
+  }
+
+  let issue = await Issue.findOneAndUpdate(filter, updateOp, { new: true, runValidators: true })
     .populate('reporter', 'name email')
     .populate('assignee', 'name email')
     .populate('project', 'name key')
@@ -545,12 +547,30 @@ export async function update(
     .populate('milestone', 'name dueDate status')
     .lean();
 
-  if (issue && authorId) {
-    const issueWithKey = withIssueKey(issue as { _id: unknown; key?: string; project?: { key?: string } });
-    const projectId = (issue.project as { _id?: unknown })?._id
-      ? String((issue.project as { _id: unknown })._id)
-      : String(issue.project);
-    notifyProjectRefresh(projectId);
+  if (!issue && expectedUpdatedAt) {
+    const current = await Issue.findById(id)
+      .populate('reporter', 'name email')
+      .populate('assignee', 'name email')
+      .populate('project', 'name key')
+      .populate('sprint', 'name status')
+      .populate('parent', 'key title _id')
+      .populate('milestone', 'name dueDate status')
+      .lean();
+    if (!current) return null;
+    throw new ApiError(409, 'Issue was modified by someone else', {
+      latest: mapIssue(current as Parameters<typeof mapIssue>[0]),
+    });
+  }
+
+  if (!issue) return null;
+
+  const issueWithKey = withIssueKey(issue as { _id: unknown; key?: string; project?: { key?: string } });
+  const projectId = (issue.project as { _id?: unknown })?._id
+    ? String((issue.project as { _id: unknown })._id)
+    : String(issue.project);
+  notifyProjectRefresh(projectId);
+
+  if (authorId) {
     const issueKey = issueWithKey.key ?? '?';
     const notifySnapshot: issueNotification.IssueNotifySnapshot = {
       _id: id,
@@ -634,7 +654,6 @@ export async function update(
         },
       }).catch(() => {});
     }
-
   }
 
   // Sync customer request status when issue status changes

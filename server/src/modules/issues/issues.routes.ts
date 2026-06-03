@@ -7,6 +7,7 @@ import {
   getIssueByKey,
   getIssueHistory,
   getSubtasks,
+  getIssueRollup,
   getIssueLinks,
   addIssueLinkHandler,
   deleteIssueLinkHandler,
@@ -50,6 +51,7 @@ router.delete('/bulk', bulkDeleteHandler);
 router.put('/backlog-order', ...backlogOrderHandler);
 router.get('/:id/history', ...issueIdParamHandler, asyncHandler(getIssueHistory));
 router.get('/:id/subtasks', ...issueIdParamHandler, asyncHandler(getSubtasks));
+router.get('/:id/rollup', ...issueIdParamHandler, asyncHandler(getIssueRollup));
 router.get('/:id/links', ...issueIdParamHandler, asyncHandler(getIssueLinks));
 router.post('/:id/links', addIssueLinkHandler);
 router.delete('/:id/links/:linkId', deleteIssueLinkHandler);

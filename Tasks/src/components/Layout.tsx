@@ -130,6 +130,7 @@ function buildGlobalNav(
 const PROJECT_NAV_ITEMS: { to: string; label: string; icon: ReactNode; permission: string; global?: boolean; globalPerm?: boolean }[] = [
   { to: '/dashboard', label: 'Dashboard', icon: <DashboardIcon />, permission: 'issue.issue.read' },
   { to: '/issues', label: 'Issues', icon: <IssuesIcon />, permission: 'issue.issue.read' },
+  { to: '/link-graph', label: 'Link graph', icon: <GanttIcon />, permission: 'issue.issue.read' },
   { to: '/boards', label: 'Boards', icon: <BoardsIcon />, permission: 'board.board.read' },
   { to: '/backlog', label: 'Backlog', icon: <BoardsIcon />, permission: 'sprint.sprint.read' },
   { to: '/sprints', label: 'Sprints', icon: <SprintsIcon />, permission: 'sprint.sprint.read' },

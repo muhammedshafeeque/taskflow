@@ -5,6 +5,7 @@ import type { Issue, Attachment, IssueLink } from '../../lib/api';
 import TaskSubtasks from './TaskSubtasks';
 import TaskIssueLinks, { type TaskIssueLinksHandle } from './TaskIssueLinks';
 import TaskAttachments, { type TaskAttachmentsHandle } from './TaskAttachments';
+import IssueGraphMini from './IssueGraphMini';
 
 interface TaskSecondaryTabsProps {
   issue: Issue;
@@ -25,7 +26,7 @@ export type TaskSecondaryTabsHandle = {
   openFilePicker: () => void;
 };
 
-type Tab = 'subtasks' | 'links' | 'attachments';
+type Tab = 'subtasks' | 'links' | 'attachments' | 'graph';
 
 const TaskSecondaryTabs = forwardRef<TaskSecondaryTabsHandle, TaskSecondaryTabsProps>(function TaskSecondaryTabs(props, ref) {
   const {
@@ -89,6 +90,11 @@ const TaskSecondaryTabs = forwardRef<TaskSecondaryTabsHandle, TaskSecondaryTabsP
             Attachments
             <span className={badgeClass('attachments')}>{attachments.length}</span>
           </button>
+          {projectId && token && (
+            <button type="button" onClick={() => setActiveTab('graph')} className={tabClass('graph')}>
+              Graph
+            </button>
+          )}
         </div>
 
         <div className="ml-3 shrink-0">
@@ -156,6 +162,11 @@ const TaskSecondaryTabs = forwardRef<TaskSecondaryTabsHandle, TaskSecondaryTabsP
             onAttachmentsChange={onAttachmentsChange}
             noWrapper
           />
+        )}
+        {activeTab === 'graph' && projectId && token && (
+          <div className="p-4">
+            <IssueGraphMini projectId={projectId} issue={issue} token={token} />
+          </div>
         )}
       </div>
     </section>

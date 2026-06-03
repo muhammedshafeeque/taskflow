@@ -54,6 +54,7 @@ export const updateIssueSchema = z.object({
     affectsVersions: z.array(z.string()).optional(),
     parent: z.string().optional().nullable(),
     milestone: z.string().optional().nullable(),
+    expectedUpdatedAt: z.string().datetime().optional(),
   }),
   params: z.object({
     id: z.string().min(1),

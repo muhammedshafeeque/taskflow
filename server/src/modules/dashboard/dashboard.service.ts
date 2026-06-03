@@ -10,6 +10,8 @@ import type { ReportFilters } from '../reports/reportFilters';
 import { buildIssueMatch } from '../reports/reportFilters';
 import { getClosedStatusNamesForProject, getClosedStatusNamesFromStatuses } from '../projects/statusClassification';
 import { getProjectObjectIdsInWorkspace } from '../projects/workspaceProjectAccess';
+import type { HierarchyIssueRow } from '../issues/issueHierarchy.service';
+import { effectiveStoryPointsForIssue } from '../issues/issueHierarchy.service';
 
 export { getProjectObjectIdsInWorkspace } from '../projects/workspaceProjectAccess';
 
@@ -43,13 +45,28 @@ export async function getWorkloadStats(
     projectDocs.map((p) => [String(p._id), new Set(getClosedStatusNamesFromStatuses((p as { statuses?: Array<{ name?: string; isClosed?: boolean }> }).statuses))])
   );
 
+  const hierarchyByProject = new Map<string, HierarchyIssueRow[]>();
+  for (const pid of projectIds) {
+    const rows = await Issue.find({ project: pid }).select('_id parent storyPoints status').lean();
+    hierarchyByProject.set(
+      pid,
+      rows.map((r) => ({
+        _id: r._id as mongoose.Types.ObjectId,
+        parent: r.parent as mongoose.Types.ObjectId | null | undefined,
+        storyPoints: r.storyPoints as number | null | undefined,
+        status: String(r.status ?? ''),
+      }))
+    );
+  }
+
   const aggMap = new Map<string, { _id: mongoose.Types.ObjectId | null; totalCount: number; openCount: number; doneCount: number; storyPoints: number }>();
   for (const issue of issues) {
     const assigneeId = (issue.assignee as mongoose.Types.ObjectId | null) ?? null;
     const key = assigneeId ? String(assigneeId) : '__unassigned__';
     const row = aggMap.get(key) ?? { _id: assigneeId, totalCount: 0, openCount: 0, doneCount: 0, storyPoints: 0 };
     row.totalCount += 1;
-    row.storyPoints += (issue.storyPoints ?? 0);
+    const projRows = hierarchyByProject.get(String(issue.project)) ?? [];
+    row.storyPoints += effectiveStoryPointsForIssue(String(issue._id), projRows);
     const closedSet = closedByProject.get(String(issue.project)) ?? new Set(['Done', 'Closed', 'Resolved']);
     if (closedSet.has(String(issue.status ?? ''))) row.doneCount += 1;
     else row.openCount += 1;
@@ -662,7 +679,24 @@ export async function getDefectMetrics(
   }
 
   let defectDensity: number | undefined;
-  const totalStoryPoints = allIssues.reduce((sum, i) => sum + ((i as { storyPoints?: number }).storyPoints ?? 0), 0);
+  const projectIdsForSp = [...new Set(allIssues.map((i) => String(i.project)).filter(Boolean))];
+  const hierarchyByProject = new Map<string, HierarchyIssueRow[]>();
+  for (const pid of projectIdsForSp) {
+    const rows = await Issue.find({ project: pid }).select('_id parent storyPoints status').lean();
+    hierarchyByProject.set(
+      pid,
+      rows.map((r) => ({
+        _id: r._id as mongoose.Types.ObjectId,
+        parent: r.parent as mongoose.Types.ObjectId | null | undefined,
+        storyPoints: r.storyPoints as number | null | undefined,
+        status: String(r.status ?? ''),
+      }))
+    );
+  }
+  const totalStoryPoints = allIssues.reduce((sum, i) => {
+    const projRows = hierarchyByProject.get(String(i.project)) ?? [];
+    return sum + effectiveStoryPointsForIssue(String(i._id), projRows);
+  }, 0);
   if (totalStoryPoints > 0 && bugs.length > 0) {
     defectDensity = Math.round((bugs.length / totalStoryPoints) * 100) / 100;
   }

@@ -18,6 +18,7 @@ export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   message?: string;
+  status?: number;
 }
 
 async function request<T>(
@@ -41,9 +42,12 @@ async function request<T>(
     if (res.status === 401) {
       window.dispatchEvent(new CustomEvent('auth:unauthorized'));
     }
+    const errJson = json as ApiResponse<T>;
     return {
       success: false,
-      message: (json as ApiResponse).message || res.statusText || 'Request failed',
+      status: res.status,
+      message: errJson.message || res.statusText || 'Request failed',
+      data: errJson.data,
     };
   }
   return json as ApiResponse<T>;
@@ -477,6 +481,41 @@ export const projectsApi = {
     api.patch<ProjectDesignation>(`/projects/${projectId}/designations/${id}`, body, token),
   deleteDesignation: (projectId: string, id: string, token: string) =>
     api.delete(`/projects/${projectId}/designations/${id}`, token),
+
+  getLinkGraph: (
+    projectId: string,
+    token: string,
+    params?: { linkTypes?: string; centerIssueId?: string; depth?: number; includeParentEdges?: boolean }
+  ) => {
+    const q = new URLSearchParams();
+    if (params?.linkTypes) q.set('linkTypes', params.linkTypes);
+    if (params?.centerIssueId) q.set('centerIssueId', params.centerIssueId);
+    if (params?.depth != null) q.set('depth', String(params.depth));
+    if (params?.includeParentEdges === false) q.set('includeParentEdges', 'false');
+    const qs = q.toString();
+    return api.get<IssueGraphData>(`/projects/${projectId}/link-graph${qs ? `?${qs}` : ''}`, token);
+  },
+
+  startImport: (
+    projectId: string,
+    body: {
+      source: 'ado' | 'csv' | 'jira';
+      reporterEmail: string;
+      dryRun?: boolean;
+      skipExisting?: boolean;
+      csvContent?: string;
+      options?: Record<string, unknown>;
+    },
+    token: string
+  ) =>
+    api.post<{ jobId?: string; status?: string; dryRun?: boolean; preview?: unknown }>(
+      `/projects/${projectId}/imports`,
+      body,
+      token
+    ),
+
+  getImportJob: (projectId: string, jobId: string, token: string) =>
+    api.get<ImportJobStatus>(`/projects/${projectId}/imports/${jobId}`, token),
 };
 
 export const projectTemplatesApi = {
@@ -1055,6 +1094,51 @@ export interface ChecklistItem {
   done: boolean;
 }
 
+export interface IssueRollup {
+  issueId: string;
+  issueKey: string;
+  totalStoryPoints: number;
+  completedStoryPoints: number;
+  percentDone: number;
+  childCount: number;
+  directChildCount: number;
+  statusBreakdown: Array<{ status: string; count: number; storyPoints: number }>;
+  burndown: Array<{ date: string; remainingStoryPoints: number; ideal: number }>;
+}
+
+export interface IssueGraphNode {
+  id: string;
+  key: string;
+  title: string;
+  type: string;
+  status: string;
+}
+
+export interface IssueGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  linkType: string;
+  synthetic?: boolean;
+}
+
+export interface IssueGraphData {
+  nodes: IssueGraphNode[];
+  edges: IssueGraphEdge[];
+}
+
+export interface ImportJobStatus {
+  jobId: string;
+  source?: string;
+  status: string;
+  dryRun?: boolean;
+  progress?: string;
+  result?: unknown;
+  error?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Issue {
   _id: string;
   key?: string;
@@ -1156,9 +1240,12 @@ export const issuesApi = {
       customFieldValues?: Record<string, unknown>;
       fixVersion?: string[] | null;
       affectsVersions?: string[];
+      expectedUpdatedAt?: string;
     },
     token: string
   ) => api.patch<Issue>(`/issues/${id}`, body, token),
+  getRollup: (issueId: string, token: string) =>
+    api.get<IssueRollup>(`/issues/${issueId}/rollup`, token),
   delete: (id: string, token: string) => api.delete(`/issues/${id}`, token),
   getHistory: (issueId: string, page = 1, limit = 50, token: string) =>
     api.get<Paginated<IssueHistoryItem>>(

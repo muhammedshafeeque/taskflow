@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { FiAlertCircle } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
@@ -28,6 +29,7 @@ import {
   TaskDetailsSidebar,
   WorkLogInput,
 } from '../components/issue';
+import EpicRollupPanel from '../components/issue/EpicRollupPanel';
 import type { TaskSecondaryTabsHandle } from '../components/issue/TaskSecondaryTabs';
 
 const DEFAULT_STATUSES = ['Backlog', 'Todo', 'In Progress', 'Done'];
@@ -39,7 +41,7 @@ export default function IssueDetail() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { token, user } = useAuth();
-  const { showToast } = useNotifications();
+  const { showToast, subscribeProject } = useNotifications();
   const secondaryTabsRef = useRef<TaskSecondaryTabsHandle>(null);
   const [issue, setIssue] = useState<Issue | null>(null);
   const [project, setProject] = useState<Project | null>(null);
@@ -62,6 +64,8 @@ export default function IssueDetail() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [timeLogOpen, setTimeLogOpen] = useState(false);
   const [sprints, setSprints] = useState<Sprint[]>([]);
+  const [conflictLatest, setConflictLatest] = useState<Issue | null>(null);
+  const [pendingUpdate, setPendingUpdate] = useState<Parameters<typeof issuesApi.update>[1] | null>(null);
 
   const [modalOpen, setModalOpen] = useState<'create' | 'edit' | null>(null);
   const [form, setForm] = useState({
@@ -174,6 +178,14 @@ export default function IssueDetail() {
     setSubmittingModal(false);
   }
 
+  const reloadIssue = useCallback(() => {
+    if (!token || !projectId || !ticketId) return;
+    issuesApi.getByKey(projectId, decodeURIComponent(ticketId), token).then((res) => {
+      if (res.success && res.data) setIssue(res.data);
+      else setIssue(null);
+    });
+  }, [token, projectId, ticketId]);
+
   useEffect(() => {
     if (!token || !projectId || !ticketId) return;
     setLoading(true);
@@ -183,6 +195,11 @@ export default function IssueDetail() {
       else setIssue(null);
     });
   }, [token, projectId, ticketId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    return subscribeProject(projectId, () => reloadIssue());
+  }, [projectId, subscribeProject, reloadIssue]);
 
   useEffect(() => {
     if (!token || !projectId) return;
@@ -322,10 +339,49 @@ export default function IssueDetail() {
     }
   }
 
-  async function updateIssue(payload: Parameters<typeof issuesApi.update>[1]) {
+  async function updateIssue(
+    payload: Parameters<typeof issuesApi.update>[1],
+    options?: { skipConcurrency?: boolean }
+  ) {
     if (!token || !issue?._id || !issue) return;
-    const res = await issuesApi.update(issue._id, payload, token);
-    if (res.success && res.data) setIssue(res.data);
+    const body = {
+      ...payload,
+      ...(options?.skipConcurrency || !issue.updatedAt
+        ? {}
+        : { expectedUpdatedAt: issue.updatedAt }),
+    };
+    const res = await issuesApi.update(issue._id, body, token);
+    if (!res.success && res.status === 409) {
+      const latest = (res.data as { latest?: Issue } | undefined)?.latest;
+      if (latest) {
+        setConflictLatest(latest);
+        setPendingUpdate(payload);
+        return;
+      }
+    }
+    if (res.success && res.data) {
+      setIssue(res.data);
+      setConflictLatest(null);
+      setPendingUpdate(null);
+    }
+  }
+
+  function handleConflictReload() {
+    if (conflictLatest) {
+      setIssue(conflictLatest);
+      setConflictLatest(null);
+      setPendingUpdate(null);
+    }
+  }
+
+  async function handleConflictOverwrite() {
+    if (!token || !issue?._id || !pendingUpdate) return;
+    const res = await issuesApi.update(issue._id, { ...pendingUpdate }, token);
+    if (res.success && res.data) {
+      setIssue(res.data);
+      setConflictLatest(null);
+      setPendingUpdate(null);
+    }
   }
 
   async function updateField(
@@ -523,6 +579,11 @@ export default function IssueDetail() {
             </div>
             <div className="space-y-4 pt-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
               <TaskDescription issue={issue} onUpdateDescription={updateDescription} />
+              <EpicRollupPanel
+                issueId={issue._id}
+                token={token!}
+                show={/epic/i.test(issue.type) || subtasks.length > 0}
+              />
               <TaskSecondaryTabs
                 ref={secondaryTabsRef}
                 issue={issue}
@@ -628,6 +689,47 @@ export default function IssueDetail() {
           </div>
         </div>
       )}
+
+      {conflictLatest &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => {
+              setConflictLatest(null);
+              setPendingUpdate(null);
+            }}
+          >
+            <div
+              className="w-full max-w-md bg-[color:var(--bg-modal)] border border-[color:var(--border-subtle)] rounded-xl p-6 card-shadow"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-base font-bold text-[color:var(--text-primary)] mb-2">Edit conflict</h2>
+              <p className="text-sm text-[color:var(--text-muted)] mb-4">
+                Someone else updated this issue while you were editing. Reload their version or overwrite with your
+                changes.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConflictLatest(null);
+                    setPendingUpdate(null);
+                  }}
+                  className="btn-secondary px-4 py-2 rounded-lg text-sm"
+                >
+                  Cancel
+                </button>
+                <button type="button" onClick={handleConflictReload} className="btn-secondary px-4 py-2 rounded-lg text-sm">
+                  Reload latest
+                </button>
+                <button type="button" onClick={handleConflictOverwrite} className="btn-primary px-4 py-2 rounded-lg text-sm">
+                  Overwrite
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       <ConfirmModal
         open={confirmDelete}
