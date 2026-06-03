@@ -1,7 +1,7 @@
 import {
-  channelsToNotificationOverrides,
   dispatchReleaseNotifications,
   resolveReleaseNotifyUserIds,
+  ruleChannelsToAllowedMethods,
   ruleHasReleaseNotifications,
 } from './releaseNotification.service';
 import type { IProjectReleaseRule } from './project.model';
@@ -18,6 +18,10 @@ jest.mock('../inbox/inbox.service', () => ({
   createMessage: jest.fn().mockResolvedValue({}),
 }));
 
+jest.mock('../notifications/notificationPreference.service', () => ({
+  shouldSend: jest.fn().mockResolvedValue(true),
+}));
+
 jest.mock('../notifications/notificationDispatch.service', () => ({
   appUrl: (path: string) => `https://app.test/${path}`,
   notifyUser: jest.fn().mockResolvedValue(undefined),
@@ -26,10 +30,14 @@ jest.mock('../notifications/notificationDispatch.service', () => ({
 import { ProjectMember } from './projectMember.model';
 import * as inboxService from '../inbox/inbox.service';
 import { notifyUser } from '../notifications/notificationDispatch.service';
+import { shouldSend } from '../notifications/notificationPreference.service';
+
+const mockedShouldSend = shouldSend as jest.MockedFunction<typeof shouldSend>;
 
 describe('releaseNotification.service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedShouldSend.mockResolvedValue(true);
   });
 
   it('ruleHasReleaseNotifications is true when channels or users are set', () => {
@@ -39,13 +47,6 @@ describe('releaseNotification.service', () => {
         environmentId: 'e1',
         statusName: 'Done',
         notifyChannels: ['email'],
-      })
-    ).toBe(true);
-    expect(
-      ruleHasReleaseNotifications({
-        environmentId: 'e1',
-        statusName: 'Done',
-        notifyUserIds: ['u1'],
       })
     ).toBe(true);
   });
@@ -60,27 +61,19 @@ describe('releaseNotification.service', () => {
     expect(resolveReleaseNotifyUserIds(rule, ['member-a'])).toEqual(['u1', 'u2']);
   });
 
-  it('resolveReleaseNotifyUserIds falls back to all members when channels set without users', () => {
-    const rule: IProjectReleaseRule = {
-      environmentId: 'e1',
-      statusName: 'Done',
-      notifyChannels: ['email'],
-    };
-    expect(resolveReleaseNotifyUserIds(rule, ['member-a', 'member-b'])).toEqual(['member-a', 'member-b']);
-  });
-
-  it('channelsToNotificationOverrides maps email and third_party', () => {
-    expect(channelsToNotificationOverrides(['email'])).toEqual(['email']);
-    expect(channelsToNotificationOverrides(['third_party'])).toEqual([
+  it('ruleChannelsToAllowedMethods maps release rule channels', () => {
+    expect(ruleChannelsToAllowedMethods(['email'])).toEqual(['email']);
+    expect(ruleChannelsToAllowedMethods(['in_app', 'email', 'third_party'])).toEqual([
+      'in_app',
+      'email',
       'slack',
       'teams',
       'telegram',
       'discord',
     ]);
-    expect(channelsToNotificationOverrides(['in_app'])).toEqual([]);
   });
 
-  it('dispatchReleaseNotifications sends inbox and email when configured', async () => {
+  it('dispatchReleaseNotifications respects user prefs for inbox and notifyUser', async () => {
     const rule: IProjectReleaseRule = {
       environmentId: 'e1',
       statusName: 'Done',
@@ -103,39 +96,38 @@ describe('releaseNotification.service', () => {
 
     expect(ProjectMember.find).not.toHaveBeenCalled();
     expect(inboxService.createMessage).toHaveBeenCalledTimes(1);
-    expect(inboxService.createMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        toUser: 'u1',
-        type: 'release_notes',
-        title: 'Release: v1 → Production',
-      })
-    );
-    expect(notifyUser).toHaveBeenCalledTimes(1);
     expect(notifyUser).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'u1',
         eventKey: 'release_deployed',
-        channelOverrides: ['email'],
-        html: expect.stringContaining('v1'),
+        allowedChannels: ['in_app', 'email'],
       })
     );
+    expect(mockedShouldSend).toHaveBeenCalledWith('u1', 'release_deployed', 'in_app', ['in_app', 'email']);
   });
 
-  it('dispatchReleaseNotifications skips when rule has no notify config', async () => {
+  it('dispatchReleaseNotifications skips inbox when in_app preference is off', async () => {
+    mockedShouldSend.mockImplementation(async (_uid, _event, method) => method !== 'in_app');
+
     await dispatchReleaseNotifications({
       projectId: 'proj-1',
-      rule: { environmentId: 'e1', statusName: 'Done' },
-      releaseTitle: 'Release: v1 → Staging',
+      rule: {
+        environmentId: 'e1',
+        statusName: 'Done',
+        notifyUserIds: ['u1'],
+        notifyChannels: ['in_app', 'email'],
+      },
+      releaseTitle: 'Release: v1 → Production',
       releaseNotesMarkdown: '# Notes',
       versionName: 'v1',
-      environmentName: 'Staging',
+      environmentName: 'Production',
       projectName: 'Demo',
       releasedAtFormatted: 'May 28, 2026',
-      issueCount: 0,
+      issueCount: 1,
       promoteRelease: false,
     });
 
     expect(inboxService.createMessage).not.toHaveBeenCalled();
-    expect(notifyUser).not.toHaveBeenCalled();
+    expect(notifyUser).toHaveBeenCalled();
   });
 });

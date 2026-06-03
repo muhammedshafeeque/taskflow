@@ -2,10 +2,10 @@ import mongoose from 'mongoose';
 import { Project } from './project.model';
 import {
   isPromoteToEnvironment,
-  validateEnvironmentReleaseOrder,
 } from './environmentHierarchy';
 import { ProjectMember } from './projectMember.model';
 import { Issue } from '../issues/issue.model';
+import * as issueNotification from '../issues/issueNotification.service';
 import { User } from '../auth/user.model';
 import { ApiError } from '../../utils/ApiError';
 import * as releaseNotificationService from './releaseNotification.service';
@@ -371,7 +371,8 @@ export async function releaseVersionToEnvironment(
   versionId: string,
   environmentId: string,
   issueIds: string[] | undefined,
-  activeTaskflowOrganizationId: string
+  activeTaskflowOrganizationId: string,
+  releasedByUserId?: string
 ): Promise<{ releaseNotes: string; version: unknown; updatedCount: number }> {
   const rawProject = await Project.findOne({
     _id: projectId,
@@ -382,7 +383,7 @@ export async function releaseVersionToEnvironment(
   const p = project as {
     versions?: Array<{ id: string; name: string; releasedAtByEnvironment?: Record<string, string> }>;
     environments?: Array<{ id: string; name: string; order: number }>;
-    releaseRules?: Array<{ environmentId: string; statusName: string }>;
+    releaseRules?: IProjectReleaseRule[];
     statuses?: Array<{ name: string }>;
     issueTypes?: Array<{ name: string; order: number }>;
   };
@@ -391,16 +392,27 @@ export async function releaseVersionToEnvironment(
   const envList = p.environments ?? [];
   const env = envList.find((e) => e.id === environmentId);
   if (!env) throw new ApiError(404, 'Environment not found');
-  const hierarchyCheck = validateEnvironmentReleaseOrder(envList, version, environmentId);
-  if (!hierarchyCheck.ok) throw new ApiError(400, hierarchyCheck.message);
   const promoteRelease = isPromoteToEnvironment(envList, version, environmentId);
   if (version.releasedAtByEnvironment?.[environmentId]) {
     throw new ApiError(400, `Version is already released to "${env.name}". Choose a higher environment to promote.`);
   }
-  const rule = p.releaseRules?.find((r) => r.environmentId === environmentId);
+  const rule = p.releaseRules?.find((r) => r.environmentId === environmentId) as IProjectReleaseRule | undefined;
   if (!rule) throw new ApiError(400, `No release rule for environment "${env.name}". Configure it in Project settings → Release rules.`);
   const validStatuses = (p.statuses ?? []).map((s) => s.name);
   if (!validStatuses.includes(rule.statusName)) throw new ApiError(400, `Release rule status "${rule.statusName}" is not a valid project status. Add or restore "${rule.statusName}" in Project settings → Statuses.`);
+
+  const assigneeIdRaw = rule.assigneeId?.trim();
+  let releaseAssigneeId: string | undefined;
+  if (assigneeIdRaw) {
+    if (!mongoose.Types.ObjectId.isValid(assigneeIdRaw)) {
+      throw new ApiError(400, 'Release rule assignee is not a valid user id.');
+    }
+    const isMember = await ProjectMember.exists({ project: projectId, user: assigneeIdRaw });
+    if (!isMember) {
+      throw new ApiError(400, 'Release rule assignee must be a member of this project.');
+    }
+    releaseAssigneeId = assigneeIdRaw;
+  }
 
   const useSelection = Array.isArray(issueIds);
   const selectedIds = useSelection ? issueIds : [];
@@ -412,11 +424,55 @@ export async function releaseVersionToEnvironment(
       : useSelection && selectedIds.length === 0
         ? { project: projectId, fixVersion: versionId, _id: { $in: [] } }
         : { project: projectId, fixVersion: versionId };
+
+  const releaseUpdate: Record<string, unknown> = { status: rule.statusName };
+  if (releaseAssigneeId) {
+    releaseUpdate.assignee = new mongoose.Types.ObjectId(releaseAssigneeId);
+  }
+
+  const issuesForAssignNotify = releaseAssigneeId
+    ? await Issue.find(queryIncluded)
+        .select('_id key title type status assignee project')
+        .populate('project', 'key name')
+        .lean()
+    : [];
+
   const issues = await Issue.find(queryIncluded)
     .populate('project', 'key')
     .lean();
 
-  await Issue.updateMany(queryIncluded, { $set: { status: rule.statusName } });
+  await Issue.updateMany(queryIncluded, { $set: releaseUpdate });
+
+  if (releaseAssigneeId && issuesForAssignNotify.length > 0) {
+    const actorId = releasedByUserId ?? '';
+    for (const issueDoc of issuesForAssignNotify) {
+      const issue = {
+        ...(issueDoc as unknown as issueNotification.IssueNotifySnapshot & {
+          assignee?: { _id?: unknown } | null;
+        }),
+        _id: String(issueDoc._id),
+        status: rule.statusName,
+      };
+      const previousAssigneeId = issue.assignee?._id ? String(issue.assignee._id) : null;
+      if (previousAssigneeId === releaseAssigneeId) continue;
+      if (previousAssigneeId) {
+        issueNotification
+          .notifyIssueUnassigned({
+            issue,
+            previousAssigneeUserId: previousAssigneeId,
+            actorUserId: actorId,
+          })
+          .catch((err) => console.error('[release] unassign notify failed:', err));
+      }
+      issueNotification
+        .notifyIssueAssigned({
+          issue,
+          assigneeUserId: releaseAssigneeId,
+          actorUserId: actorId,
+        })
+        .catch((err) => console.error('[release] assign notify failed:', err));
+    }
+  }
 
   // Promoting to a higher tier: keep fixVersion on issues not in selection (same version, no new version row).
   if (!promoteRelease) {

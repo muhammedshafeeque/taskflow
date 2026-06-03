@@ -2081,7 +2081,7 @@ export default function ProjectSettings() {
                 <div className="p-6 border-b border-[color:var(--border-subtle)]">
                   <h2 className="text-sm font-semibold text-[color:var(--text-primary)]">Environments</h2>
                   <p className="text-[color:var(--text-muted)] text-xs mt-0.5">
-                    Order tiers from lower (bottom) to upper (top), e.g. Dev → QA → Production. Release a version to the lowest tier first, then promote the same version upward on the Versions page.
+                    Order tiers from lower (bottom) to upper (top), e.g. Dev → QA → Production. On the Versions page you can release to any tier in any order—lower environments are not required before upper ones.
                   </p>
                 </div>
                 <div className="p-6 space-y-6">
@@ -2230,6 +2230,9 @@ export default function ProjectSettings() {
                         {releaseRules.map((r) => {
                           const env = environments.find((e) => e.id === r.environmentId);
                           const envName = env?.name ?? r.environmentId;
+                          const assigneeName = r.assigneeId
+                            ? users.find((u) => u._id === r.assigneeId)?.name ?? 'Unknown user'
+                            : null;
                           const notifyOn = (r.notifyUserIds?.length ?? 0) > 0 || (r.notifyChannels?.length ?? 0) > 0;
                           const notifyNote = notifyOn
                             ? [
@@ -2249,6 +2252,15 @@ export default function ProjectSettings() {
                                 <span className="font-medium text-[color:var(--text-primary)] text-sm">{envName}</span>
                                 <span className="text-[color:var(--text-muted)] text-xs">→</span>
                                 <span className="text-[color:var(--text-muted)] text-xs">{r.statusName}</span>
+                                {assigneeName && (
+                                  <>
+                                    <span className="text-[color:var(--text-muted)] text-xs">|</span>
+                                    <span className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-muted)]">
+                                      Assign
+                                    </span>
+                                    <span className="text-xs text-[color:var(--text-primary)]">{assigneeName}</span>
+                                  </>
+                                )}
                                 <span className="text-[color:var(--text-muted)] text-xs">|</span>
                                 <span className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-muted)]">
                                   Notify

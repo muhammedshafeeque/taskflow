@@ -121,7 +121,7 @@ export async function deleteProject(req: Request, res: Response): Promise<void> 
   res.status(200).json({ success: true, data: { message: 'Project deleted' } });
 }
 
-export async function releaseVersion(req: Request, res: Response): Promise<void> {
+export async function releaseVersion(req: Request & { user?: { id: string } }, res: Response): Promise<void> {
   const projectId = req.params.id;
   const activeOrg = req.activeOrganizationId;
   if (!activeOrg) throw new ApiError(400, 'Active workspace is required');
@@ -131,7 +131,8 @@ export async function releaseVersion(req: Request, res: Response): Promise<void>
     versionId,
     environmentId,
     issueIds,
-    activeOrg
+    activeOrg,
+    req.user?.id
   );
   res.status(200).json({ success: true, data: result });
 }

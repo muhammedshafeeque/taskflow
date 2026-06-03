@@ -10,7 +10,10 @@ import {
 } from '../../services/notifications/thirdPartyNotifier';
 import type { NotificationEventKey, NotificationMethod } from '../../shared/constants/notificationCatalog';
 import { createNotification } from './notifications.service';
-import { getAvailableMethods, shouldSend } from './notificationPreference.service';
+import {
+  getOrCreateUserPreferences,
+  isChannelEnabledForUser,
+} from './notificationPreference.service';
 import { User } from '../auth/user.model';
 
 export type NotifyUserParams = {
@@ -25,27 +28,31 @@ export type NotifyUserParams = {
   /** When true, skips the email channel (e.g. a dedicated transactional email was already sent). */
   skipEmail?: boolean;
   /**
-   * When set, deliver on these channels if the transport is enabled, ignoring per-user
-   * notification preferences (e.g. project release rules configured by an admin).
+   * When set, only these delivery methods are considered (each still requires the user's
+   * notification preference for this event). Used by project release rules, etc.
    */
-  channelOverrides?: NotificationMethod[];
+  allowedChannels?: NotificationMethod[];
 };
 
-async function deliverOnChannel(
-  userId: string,
-  eventKey: NotificationEventKey,
-  method: NotificationMethod,
-  channelOverrides?: NotificationMethod[]
-): Promise<boolean> {
-  if (!getAvailableMethods()[method]?.enabled) return false;
-  if (channelOverrides?.includes(method)) return true;
-  return shouldSend(userId, eventKey, method);
-}
-
 export async function notifyUser(params: NotifyUserParams): Promise<void> {
-  const { userId, eventKey, title, body = '', link, metadata, html, skipEmail, channelOverrides } = params;
+  const {
+    userId,
+    eventKey,
+    title,
+    body = '',
+    link,
+    metadata,
+    html,
+    skipEmail,
+    allowedChannels,
+  } = params;
 
-  if (await deliverOnChannel(userId, eventKey, 'in_app', channelOverrides)) {
+  const prefs = await getOrCreateUserPreferences(userId);
+
+  const canDeliver = (method: NotificationMethod) =>
+    isChannelEnabledForUser(prefs, eventKey, method, allowedChannels);
+
+  if (canDeliver('in_app')) {
     await createNotification({
       userId,
       type: eventKey,
@@ -56,13 +63,13 @@ export async function notifyUser(params: NotifyUserParams): Promise<void> {
     });
   }
 
-  if (await deliverOnChannel(userId, eventKey, 'push', channelOverrides)) {
+  if (canDeliver('push')) {
     const payload = { title, body, url: link, data: { eventKey, ...(metadata ?? {}) } };
     sendPushToUser(userId, payload).catch((err) => console.error('Push failed:', err));
     notifyPush(userId, payload);
   }
 
-  if (!skipEmail && (await deliverOnChannel(userId, eventKey, 'email', channelOverrides))) {
+  if (!skipEmail && canDeliver('email')) {
     const user = await User.findById(userId).select('email').lean();
     const to = (user as { email?: string } | null)?.email;
     if (to) {
@@ -72,7 +79,7 @@ export async function notifyUser(params: NotifyUserParams): Promise<void> {
     }
   }
 
-  if (await deliverOnChannel(userId, eventKey, 'sms', channelOverrides)) {
+  if (canDeliver('sms')) {
     const smsToFromMeta = typeof metadata?.smsTo === 'string' ? metadata.smsTo : '';
     const smsTo = smsToFromMeta || env.smsDefaultTo;
     if (smsTo) {
@@ -81,19 +88,19 @@ export async function notifyUser(params: NotifyUserParams): Promise<void> {
       );
     }
   }
-  if (await deliverOnChannel(userId, eventKey, 'whatsapp', channelOverrides)) {
+  if (canDeliver('whatsapp')) {
     const whatsappToFromMeta = typeof metadata?.whatsappTo === 'string' ? metadata.whatsappTo : '';
     const whatsappTo = whatsappToFromMeta || env.whatsappDefaultTo;
     if (whatsappTo) {
-      sendWhatsappNotification(whatsappTo, `${title}${body ? ` - ${body}` : ''}${link ? ` ${link}` : ''}`).catch((err) =>
-        console.error('WhatsApp send failed:', err)
+      sendWhatsappNotification(whatsappTo, `${title}${body ? ` - ${body}` : ''}${link ? ` ${link}` : ''}`).catch(
+        (err) => console.error('WhatsApp send failed:', err)
       );
     }
   }
 
   const providerMethods: ThirdPartyProvider[] = ['slack', 'teams', 'telegram', 'discord'];
   for (const provider of providerMethods) {
-    if (await deliverOnChannel(userId, eventKey, provider, channelOverrides)) {
+    if (canDeliver(provider)) {
       sendThirdPartyNotification(provider, {
         title,
         body,

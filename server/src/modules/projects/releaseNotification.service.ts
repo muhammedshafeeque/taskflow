@@ -2,6 +2,7 @@ import type { IProjectReleaseRule } from './project.model';
 import { ProjectMember } from './projectMember.model';
 import * as inboxService from '../inbox/inbox.service';
 import { notifyUser, appUrl } from '../notifications/notificationDispatch.service';
+import { shouldSend } from '../notifications/notificationPreference.service';
 import { renderReleaseDeployedEmail } from '../../services/email.service';
 import type { NotificationMethod } from '../../shared/constants/notificationCatalog';
 
@@ -26,9 +27,10 @@ export function resolveReleaseNotifyUserIds(
   return [];
 }
 
-/** Map project release-rule channels to notification dispatch methods. */
-export function channelsToNotificationOverrides(channels: ReleaseNotifyChannel[]): NotificationMethod[] {
+/** Map project release-rule channels to notification methods (still filtered by user prefs). */
+export function ruleChannelsToAllowedMethods(channels: ReleaseNotifyChannel[]): NotificationMethod[] {
   const out: NotificationMethod[] = [];
+  if (channels.includes('in_app')) out.push('in_app');
   if (channels.includes('email')) out.push('email');
   if (channels.includes('third_party')) {
     out.push('slack', 'teams', 'telegram', 'discord');
@@ -96,12 +98,15 @@ export async function dispatchReleaseNotifications(params: {
     environmentName: params.environmentName,
     issueCount: params.issueCount,
   };
-  const notifyOverrides = channelsToNotificationOverrides(channels);
+  const allowedChannels = ruleChannelsToAllowedMethods(channels);
 
   await Promise.all(
     userIds.map(async (uid) => {
       try {
-        if (channels.includes('in_app')) {
+        if (
+          channels.includes('in_app') &&
+          (await shouldSend(uid, 'release_deployed', 'in_app', allowedChannels))
+        ) {
           await inboxService.createMessage({
             toUser: uid,
             type: 'release_notes',
@@ -110,7 +115,7 @@ export async function dispatchReleaseNotifications(params: {
             meta,
           });
         }
-        if (notifyOverrides.length > 0) {
+        if (allowedChannels.length > 0) {
           await notifyUser({
             userId: uid,
             eventKey: 'release_deployed',
@@ -118,7 +123,8 @@ export async function dispatchReleaseNotifications(params: {
             body: bodyExcerpt,
             link: versionsUrl,
             html: emailHtml,
-            channelOverrides: notifyOverrides,
+            allowedChannels,
+            metadata: meta,
           });
         }
       } catch (err) {

@@ -101,7 +101,9 @@ export default function NotificationPreferences() {
       </div>
       <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-6">
         <p className="text-sm text-[color:var(--text-muted)] mb-4">
-          Configure notification methods per event. Methods are enabled based on server integrations/env settings.
+          Choose how you want to be notified for each event. Unchecked methods will not send notifications or emails
+          for that event. In-app also controls release notes and similar inbox items where applicable. Channels only
+          appear when enabled on the server (SMTP, push, Slack, etc.).
         </p>
         {notificationError && (
           <div className="mb-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{notificationError}</div>

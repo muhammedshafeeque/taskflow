@@ -13,6 +13,7 @@ import type { PaginationOptions, PaginatedResult } from '../projects/projects.se
 import type { UpdateUserBody, InviteUserBody } from './users.validation';
 import { sendInviteEmail, sendWorkspaceJoinInviteEmail } from '../../services/email.service';
 import { notifyUser } from '../notifications/notificationDispatch.service';
+import { shouldSend } from '../notifications/notificationPreference.service';
 import * as inboxService from '../inbox/inbox.service';
 import { Project } from '../projects/project.model';
 import * as projectInvitationsService from '../projects/projectInvitations.service';
@@ -319,31 +320,35 @@ export async function invite(
     const inviterName = (inviter as { name?: string } | null)?.name ?? 'A teammate';
     const appBase = process.env.FRONTEND_URL ?? '';
 
-    await sendWorkspaceJoinInviteEmail({
-      inviteeName: (existing as { name?: string }).name ?? input.name.trim(),
-      email: normalizedEmail,
-      workspaceName,
-      inviterName,
-      appUrl: appBase,
-    }).catch((err) => console.error('Failed to send workspace join email:', err));
+    const existingUserId = String(existingId);
+    if (await shouldSend(existingUserId, 'workspace_member_added', 'email')) {
+      await sendWorkspaceJoinInviteEmail({
+        inviteeName: (existing as { name?: string }).name ?? input.name.trim(),
+        email: normalizedEmail,
+        workspaceName,
+        inviterName,
+        appUrl: appBase,
+      }).catch((err) => console.error('Failed to send workspace join email:', err));
+    }
 
-    await inboxService
-      .createMessage({
-        toUser: String(existingId),
-        type: 'workspace_join',
-        title: `Added to workspace: ${workspaceName}`,
-        body: `${inviterName} added you to the workspace "${workspaceName}". Sign in with your existing TaskFlow account — no new password was sent.`,
-        meta: { organizationId, inviterUserId: inviterUserId ?? null },
-      })
-      .catch((err) => console.error('Failed to create workspace join inbox message:', err));
+    if (await shouldSend(existingUserId, 'workspace_member_added', 'in_app')) {
+      await inboxService
+        .createMessage({
+          toUser: existingUserId,
+          type: 'workspace_join',
+          title: `Added to workspace: ${workspaceName}`,
+          body: `${inviterName} added you to the workspace "${workspaceName}". Sign in with your existing TaskFlow account — no new password was sent.`,
+          meta: { organizationId, inviterUserId: inviterUserId ?? null },
+        })
+        .catch((err) => console.error('Failed to create workspace join inbox message:', err));
+    }
 
     await notifyUser({
-      userId: String(existingId),
+      userId: existingUserId,
       eventKey: 'workspace_member_added',
       title: `Added to workspace: ${workspaceName}`,
       body: `${inviterName} added you to this workspace. Sign in with your existing account.`,
       link: `${appBase.replace(/\/$/, '')}/`,
-      skipEmail: true,
     }).catch((err) => console.error('Failed to dispatch workspace join notifications:', err));
 
     const fresh = await User.findById(existingId).select('permissions').lean();

@@ -16,7 +16,6 @@ import {
   isReleasedToEnvironment,
   sortEnvironmentsAsc,
   sortEnvironmentsDesc,
-  validateEnvironmentReleaseOrder,
 } from '../lib/environmentHierarchy';
 
 function generateId(): string {
@@ -265,15 +264,6 @@ export default function Versions() {
 
   async function submitReleaseModal() {
     if (!token || !projectId || !releaseModalVersion || !releaseModalSelectedEnvId) return;
-    const orderCheck = validateEnvironmentReleaseOrder(
-      environmentsAsc,
-      releaseModalVersion,
-      releaseModalSelectedEnvId
-    );
-    if (!orderCheck.ok) {
-      setError(orderCheck.message);
-      return;
-    }
     if (!canReleaseToEnvironment(environmentsAsc, releaseModalVersion, releaseModalSelectedEnvId)) {
       setError('This environment is not available for release or promotion.');
       return;
@@ -420,7 +410,7 @@ export default function Versions() {
         <div className="min-w-0 flex-1">
           <h1 className="text-xl md:text-2xl font-semibold text-[color:var(--text-primary)] tracking-tight">Versions & releases</h1>
           <p className="text-[color:var(--text-muted)] text-sm mt-1 max-w-xl">
-            Create one version, release to the lowest environment first, then promote the same version up the chain (QA → Staging → Production) without creating a new version.
+            Create one version and release it to any environment (Dev, Staging, Production, etc.). You can skip lower tiers and promote the same version to other environments later.
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
@@ -705,7 +695,7 @@ export default function Versions() {
                         return (
                           <option key={e.id} value={e.id} disabled={released || !allowed}>
                             {e.name}
-                            {released ? ' ✓ released' : !allowed ? ' — release lower tier first' : ''}
+                            {released ? ' ✓ released' : ''}
                           </option>
                         );
                       })}

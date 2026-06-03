@@ -17,7 +17,7 @@ export type NotificationMatrixEntry = {
 
 export type AvailableMethods = Record<NotificationMethod, { enabled: boolean; reason?: string }>;
 
-function defaultState(): NotificationMethodState {
+export function defaultMethodState(): NotificationMethodState {
   return {
     in_app: true,
     push: false,
@@ -43,7 +43,7 @@ const EMAIL_ON_BY_DEFAULT_EVENTS: NotificationEventKey[] = [
 ];
 
 function defaultPreferences(): Record<NotificationEventKey, NotificationMethodState> {
-  const prefs = Object.fromEntries(NOTIFICATION_EVENTS.map((e) => [e, defaultState()])) as Record<
+  const prefs = Object.fromEntries(NOTIFICATION_EVENTS.map((e) => [e, defaultMethodState()])) as Record<
     NotificationEventKey,
     NotificationMethodState
   >;
@@ -56,7 +56,7 @@ function defaultPreferences(): Record<NotificationEventKey, NotificationMethodSt
 }
 
 export function legacyDefaultPreferences(): Record<NotificationEventKey, NotificationMethodState> {
-  return Object.fromEntries(NOTIFICATION_EVENTS.map((e) => [e, defaultState()])) as Record<
+  return Object.fromEntries(NOTIFICATION_EVENTS.map((e) => [e, defaultMethodState()])) as Record<
     NotificationEventKey,
     NotificationMethodState
   >;
@@ -120,11 +120,16 @@ export async function getOrCreateUserPreferences(userId: string) {
     doc = created.toObject() as unknown as typeof doc;
   }
 
-  const docPrefs = (doc?.preferences ?? {}) as Record<string, NotificationMethodState>;
-  const fullPrefs = { ...defaultPreferences(), ...docPrefs } as Record<
-    NotificationEventKey,
-    NotificationMethodState
-  >;
+  const docPrefs = (doc?.preferences ?? {}) as Record<string, Partial<NotificationMethodState>>;
+  const defaults = defaultPreferences();
+  const fullPrefs = {} as Record<NotificationEventKey, NotificationMethodState>;
+  for (const eventKey of NOTIFICATION_EVENTS) {
+    fullPrefs[eventKey] = {
+      ...defaultMethodState(),
+      ...defaults[eventKey],
+      ...(docPrefs[eventKey] ?? {}),
+    };
+  }
   return fullPrefs;
 }
 
@@ -132,7 +137,7 @@ export async function getPreferencesResponse(userId: string) {
   const prefs = await getOrCreateUserPreferences(userId);
   const matrix: NotificationMatrixEntry[] = NOTIFICATION_EVENTS.map((eventKey) => ({
     eventKey,
-    methods: prefs[eventKey] ?? defaultState(),
+    methods: prefs[eventKey] ?? defaultMethodState(),
   }));
   return {
     availableMethods: getAvailableMethods(),
@@ -151,7 +156,7 @@ export async function updateUserPreferences(userId: string, payload: Preferences
   for (const row of payload.matrix ?? []) {
     if (!(NOTIFICATION_EVENTS as readonly string[]).includes(row.eventKey)) continue;
     const key = row.eventKey as NotificationEventKey;
-    const prev = next[key] ?? defaultState();
+    const prev = next[key] ?? defaultMethodState();
     const merged: NotificationMethodState = { ...prev };
     for (const method of NOTIFICATION_METHODS) {
       if (typeof row.methods?.[method] === 'boolean') merged[method] = Boolean(row.methods?.[method]);
@@ -169,10 +174,24 @@ export async function updateUserPreferences(userId: string, payload: Preferences
   return getPreferencesResponse(userId);
 }
 
-export async function shouldSend(userId: string, eventKey: NotificationEventKey, method: NotificationMethod): Promise<boolean> {
-  const available = getAvailableMethods();
-  if (!available[method].enabled) return false;
-  const prefs = await getOrCreateUserPreferences(userId);
-  const state = prefs[eventKey] ?? defaultState();
+export function isChannelEnabledForUser(
+  prefs: Record<NotificationEventKey, NotificationMethodState>,
+  eventKey: NotificationEventKey,
+  method: NotificationMethod,
+  allowedChannels?: NotificationMethod[]
+): boolean {
+  if (!getAvailableMethods()[method]?.enabled) return false;
+  if (allowedChannels && !allowedChannels.includes(method)) return false;
+  const state = prefs[eventKey] ?? defaultMethodState();
   return Boolean(state[method]);
+}
+
+export async function shouldSend(
+  userId: string,
+  eventKey: NotificationEventKey,
+  method: NotificationMethod,
+  allowedChannels?: NotificationMethod[]
+): Promise<boolean> {
+  const prefs = await getOrCreateUserPreferences(userId);
+  return isChannelEnabledForUser(prefs, eventKey, method, allowedChannels);
 }

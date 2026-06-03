@@ -13,9 +13,10 @@ import {
 } from '../../constants/permissions';
 import { mapLegacyProjectOrGlobalPermissions } from '../../shared/constants/legacyPermissionMap';
 import * as inboxService from '../inbox/inbox.service';
-import { sendProjectInviteEmail } from '../../services/email.service';
+import { renderProjectInviteEmail } from '../../services/email.service';
 import { env } from '../../config/env';
 import { notifyUser } from '../notifications/notificationDispatch.service';
+import { shouldSend } from '../notifications/notificationPreference.service';
 
 const PROJECT_MEMBER_ROLE_NAME = 'Project Member';
 const PROJECT_LEAD_ROLE_NAME = 'Project Lead';
@@ -174,29 +175,33 @@ export async function inviteToProject(
 
   const title = `Project invitation: ${projectName}`;
   const body = `${inviterName} invited you to the project "${projectName}". Open your inbox to accept or decline.`;
-  await inboxService.createMessage({
-    toUser: userIdStr,
-    type: 'project_invitation',
-    title,
-    body,
-    meta: { invitationId: invitation._id.toString(), url: `${env.appUrl}/inbox` },
-  });
+  const inviteLink = `${env.appUrl}/inbox`;
 
-  sendProjectInviteEmail((user as { email: string }).email, {
+  if (await shouldSend(userIdStr, 'project_invitation', 'in_app')) {
+    await inboxService.createMessage({
+      toUser: userIdStr,
+      type: 'project_invitation',
+      title,
+      body,
+      meta: { invitationId: invitation._id.toString(), url: inviteLink },
+    });
+  }
+
+  const inviteHtml = renderProjectInviteEmail({
     projectName,
     inviterName,
     appUrl: env.appUrl,
     roleName,
-  }).catch((err) => console.error('Failed to send project invite email:', err));
+  });
 
-  notifyUser({
+  await notifyUser({
     userId: userIdStr,
     eventKey: 'project_invitation',
     title: 'Project invitation',
-    body: `You were invited to the project "${projectName}". Open your inbox to accept or decline.`,
-    link: `${env.appUrl}/inbox`,
+    body,
+    link: inviteLink,
+    html: inviteHtml,
     metadata: { type: 'project_invitation', invitationId: invitation._id.toString() },
-    skipEmail: true,
   }).catch((err) => console.error('Failed to send project invitation notification:', err));
 
   return ProjectInvitation.findById(invitation._id)
