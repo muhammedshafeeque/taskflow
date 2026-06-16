@@ -8,6 +8,7 @@ const projectStatusSchema = z.object({
   icon: z.string().optional(),
   color: z.string().optional(),
   fontColor: z.string().optional(),
+  userInLane: z.string().max(64).optional(),
 });
 const projectIssueTypeSchema = z.object({
   id: z.string(),
@@ -25,7 +26,7 @@ const projectPrioritySchema = z.object({
   color: z.string().optional(),
   fontColor: z.string().optional(),
 });
-const customFieldTypeEnum = z.enum(['text', 'number', 'date', 'select', 'multiselect', 'user']);
+const customFieldTypeEnum = z.enum(['text', 'number', 'date', 'select', 'multiselect', 'user', 'formula']);
 const projectCustomFieldSchema = z.object({
   id: z.string(),
   key: z.string().min(1).regex(/^[a-zA-Z][a-zA-Z0-9_]*$/, 'Key must start with a letter and contain only letters, numbers, underscore'),
@@ -34,6 +35,18 @@ const projectCustomFieldSchema = z.object({
   required: z.boolean(),
   options: z.array(z.string()).optional(),
   order: z.number(),
+  formula: z.string().max(500).optional(),
+});
+
+const fieldSchemeRuleSchema = z.object({
+  fieldKey: z.string().min(1),
+  visible: z.boolean(),
+  required: z.boolean().optional(),
+});
+
+const fieldSchemeSchema = z.object({
+  issueTypeId: z.string().min(1),
+  rules: z.array(fieldSchemeRuleSchema),
 });
 
 const projectVersionStatusEnum = z.enum(['unreleased', 'released', 'archived']);
@@ -73,6 +86,29 @@ const createProjectSchema = z.object({
   }),
 });
 
+const projectRuleSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  enabled: z.boolean(),
+  order: z.number(),
+  mode: z.enum(['log', 'enforce']),
+  trigger: z.enum([
+    'issue.created',
+    'issue.updated',
+    'estimate.submitted',
+    'worklog.creating',
+    'comment.creating',
+  ]),
+  conditions: z.array(
+    z.object({
+      field: z.string(),
+      op: z.enum(['eq', 'neq', 'exists', 'gt']),
+      value: z.unknown().optional(),
+    })
+  ),
+  actions: z.array(z.record(z.unknown())),
+});
+
 const updateProjectSchema = z.object({
   body: z.object({
     name: z.string().min(1).optional(),
@@ -85,9 +121,13 @@ const updateProjectSchema = z.object({
     issueTypes: z.array(projectIssueTypeSchema).optional(),
     priorities: z.array(projectPrioritySchema).optional(),
     customFields: z.array(projectCustomFieldSchema).optional(),
+    fieldSchemes: z.array(fieldSchemeSchema).optional(),
     versions: z.array(projectVersionSchema).optional(),
     environments: z.array(projectEnvironmentSchema).optional(),
     releaseRules: z.array(projectReleaseRuleSchema).optional(),
+    projectRules: z.array(projectRuleSchema).optional(),
+    estimateApprovalEnabled: z.boolean().optional(),
+    rulesEnforcementMode: z.enum(['log', 'enforce']).optional(),
   }),
   params: z.object({
     id: z.string().min(1),
@@ -160,6 +200,13 @@ const sprintReportParamsSchema = z.object({
   }),
 });
 
+const resolvedFieldsQuerySchema = z.object({
+  params: z.object({ id: z.string().min(1) }),
+  query: z.object({
+    issueType: z.string().min(1),
+  }),
+});
+
 export const projectsValidation = {
   create: createProjectSchema,
   update: updateProjectSchema,
@@ -171,6 +218,7 @@ export const projectsValidation = {
   cancelInvitationParams: cancelInvitationParamsSchema,
   timesheetQuery: timesheetQuerySchema,
   sprintReportParams: sprintReportParamsSchema,
+  resolvedFieldsQuery: resolvedFieldsQuerySchema,
 };
 
 export type CreateProjectBody = z.infer<typeof createProjectSchema>['body'];

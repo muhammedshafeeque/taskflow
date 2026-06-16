@@ -8,6 +8,8 @@ export interface IProjectStatus {
   icon?: string;
   color?: string;
   fontColor?: string;
+  /** Work lane id when this status represents in-progress work (e.g. dev, qa) */
+  userInLane?: string;
 }
 
 export interface IProjectIssueType {
@@ -28,7 +30,7 @@ export interface IProjectPriority {
   fontColor?: string;
 }
 
-export type CustomFieldType = 'text' | 'number' | 'date' | 'select' | 'multiselect' | 'user';
+export type CustomFieldType = 'text' | 'number' | 'date' | 'select' | 'multiselect' | 'user' | 'formula';
 
 export interface IProjectCustomField {
   id: string;
@@ -38,6 +40,51 @@ export interface IProjectCustomField {
   required: boolean;
   options?: string[]; // for select / multiselect
   order: number;
+  /** Expression for fieldType formula, e.g. {storyPoints} * 8 or daysBetween({startDate},{dueDate}) */
+  formula?: string;
+}
+
+export interface IFieldSchemeRule {
+  fieldKey: string;
+  visible: boolean;
+  required?: boolean;
+}
+
+export interface IFieldScheme {
+  issueTypeId: string;
+  rules: IFieldSchemeRule[];
+}
+
+export type RuleTrigger =
+  | 'issue.created'
+  | 'issue.updated'
+  | 'estimate.submitted'
+  | 'worklog.creating'
+  | 'comment.creating';
+
+export type RuleConditionOp = 'eq' | 'neq' | 'exists' | 'gt';
+
+export interface IProjectRuleCondition {
+  field: string;
+  op: RuleConditionOp;
+  value?: unknown;
+}
+
+export type IProjectRuleAction =
+  | { type: 'deny'; message: string; unlessPermission?: string }
+  | { type: 'require_approval'; permission: string }
+  | { type: 'require_field'; field: string }
+  | { type: 'notify'; eventKey: string };
+
+export interface IProjectRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  order: number;
+  mode: 'log' | 'enforce';
+  trigger: RuleTrigger;
+  conditions: IProjectRuleCondition[];
+  actions: IProjectRuleAction[];
 }
 
 export type ProjectVersionStatus = 'unreleased' | 'released' | 'archived';
@@ -89,9 +136,16 @@ export interface IProject extends Document {
   issueTypes: IProjectIssueType[];
   priorities: IProjectPriority[];
   customFields: IProjectCustomField[];
+  /** Per issue-type visibility and required overrides for custom fields */
+  fieldSchemes: IFieldScheme[];
   versions: IProjectVersion[];
   environments: IProjectEnvironment[];
   releaseRules: IProjectReleaseRule[];
+  /** Opt-in estimate approval workflow */
+  estimateApprovalEnabled?: boolean;
+  /** Global rules mode when estimate approval / rules active */
+  rulesEnforcementMode?: 'log' | 'enforce';
+  projectRules: IProjectRule[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -105,6 +159,7 @@ const projectStatusSchema = new Schema<IProjectStatus>(
     icon: { type: String, default: undefined },
     color: { type: String, default: undefined },
     fontColor: { type: String, default: undefined },
+    userInLane: { type: String, default: undefined },
   },
   { _id: false }
 );
@@ -138,10 +193,32 @@ const projectCustomFieldSchema = new Schema<IProjectCustomField>(
     id: { type: String, required: true },
     key: { type: String, required: true },
     label: { type: String, required: true },
-    fieldType: { type: String, enum: ['text', 'number', 'date', 'select', 'multiselect', 'user'], required: true },
+    fieldType: {
+      type: String,
+      enum: ['text', 'number', 'date', 'select', 'multiselect', 'user', 'formula'],
+      required: true,
+    },
     required: { type: Boolean, default: false },
     options: { type: [String], default: undefined },
     order: { type: Number, required: true },
+    formula: { type: String, default: undefined },
+  },
+  { _id: false }
+);
+
+const fieldSchemeRuleSchema = new Schema(
+  {
+    fieldKey: { type: String, required: true },
+    visible: { type: Boolean, required: true },
+    required: { type: Boolean, default: undefined },
+  },
+  { _id: false }
+);
+
+const fieldSchemeSchema = new Schema(
+  {
+    issueTypeId: { type: String, required: true },
+    rules: { type: [fieldSchemeRuleSchema], default: [] },
   },
   { _id: false }
 );
@@ -177,6 +254,24 @@ const projectReleaseRuleSchema = new Schema<IProjectReleaseRule>(
   { _id: false }
 );
 
+const projectRuleSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+    enabled: { type: Boolean, default: true },
+    order: { type: Number, default: 0 },
+    mode: { type: String, enum: ['log', 'enforce'], default: 'enforce' },
+    trigger: {
+      type: String,
+      enum: ['issue.created', 'issue.updated', 'estimate.submitted', 'worklog.creating', 'comment.creating'],
+      required: true,
+    },
+    conditions: { type: [Schema.Types.Mixed], default: [] },
+    actions: { type: [Schema.Types.Mixed], default: [] },
+  },
+  { _id: false }
+);
+
 const projectSchema = new Schema<IProject>(
   {
     name: { type: String, required: true },
@@ -191,9 +286,13 @@ const projectSchema = new Schema<IProject>(
     issueTypes: { type: [projectIssueTypeSchema], default: undefined },
     priorities: { type: [projectPrioritySchema], default: undefined },
     customFields: { type: [projectCustomFieldSchema], default: undefined },
+    fieldSchemes: { type: [fieldSchemeSchema], default: [] },
     versions: { type: [projectVersionSchema], default: undefined },
     environments: { type: [projectEnvironmentSchema], default: undefined },
     releaseRules: { type: [projectReleaseRuleSchema], default: undefined },
+    estimateApprovalEnabled: { type: Boolean, default: false },
+    rulesEnforcementMode: { type: String, enum: ['log', 'enforce'], default: 'enforce' },
+    projectRules: { type: [projectRuleSchema], default: [] },
   },
   { timestamps: true }
 );

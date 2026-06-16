@@ -21,6 +21,8 @@ const FIELD_LABELS: Record<string, string> = {
   fixVersion: 'Fix Version',
   affectsVersions: 'Affects Versions',
   parent: 'Parent',
+  stageEstimate: 'Stage estimate',
+  worklogOverrun: 'Work log overrun reason',
 };
 
 function formatValue(val: unknown): string {

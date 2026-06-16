@@ -157,6 +157,12 @@ const PROJECT_NAV_ITEMS: { to: string; label: string; icon: ReactNode; permissio
   },
   { to: '/defect-metrics', label: 'Defect Metrics', icon: <TimesheetIcon />, permission: 'issue.issue.read' },
   { to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon />, permission: 'issue.issue.read' },
+  {
+    to: '/estimate-approvals',
+    label: 'Estimate approvals',
+    icon: <TimesheetIcon />,
+    permission: PROJECT_PERMISSIONS.ISSUE.ESTIMATE.VIEW,
+  },
   { to: '/settings', label: 'Settings', icon: <SettingsIcon />, permission: 'setting.project_setting.update' },
 ];
 

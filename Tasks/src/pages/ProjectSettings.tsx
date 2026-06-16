@@ -79,6 +79,7 @@ import {
   type ProjectIssueType,
   type ProjectPriority,
   type ProjectCustomField,
+  type FieldScheme,
   type ProjectEnvironment,
   type ProjectReleaseRule,
   type ProjectMember,
@@ -86,6 +87,7 @@ import {
   type ProjectDesignation,
   type CustomFieldType,
   type Milestone,
+  type ProjectRule,
 } from '../lib/api';
 import { sortEnvironmentsAsc, sortEnvironmentsDesc } from '../lib/environmentHierarchy';
 import { EditIcon, TrashIcon } from '../components/icons/NavigationIcons';
@@ -100,6 +102,7 @@ type TabId =
   | 'customFields'
   | 'environments'
   | 'releaseRules'
+  | 'automation'
   | 'milestones'
   | 'members'
   | 'designations';
@@ -240,6 +243,7 @@ const CUSTOM_FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
   { value: 'select', label: 'Select (single)' },
   { value: 'multiselect', label: 'Multi-select' },
   { value: 'user', label: 'User' },
+  { value: 'formula', label: 'Calculated (formula)' },
 ];
 
 const ALL_PROJECT_PERMISSIONS_LIST = [
@@ -255,6 +259,12 @@ const ALL_PROJECT_PERMISSIONS_LIST = [
   { code: PROJECT_PERMISSIONS.ISSUE.ATTACHMENT.CREATE, label: 'Upload Attachments' },
   { code: PROJECT_PERMISSIONS.ISSUE.ATTACHMENT.READ, label: 'View Attachments' },
   { code: PROJECT_PERMISSIONS.ISSUE.ATTACHMENT.DELETE, label: 'Delete Attachments' },
+  { code: PROJECT_PERMISSIONS.ISSUE.ESTIMATE.SUBMIT, label: 'Submit Estimates' },
+  { code: PROJECT_PERMISSIONS.ISSUE.ESTIMATE.APPROVE, label: 'Approve Estimates' },
+  { code: PROJECT_PERMISSIONS.ISSUE.ESTIMATE.VIEW, label: 'View Estimates' },
+  { code: PROJECT_PERMISSIONS.ISSUE.RULE.MANAGE, label: 'Manage Automation Rules' },
+  { code: PROJECT_PERMISSIONS.WORK_LOG.WORK_LOG.CREATE, label: 'Log Work' },
+  { code: PROJECT_PERMISSIONS.WORK_LOG.WORK_LOG.READ, label: 'View Work Logs' },
   { code: PROJECT_PERMISSIONS.BOARD.BOARD.READ, label: 'View Boards' },
   { code: PROJECT_PERMISSIONS.BOARD.BOARD.UPDATE, label: 'Update Boards' },
   { code: PROJECT_PERMISSIONS.SPRINT.SPRINT.CREATE, label: 'Create Sprints' },
@@ -279,6 +289,7 @@ const TABS: { id: TabId; label: string; description: string }[] = [
   { id: 'customFields', label: 'Custom fields', description: 'Extra columns on issues' },
   { id: 'environments', label: 'Environments', description: 'QA, Staging, Production' },
   { id: 'releaseRules', label: 'Release rules', description: 'Env → issue status for releases' },
+  { id: 'automation', label: 'Automation', description: 'Estimate approval & project rules' },
   { id: 'milestones', label: 'Milestones', description: 'Project milestones for roadmap' },
   { id: 'members', label: 'Members', description: 'Invite and manage people' },
   { id: 'designations', label: 'Designations', description: 'Project-specific roles' },
@@ -522,7 +533,7 @@ export default function ProjectSettings() {
 
   const [statuses, setStatuses] = useState<ProjectStatus[]>([]);
   const [statusEdit, setStatusEdit] = useState<ProjectStatus | null>(null);
-  const [statusForm, setStatusForm] = useState({ name: '', icon: '', color: '', fontColor: '', isClosed: false });
+  const [statusForm, setStatusForm] = useState({ name: '', icon: '', color: '', fontColor: '', isClosed: false, userInLane: '' });
 
   const [issueTypes, setIssueTypes] = useState<ProjectIssueType[]>([]);
   const [issueTypeEdit, setIssueTypeEdit] = useState<ProjectIssueType | null>(null);
@@ -533,6 +544,8 @@ export default function ProjectSettings() {
   const [priorityForm, setPriorityForm] = useState({ name: '', icon: '', color: '', fontColor: '' });
 
   const [customFields, setCustomFields] = useState<ProjectCustomField[]>([]);
+  const [fieldSchemes, setFieldSchemes] = useState<FieldScheme[]>([]);
+  const [schemeIssueTypeId, setSchemeIssueTypeId] = useState('');
   const [customFieldEdit, setCustomFieldEdit] = useState<ProjectCustomField | null>(null);
   const [customFieldForm, setCustomFieldForm] = useState({
     key: '',
@@ -540,10 +553,15 @@ export default function ProjectSettings() {
     fieldType: 'text' as CustomFieldType,
     required: false,
     options: '',
+    formula: '',
   });
 
   const [environments, setEnvironments] = useState<ProjectEnvironment[]>([]);
   const [releaseRules, setReleaseRules] = useState<ProjectReleaseRule[]>([]);
+  const [estimateApprovalEnabled, setEstimateApprovalEnabled] = useState(false);
+  const [rulesEnforcementMode, setRulesEnforcementMode] = useState<'log' | 'enforce'>('enforce');
+  const [projectRules, setProjectRules] = useState<ProjectRule[]>([]);
+  const [automationSaving, setAutomationSaving] = useState(false);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [environmentEdit, setEnvironmentEdit] = useState<ProjectEnvironment | null>(null);
   const [environmentForm, setEnvironmentForm] = useState({ name: '' });
@@ -622,8 +640,14 @@ export default function ProjectSettings() {
         setIssueTypes(p.issueTypes ?? []);
         setPriorities(p.priorities ?? []);
         setCustomFields(p.customFields ?? []);
+        setFieldSchemes(p.fieldSchemes ?? []);
+        const types = p.issueTypes ?? [];
+        setSchemeIssueTypeId((prev) => prev || types[0]?.id || '');
         setEnvironments(p.environments ?? []);
         setReleaseRules(p.releaseRules ?? []);
+        setEstimateApprovalEnabled(p.estimateApprovalEnabled ?? false);
+        setRulesEnforcementMode(p.rulesEnforcementMode ?? 'enforce');
+        setProjectRules(p.projectRules ?? []);
       } else setProject(null);
     });
   }, [token, projectId]);
@@ -723,7 +747,7 @@ export default function ProjectSettings() {
       setProject(res.data);
       setStatuses(res.data.statuses ?? []);
       setStatusEdit(null);
-      setStatusForm({ name: '', icon: '', color: '', fontColor: '', isClosed: false });
+      setStatusForm({ name: '', icon: '', color: '', fontColor: '', isClosed: false, userInLane: '' });
       showSaved();
     } else setError((res as { message?: string }).message ?? 'Save failed');
   }
@@ -747,13 +771,14 @@ export default function ProjectSettings() {
     if (!token || !projectId) return;
     setSaving(true);
     setError('');
-    const res = await projectsApi.update(projectId, { customFields }, token);
+    const res = await projectsApi.update(projectId, { customFields, fieldSchemes }, token);
     setSaving(false);
     if (res.success && res.data) {
       setProject(res.data);
       setCustomFields(res.data.customFields ?? []);
+      setFieldSchemes(res.data.fieldSchemes ?? []);
       setCustomFieldEdit(null);
-      setCustomFieldForm({ key: '', label: '', fieldType: 'text', required: false, options: '' });
+      setCustomFieldForm({ key: '', label: '', fieldType: 'text', required: false, options: '', formula: '' });
       showSaved();
     } else setError((res as { message?: string }).message ?? 'Save failed');
   }
@@ -769,8 +794,9 @@ export default function ProjectSettings() {
       icon: statusForm.icon || undefined,
       color: statusForm.color || undefined,
       fontColor: statusForm.fontColor || undefined,
+      userInLane: statusForm.userInLane.trim() || undefined,
     }]);
-    setStatusForm({ name: '', icon: '', color: '', fontColor: '', isClosed: false });
+    setStatusForm({ name: '', icon: '', color: '', fontColor: '', isClosed: false, userInLane: '' });
   }
   function updateStatusItem() {
     if (!statusEdit) return;
@@ -783,9 +809,10 @@ export default function ProjectSettings() {
       icon: statusForm.icon || undefined,
       color: statusForm.color || undefined,
       fontColor: statusForm.fontColor || undefined,
+      userInLane: statusForm.userInLane.trim() || undefined,
     } : s)));
     setStatusEdit(null);
-    setStatusForm({ name: '', icon: '', color: '', fontColor: '', isClosed: false });
+    setStatusForm({ name: '', icon: '', color: '', fontColor: '', isClosed: false, userInLane: '' });
   }
   function removeStatus(id: string) {
     setStatuses((prev) => prev.filter((s) => s.id !== id).map((s, i) => ({ ...s, order: i })));
@@ -908,11 +935,22 @@ export default function ProjectSettings() {
       return;
     }
     setError('');
+    const formula =
+      customFieldForm.fieldType === 'formula' ? customFieldForm.formula.trim() || undefined : undefined;
     setCustomFields((prev) => [
       ...prev,
-      { id: generateId(), key, label, fieldType: customFieldForm.fieldType, required: customFieldForm.required, options, order: prev.length },
+      {
+        id: generateId(),
+        key,
+        label,
+        fieldType: customFieldForm.fieldType,
+        required: customFieldForm.fieldType === 'formula' ? false : customFieldForm.required,
+        options,
+        formula,
+        order: prev.length,
+      },
     ]);
-    setCustomFieldForm({ key: '', label: '', fieldType: 'text', required: false, options: '' });
+    setCustomFieldForm({ key: '', label: '', fieldType: 'text', required: false, options: '', formula: '' });
   }
   function updateCustomFieldItem() {
     if (!customFieldEdit) return;
@@ -923,17 +961,58 @@ export default function ProjectSettings() {
       customFieldForm.fieldType === 'select' || customFieldForm.fieldType === 'multiselect'
         ? customFieldForm.options.split(/[\n,]/).map((s) => s.trim()).filter(Boolean)
         : undefined;
+    const formula =
+      customFieldForm.fieldType === 'formula' ? customFieldForm.formula.trim() || undefined : undefined;
     setCustomFields((prev) =>
       prev.map((f) =>
-        f.id === customFieldEdit.id ? { ...f, key, label, fieldType: customFieldForm.fieldType, required: customFieldForm.required, options } : f
+        f.id === customFieldEdit.id
+          ? {
+              ...f,
+              key,
+              label,
+              fieldType: customFieldForm.fieldType,
+              required: customFieldForm.fieldType === 'formula' ? false : customFieldForm.required,
+              options,
+              formula,
+            }
+          : f
       )
     );
     setCustomFieldEdit(null);
-    setCustomFieldForm({ key: '', label: '', fieldType: 'text', required: false, options: '' });
+    setCustomFieldForm({ key: '', label: '', fieldType: 'text', required: false, options: '', formula: '' });
     setError('');
   }
   function removeCustomField(id: string) {
     setCustomFields((prev) => prev.filter((f) => f.id !== id).map((f, i) => ({ ...f, order: i })));
+  }
+
+  function getSchemeRule(issueTypeId: string, fieldKey: string): { visible: boolean; required?: boolean } {
+    const scheme = fieldSchemes.find((s) => s.issueTypeId === issueTypeId);
+    const rule = scheme?.rules.find((r) => r.fieldKey === fieldKey);
+    if (rule) return rule;
+    return { visible: true, required: undefined };
+  }
+
+  function setSchemeRule(
+    issueTypeId: string,
+    fieldKey: string,
+    patch: Partial<{ visible: boolean; required?: boolean }>
+  ) {
+    setFieldSchemes((prev) => {
+      const idx = prev.findIndex((s) => s.issueTypeId === issueTypeId);
+      const base = idx >= 0 ? { ...prev[idx], rules: [...prev[idx].rules] } : { issueTypeId, rules: [] as FieldScheme['rules'] };
+      const rIdx = base.rules.findIndex((r) => r.fieldKey === fieldKey);
+      const current = rIdx >= 0 ? base.rules[rIdx] : { fieldKey, visible: true };
+      const next = { ...current, ...patch };
+      if (rIdx >= 0) base.rules[rIdx] = next;
+      else base.rules.push(next);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = base;
+        return copy;
+      }
+      return [...prev, base];
+    });
   }
 
   function addEnvironment() {
@@ -1089,6 +1168,46 @@ export default function ProjectSettings() {
       showSaved();
     } else setError((res as { message?: string }).message ?? 'Save failed');
   }
+
+  async function saveAutomation() {
+    if (!token || !projectId) return;
+    setAutomationSaving(true);
+    setError('');
+    const res = await projectsApi.update(
+      projectId,
+      { estimateApprovalEnabled, rulesEnforcementMode, projectRules },
+      token
+    );
+    setAutomationSaving(false);
+    if (res.success && res.data) {
+      setProject(res.data);
+      setEstimateApprovalEnabled(res.data.estimateApprovalEnabled ?? false);
+      setRulesEnforcementMode(res.data.rulesEnforcementMode ?? 'enforce');
+      setProjectRules(res.data.projectRules ?? []);
+      showSaved();
+    } else setError((res as { message?: string }).message ?? 'Save failed');
+  }
+
+  async function enableEstimateApprovalPack() {
+    if (!token || !projectId) return;
+    setAutomationSaving(true);
+    setError('');
+    const res = await projectsApi.enableEstimateApproval(projectId, token);
+    setAutomationSaving(false);
+    if (res.success && res.data) {
+      setProject(res.data);
+      setEstimateApprovalEnabled(res.data.estimateApprovalEnabled ?? true);
+      setProjectRules(res.data.projectRules ?? []);
+      showSaved();
+    } else setError((res as { message?: string }).message ?? 'Enable failed');
+  }
+
+  function toggleRuleEnabled(ruleId: string) {
+    setProjectRules((prev) =>
+      prev.map((r) => (r.id === ruleId ? { ...r, enabled: !r.enabled } : r))
+    );
+  }
+
   async function saveReleaseRules(next?: ProjectReleaseRule[]) {
     const toSave = next ?? releaseRules;
     if (!token || !projectId) return;
@@ -1470,12 +1589,23 @@ export default function ProjectSettings() {
                         <option value="closed">Closed</option>
                       </select>
                     </div>
+                    <div className="w-36">
+                      <label className={labelClass}>Work lane</label>
+                      <input
+                        type="text"
+                        value={statusForm.userInLane}
+                        onChange={(e) => setStatusForm((f) => ({ ...f, userInLane: e.target.value }))}
+                        placeholder="e.g. dev"
+                        className={inputClass}
+                        title="Lane id for estimate approval (statuses sharing a lane gate together)"
+                      />
+                    </div>
                     {statusEdit ? (
                       <>
                         <button type="button" onClick={updateStatusItem} className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-xs text-[color:var(--text-primary)] font-medium hover:bg-[color:var(--bg-surface)]">
                           Update
                         </button>
-                        <button type="button" onClick={() => { setStatusEdit(null); setStatusForm({ name: '', icon: '', color: '', fontColor: '', isClosed: false }); }} className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-muted)]">
+                        <button type="button" onClick={() => { setStatusEdit(null); setStatusForm({ name: '', icon: '', color: '', fontColor: '', isClosed: false, userInLane: '' }); }} className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-muted)]">
                           Cancel
                         </button>
                       </>
@@ -1509,6 +1639,11 @@ export default function ProjectSettings() {
                               {s.color && <span className="w-4 h-4 rounded border border-[color:var(--border-subtle)] shrink-0" style={{ backgroundColor: s.color }} />}
                               {s.fontColor && <span className="w-4 h-4 rounded border border-[color:var(--border-subtle)] shrink-0" style={{ backgroundColor: s.fontColor }} title="Font color" />}
                               <span className="font-medium text-sm" style={s.fontColor ? { color: s.fontColor } : undefined}>{s.name}</span>
+                              {s.userInLane && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] border text-[color:var(--text-muted)] border-[color:var(--border-subtle)] bg-[color:var(--bg-page)]">
+                                  lane: {s.userInLane}
+                                </span>
+                              )}
                               <span className={`px-1.5 py-0.5 rounded text-[10px] border ${s.isClosed ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' : 'text-sky-300 border-sky-500/40 bg-sky-500/10'}`}>
                                 {s.isClosed ? 'Closed' : 'Open'}
                               </span>
@@ -1528,7 +1663,7 @@ export default function ProjectSettings() {
                                 title="Edit"
                                 onClick={() => {
                                   setStatusEdit(s);
-                                  setStatusForm({ name: s.name, icon: s.icon ?? '', color: s.color ?? '', fontColor: s.fontColor ?? '', isClosed: Boolean(s.isClosed) });
+                                  setStatusForm({ name: s.name, icon: s.icon ?? '', color: s.color ?? '', fontColor: s.fontColor ?? '', isClosed: Boolean(s.isClosed), userInLane: s.userInLane ?? '' });
                                 }}
                               >
                                 <EditIcon className="w-3.5 h-3.5" />
@@ -1956,16 +2091,33 @@ export default function ProjectSettings() {
                           ))}
                         </select>
                       </div>
-                      <label className="flex items-center gap-2 cursor-pointer mt-6">
-                        <input
-                          type="checkbox"
-                          checked={customFieldForm.required}
-                          onChange={(e) => setCustomFieldForm((f) => ({ ...f, required: e.target.checked }))}
-                          className="rounded border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-[color:var(--accent)] focus:ring-[color:var(--accent)]"
-                        />
-                        <span className="text-[color:var(--text-primary)] text-xs">Required</span>
-                      </label>
+                      {customFieldForm.fieldType !== 'formula' && (
+                        <label className="flex items-center gap-2 cursor-pointer mt-6">
+                          <input
+                            type="checkbox"
+                            checked={customFieldForm.required}
+                            onChange={(e) => setCustomFieldForm((f) => ({ ...f, required: e.target.checked }))}
+                            className="rounded border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-[color:var(--accent)] focus:ring-[color:var(--accent)]"
+                          />
+                          <span className="text-[color:var(--text-primary)] text-xs">Required</span>
+                        </label>
+                      )}
                     </div>
+                    {customFieldForm.fieldType === 'formula' && (
+                      <div>
+                        <label className={labelClass}>Formula</label>
+                        <input
+                          type="text"
+                          value={customFieldForm.formula}
+                          onChange={(e) => setCustomFieldForm((f) => ({ ...f, formula: e.target.value }))}
+                          placeholder="e.g. {storyPoints} * 8 or daysBetween({startDate},{dueDate})"
+                          className={`${inputClass} font-mono text-sm`}
+                        />
+                        <p className="text-[11px] text-[color:var(--text-muted)] mt-1">
+                          Use {'{fieldKey}'} for custom fields, {'{storyPoints}'}, {'{startDate}'}, {'{dueDate}'}. Functions: daysBetween, coalesce, round.
+                        </p>
+                      </div>
+                    )}
                     {(customFieldForm.fieldType === 'select' || customFieldForm.fieldType === 'multiselect') && (
                       <div>
                         <label className={labelClass}>Options (one per line or comma-separated)</label>
@@ -1998,6 +2150,7 @@ export default function ProjectSettings() {
                                 fieldType: 'text',
                                 required: false,
                                 options: '',
+                                formula: '',
                               });
                               setError('');
                             }}
@@ -2056,6 +2209,7 @@ export default function ProjectSettings() {
                                     fieldType: f.fieldType,
                                     required: f.required,
                                     options: f.options?.join('\n') ?? '',
+                                    formula: f.formula ?? '',
                                   });
                                 }}
                               >
@@ -2070,13 +2224,102 @@ export default function ProjectSettings() {
                       </ul>
                     )}
                   </div>
+                  {customFields.length > 0 && issueTypes.length > 0 && (
+                    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5 space-y-4">
+                      <div>
+                        <h3 className="text-sm font-medium text-[color:var(--text-primary)]">Field schemes by issue type</h3>
+                        <p className="text-[11px] text-[color:var(--text-muted)] mt-0.5">
+                          Control visibility and required overrides per issue type. Calculated fields are always shown.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {issueTypes.map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => setSchemeIssueTypeId(t.id)}
+                            className={`px-3 py-1 rounded-md text-xs border transition ${
+                              schemeIssueTypeId === t.id
+                                ? 'border-[color:var(--accent)] text-[color:var(--accent)] bg-[color:var(--accent)]/10'
+                                : 'border-[color:var(--border-subtle)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'
+                            }`}
+                          >
+                            {t.name}
+                          </button>
+                        ))}
+                      </div>
+                      {schemeIssueTypeId && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-left text-[color:var(--text-muted)] border-b border-[color:var(--border-subtle)]">
+                                <th className="py-2 pr-4">Field</th>
+                                <th className="py-2 pr-4">Visible</th>
+                                <th className="py-2">Required override</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {customFields.map((f) => {
+                                const rule = getSchemeRule(schemeIssueTypeId, f.key);
+                                const isFormula = f.fieldType === 'formula';
+                                return (
+                                  <tr key={f.id} className="border-b border-[color:var(--border-subtle)]/50">
+                                    <td className="py-2 pr-4 text-[color:var(--text-primary)]">
+                                      {f.label}
+                                      <span className="text-[color:var(--text-muted)] font-mono ml-1">{f.key}</span>
+                                    </td>
+                                    <td className="py-2 pr-4">
+                                      <input
+                                        type="checkbox"
+                                        checked={isFormula ? true : rule.visible}
+                                        disabled={isFormula}
+                                        onChange={(e) =>
+                                          setSchemeRule(schemeIssueTypeId, f.key, { visible: e.target.checked })
+                                        }
+                                      />
+                                    </td>
+                                    <td className="py-2">
+                                      {isFormula ? (
+                                        <span className="text-[color:var(--text-muted)]">—</span>
+                                      ) : (
+                                        <select
+                                          value={
+                                            rule.required === undefined
+                                              ? 'default'
+                                              : rule.required
+                                                ? 'yes'
+                                                : 'no'
+                                          }
+                                          onChange={(e) => {
+                                            const v = e.target.value;
+                                            setSchemeRule(schemeIssueTypeId, f.key, {
+                                              required: v === 'default' ? undefined : v === 'yes',
+                                            });
+                                          }}
+                                          className={inputClass}
+                                        >
+                                          <option value="default">Project default{f.required ? ' (required)' : ''}</option>
+                                          <option value="yes">Required</option>
+                                          <option value="no">Optional</option>
+                                        </select>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={saveCustomFields}
                     disabled={saving}
                     className="px-4 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-xs text-[color:var(--text-primary)] font-medium hover:bg-[color:var(--bg-surface)] disabled:opacity-50 transition"
                   >
-                    {saving ? 'Saving…' : 'Save custom fields'}
+                    {saving ? 'Saving…' : 'Save custom fields & schemes'}
                   </button>
                 </div>
               </div>
@@ -2311,6 +2554,101 @@ export default function ProjectSettings() {
                       </ul>
                     )}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {tab === 'automation' && (
+              <div className="rounded-2xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] overflow-hidden">
+                <div className="p-6 border-b border-[color:var(--border-subtle)]">
+                  <h2 className="text-sm font-semibold text-[color:var(--text-primary)]">Automation & estimate approval</h2>
+                  <p className="text-[color:var(--text-muted)] text-xs mt-0.5">
+                    Enable per-lane estimate approval and configure project rules. Assign lane ids on the Statuses tab.
+                  </p>
+                </div>
+                <div className="p-6 space-y-6">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <label className="flex items-center gap-2 text-sm text-[color:var(--text-primary)]">
+                      <input
+                        type="checkbox"
+                        checked={estimateApprovalEnabled}
+                        onChange={(e) => setEstimateApprovalEnabled(e.target.checked)}
+                        className="rounded border-[color:var(--border-subtle)]"
+                      />
+                      Enable estimate approval
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[color:var(--text-muted)]">Enforcement</span>
+                      <select
+                        value={rulesEnforcementMode}
+                        onChange={(e) => setRulesEnforcementMode(e.target.value as 'log' | 'enforce')}
+                        className={`${inputClass} w-auto`}
+                      >
+                        <option value="enforce">Enforce</option>
+                        <option value="log">Log only</option>
+                      </select>
+                    </div>
+                    {projectId && (
+                      <Link
+                        to={`/projects/${projectId}/estimate-approvals`}
+                        className="text-xs text-[color:var(--accent)] hover:underline"
+                      >
+                        Open approval queue →
+                      </Link>
+                    )}
+                  </div>
+                  {!projectRules.length && (
+                    <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] p-4 flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs text-[color:var(--text-muted)]">
+                        Install the default estimate-approval rule pack (block work lane, block work logs, overrun reason, notify approvers).
+                      </p>
+                      <button
+                        type="button"
+                        onClick={enableEstimateApprovalPack}
+                        disabled={automationSaving}
+                        className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-xs font-medium hover:bg-[color:var(--bg-surface)] disabled:opacity-50"
+                      >
+                        Install default pack
+                      </button>
+                    </div>
+                  )}
+                  {projectRules.length > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium text-[color:var(--text-muted)]">Project rules</span>
+                        <span className="text-xs text-[color:var(--text-muted)]">{projectRules.length} rule{projectRules.length !== 1 ? 's' : ''}</span>
+                      </div>
+                      <ul className="rounded-xl border border-[color:var(--border-subtle)] overflow-hidden divide-y divide-[color:var(--border-subtle)]/70">
+                        {[...projectRules].sort((a, b) => a.order - b.order).map((rule) => (
+                          <li key={rule.id} className="flex items-center justify-between gap-3 px-4 py-3 bg-[color:var(--bg-surface)]">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-[color:var(--text-primary)] truncate">{rule.name}</p>
+                              <p className="text-[10px] text-[color:var(--text-muted)]">
+                                {rule.trigger} · {rule.mode ?? 'enforce'}
+                              </p>
+                            </div>
+                            <label className="flex items-center gap-2 text-xs text-[color:var(--text-muted)] shrink-0">
+                              <input
+                                type="checkbox"
+                                checked={rule.enabled}
+                                onChange={() => toggleRuleEnabled(rule.id)}
+                                className="rounded border-[color:var(--border-subtle)]"
+                              />
+                              Enabled
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={saveAutomation}
+                    disabled={automationSaving}
+                    className="px-4 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-xs text-[color:var(--text-primary)] font-medium hover:bg-[color:var(--bg-surface)] disabled:opacity-50 transition"
+                  >
+                    {automationSaving ? 'Saving…' : 'Save automation settings'}
+                  </button>
                 </div>
               </div>
             )}

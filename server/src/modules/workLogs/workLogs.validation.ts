@@ -5,6 +5,8 @@ export const createWorkLogSchema = z.object({
     minutesSpent: z.number().int().positive(),
     date: z.string().min(1), // ISO date (YYYY-MM-DD) or full ISO
     description: z.string().max(2000).optional(),
+    laneId: z.string().max(64).optional(),
+    overrunReason: z.string().max(2000).optional(),
   }),
   params: z.object({
     issueId: z.string().min(1),

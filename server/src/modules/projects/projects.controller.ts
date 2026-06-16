@@ -12,6 +12,8 @@ import { ApiError } from '../../utils/ApiError';
 import { logAudit } from '../auditLogs/logAudit';
 import * as analyticsService from '../analytics/analytics.service';
 import * as issueGraphService from '../issues/issueGraph.service';
+import * as stageEstimateService from '../stageEstimates/stageEstimate.service';
+import { dryRunHandler, enableEstimateApproval } from '../projectRules/projectRules.controller';
 
 export async function createProject(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
   const creatorId = req.user?.id;
@@ -57,6 +59,18 @@ export async function getProjectById(req: Request, res: Response): Promise<void>
   const project = await projectsService.findById(req.params.id, activeOrg);
   if (!project) throw new ApiError(404, 'Project not found');
   res.status(200).json({ success: true, data: project });
+}
+
+export async function getResolvedCustomFields(req: Request, res: Response): Promise<void> {
+  const activeOrg = req.activeOrganizationId;
+  if (!activeOrg) throw new ApiError(400, 'Active workspace is required');
+  const issueType = String(req.query.issueType ?? '');
+  const data = await projectsService.getResolvedCustomFields(
+    req.params.id,
+    issueType,
+    activeOrg
+  );
+  res.status(200).json({ success: true, data });
 }
 
 export async function getMyPermissions(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
@@ -252,6 +266,12 @@ export const idParamHandler = [
   validate(projectsValidation.idParam.shape.params, 'params'),
 ];
 
+export const resolvedFieldsHandler = [
+  validate(projectsValidation.resolvedFieldsQuery.shape.params, 'params'),
+  validate(projectsValidation.resolvedFieldsQuery.shape.query, 'query'),
+  asyncHandler(getResolvedCustomFields),
+];
+
 export const releaseVersionHandler = [
   validate(projectsValidation.releaseVersion.shape.params, 'params'),
   validate(projectsValidation.releaseVersion.shape.body, 'body'),
@@ -273,6 +293,32 @@ export const timesheetHandler = [
   validate(projectsValidation.timesheetQuery.shape.params, 'params'),
   validate(projectsValidation.timesheetQuery.shape.query, 'query'),
   asyncHandler(getTimesheet),
+];
+
+export async function getEstimateApprovals(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
+  const userId = req.user?.id;
+  if (!userId) throw new ApiError(401, 'Unauthorized');
+  const activeOrg = req.activeOrganizationId;
+  if (!activeOrg) throw new ApiError(400, 'Active workspace is required');
+  const data = await stageEstimateService.listPendingApprovalsForProject(
+    req.params.id,
+    userId,
+    req.user?.permissions,
+    activeOrg
+  );
+  res.status(200).json({ success: true, data });
+}
+
+export const estimateApprovalsHandler = [
+  validate(projectsValidation.idParam.shape.params, 'params'),
+  asyncHandler(getEstimateApprovals),
+];
+
+export const projectRulesDryRunHandler = dryRunHandler;
+
+export const enableEstimateApprovalHandler = [
+  validate(projectsValidation.idParam.shape.params, 'params'),
+  asyncHandler(enableEstimateApproval),
 ];
 
 export const sprintReportHandler = [

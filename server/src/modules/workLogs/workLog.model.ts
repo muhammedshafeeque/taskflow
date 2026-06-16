@@ -6,6 +6,9 @@ export interface IWorkLog extends Document {
   minutesSpent: number;
   date: Date;
   description?: string;
+  laneId?: string;
+  overrunReason?: string;
+  stageEstimateId?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,6 +20,9 @@ const workLogSchema = new Schema<IWorkLog>(
     minutesSpent: { type: Number, required: true, min: 1 },
     date: { type: Date, required: true },
     description: { type: String, default: '' },
+    laneId: { type: String, default: undefined },
+    overrunReason: { type: String, default: undefined },
+    stageEstimateId: { type: Schema.Types.ObjectId, ref: 'StageEstimate', default: undefined },
   },
   { timestamps: true }
 );

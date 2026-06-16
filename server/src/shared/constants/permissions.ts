@@ -268,6 +268,14 @@ export const PROJECT_PERMISSIONS = {
       DELETE: 'issue.attachment.delete',
       LIST: 'issue.attachment.list',
     },
+    ESTIMATE: {
+      SUBMIT: 'issue.estimate.submit',
+      APPROVE: 'issue.estimate.approve',
+      VIEW: 'issue.estimate.view',
+    },
+    RULE: {
+      MANAGE: 'issue.rule.manage',
+    },
   },
 
   SPRINT: {

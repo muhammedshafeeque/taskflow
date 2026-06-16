@@ -53,9 +53,16 @@ export default function Projects() {
 
   useEffect(() => {
     if (!token || !modal) return;
-    projectTemplatesApi.list(token).then((res) => {
-      if (res.success && res.data) setTemplates(Array.isArray(res.data) ? res.data : []);
-    });
+    Promise.all([projectTemplatesApi.list(token), projectTemplatesApi.listLibrary(token)]).then(
+      ([allRes, libRes]) => {
+        const all = allRes.success && allRes.data && Array.isArray(allRes.data) ? allRes.data : [];
+        const lib = libRes.success && libRes.data && Array.isArray(libRes.data) ? libRes.data : [];
+        const byId = new Map<string, (typeof all)[0]>();
+        for (const t of all) byId.set(t._id, t);
+        for (const t of lib) if (!byId.has(t._id)) byId.set(t._id, t);
+        setTemplates([...byId.values()]);
+      }
+    );
   }, [token, modal]);
 
   function openCreate() {
@@ -270,11 +277,12 @@ export default function Projects() {
                         .map((t) => (
                           <option key={t._id} value={t._id}>
                             {t.name}
+                            {t.isLibrary ? ' (library)' : ''}
                           </option>
                         ))}
                     </select>
                     <p className="text-[11px] text-[color:var(--text-muted)] mt-1">
-                      Statuses, issue types, and priorities for the new project.{' '}
+                      Statuses, issue types, priorities, custom fields, and field schemes.{' '}
                       <Link to="/project-templates" className="text-[color:var(--accent)] hover:underline">
                         Manage templates
                       </Link>

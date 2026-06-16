@@ -24,17 +24,26 @@ function parseDateOrToday(raw?: string): Date {
 export async function createWorkLog(req: Request, res: Response): Promise<void> {
   const authorId = req.user?.id;
   if (!authorId) throw new ApiError(401, 'Unauthorized');
-  const { minutesSpent, date, description } = req.body as {
+  const { minutesSpent, date, description, laneId, overrunReason } = req.body as {
     minutesSpent: number;
     date: string;
     description?: string;
+    laneId?: string;
+    overrunReason?: string;
   };
   const doc = await workLogsService.create(
     req.params.issueId,
     authorId,
     minutesSpent,
     parseDateOrToday(date),
-    description
+    description,
+    {
+      laneId,
+      overrunReason,
+      memberPermissions: (req as Request & { projectPermissions?: string[] }).projectPermissions,
+      userGlobalPermissions: req.user?.permissions,
+      activeOrganizationId: (req as Request & { activeOrganizationId?: string }).activeOrganizationId,
+    }
   );
   res.status(201).json({ success: true, data: doc });
 }

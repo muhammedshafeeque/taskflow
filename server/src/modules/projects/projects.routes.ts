@@ -19,6 +19,10 @@ import {
   timesheetHandler,
   sprintReportHandler,
   getProjectIssueGraph,
+  resolvedFieldsHandler,
+  estimateApprovalsHandler,
+  projectRulesDryRunHandler,
+  enableEstimateApprovalHandler,
   updateMemberDesignation,
   removeMember,
 } from './projects.controller';
@@ -54,6 +58,10 @@ router.post(
   ...saveSettingsTemplateHandler
 );
 router.get('/:id', ...idParamHandler, asyncHandler(getProjectById));
+router.get('/:id/resolved-fields', ...idParamHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.ISSUE.READ), ...resolvedFieldsHandler);
+router.get('/:id/estimate-approvals', ...idParamHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.ESTIMATE.VIEW), ...estimateApprovalsHandler);
+router.post('/:id/rules/dry-run', ...idParamHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.RULE.MANAGE), ...projectRulesDryRunHandler);
+router.post('/:id/enable-estimate-approval', ...idParamHandler, requireProjectPermission(PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.UPDATE), ...enableEstimateApprovalHandler);
 router.patch('/:id', ...idParamHandler, requireProjectPermission(PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.UPDATE), ...updateProjectHandler);
 router.post('/:id/versions/release', releaseVersionHandler);
 router.get('/:id/timesheet', ...idParamHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.ISSUE.READ), ...timesheetHandler);

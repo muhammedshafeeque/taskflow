@@ -30,6 +30,7 @@ import {
   WorkLogInput,
 } from '../components/issue';
 import EpicRollupPanel from '../components/issue/EpicRollupPanel';
+import StageEstimatePanel from '../components/issue/StageEstimatePanel';
 import type { TaskSecondaryTabsHandle } from '../components/issue/TaskSecondaryTabs';
 
 const DEFAULT_STATUSES = ['Backlog', 'Todo', 'In Progress', 'Done'];
@@ -45,6 +46,7 @@ export default function IssueDetail() {
   const secondaryTabsRef = useRef<TaskSecondaryTabsHandle>(null);
   const [issue, setIssue] = useState<Issue | null>(null);
   const [project, setProject] = useState<Project | null>(null);
+  const [projectPermissions, setProjectPermissions] = useState<string[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [workLogs, setWorkLogs] = useState<import('../lib/api').WorkLog[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -205,6 +207,11 @@ export default function IssueDetail() {
     if (!token || !projectId) return;
     projectsApi.get(projectId, token).then((res) => {
       if (res.success && res.data) setProject(res.data);
+    });
+    projectsApi.getMyPermissions(projectId, token).then((res) => {
+      if (res.success && res.data && 'permissions' in res.data) {
+        setProjectPermissions((res.data as { permissions: string[] }).permissions ?? []);
+      } else setProjectPermissions([]);
     });
   }, [token, projectId]);
 
@@ -588,6 +595,12 @@ export default function IssueDetail() {
                 issueId={issue._id}
                 token={token!}
                 show={/epic/i.test(issue.type) || subtasks.length > 0}
+              />
+              <StageEstimatePanel
+                issueId={issue._id}
+                project={project}
+                projectPermissions={projectPermissions}
+                hasChildren={subtasks.length > 0}
               />
               <TaskSecondaryTabs
                 ref={secondaryTabsRef}

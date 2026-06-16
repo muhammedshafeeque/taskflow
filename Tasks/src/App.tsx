@@ -44,6 +44,7 @@ import Gantt from './pages/Gantt';
 import Roadmap from './pages/Roadmap';
 import ProjectDashboard from './pages/ProjectDashboard';
 import ProjectSettings from './pages/ProjectSettings';
+import EstimateApprovals from './pages/EstimateApprovals';
 import ProjectImport from './pages/ProjectImport';
 import IssueLinkGraph from './pages/IssueLinkGraph';
 import Versions from './pages/Versions';
@@ -142,6 +143,7 @@ function AppRoutes() {
           <Route path="gantt" element={<Gantt />} />
           <Route path="roadmap" element={<Roadmap />} />
           <Route path="settings" element={<ProjectSettings />} />
+          <Route path="estimate-approvals" element={<EstimateApprovals />} />
           <Route path="test-cases" element={<TestCases />} />
           <Route path="test-plans" element={<TestPlans />} />
           <Route path="test-plans/:planId/cycles/:cycleId/run" element={<TestCycleRun />} />

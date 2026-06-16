@@ -2,10 +2,16 @@ import { ProjectDesignation } from './projectDesignation.model';
 import { ProjectMember } from './projectMember.model';
 import { ApiError } from '../../utils/ApiError';
 import { DEFAULT_PROJECT_MEMBER_PERMISSION_CODES } from '../../constants/permissions';
-import { ALL_PROJECT_PERMISSIONS } from '../../shared/constants/permissions';
+import { ALL_PROJECT_PERMISSIONS, PROJECT_PERMISSIONS } from '../../shared/constants/permissions';
 import { mapLegacyProjectOrGlobalPermissions } from '../../shared/constants/legacyPermissionMap';
 
-const DEFAULT_PERMS = mapLegacyProjectOrGlobalPermissions([...DEFAULT_PROJECT_MEMBER_PERMISSION_CODES]);
+const DEFAULT_PERMS = [
+  ...mapLegacyProjectOrGlobalPermissions([...DEFAULT_PROJECT_MEMBER_PERMISSION_CODES]),
+  PROJECT_PERMISSIONS.ISSUE.ESTIMATE.SUBMIT,
+  PROJECT_PERMISSIONS.ISSUE.ESTIMATE.VIEW,
+  PROJECT_PERMISSIONS.WORK_LOG.WORK_LOG.CREATE,
+  PROJECT_PERMISSIONS.ISSUE.COMMENT.CREATE,
+];
 // Project Lead always gets every project-scoped permission
 const FULL_PERMS = [...ALL_PROJECT_PERMISSIONS];
 

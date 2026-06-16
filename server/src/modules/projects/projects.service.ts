@@ -14,6 +14,8 @@ import * as projectTemplatesService from '../projectTemplates/projectTemplates.s
 import * as projectInvitationsService from './projectInvitations.service';
 import * as projectDesignationService from './projectDesignation.service';
 import type { CreateProjectBody, UpdateProjectBody } from './projects.validation';
+import { resolveFieldsForIssueType, resolveIssueTypeId } from './fieldScheme.service';
+import type { IProjectCustomField, IFieldScheme } from './project.model';
 import { userHasPermission, mapLegacyProjectOrGlobalPermissions } from '../../shared/constants/legacyPermissionMap';
 import { PROJECT_PERMISSIONS } from '../../shared/constants/permissions';
 import { hasProjectFullAccess } from '../../middleware/requireProjectPermission';
@@ -60,7 +62,16 @@ export async function create(
   if (tid && tid !== 'default' && !config) {
     throw new ApiError(404, 'Template not found in this workspace');
   }
-  const template = config as { statuses?: unknown[]; issueTypes?: unknown[]; priorities?: unknown[] } | null;
+  const template = config as {
+    statuses?: unknown[];
+    issueTypes?: unknown[];
+    priorities?: unknown[];
+    customFields?: unknown[];
+    fieldSchemes?: unknown[];
+    projectRules?: unknown[];
+    estimateApprovalEnabled?: boolean;
+    rulesEnforcementMode?: 'log' | 'enforce';
+  } | null;
   const defaultConfig = projectTemplatesService.getDefaultConfig();
   const statuses = (template?.statuses?.length ? template.statuses : defaultConfig.statuses) as typeof defaultConfig.statuses;
   const issueTypes = (template?.issueTypes?.length ? template.issueTypes : defaultConfig.issueTypes) as typeof defaultConfig.issueTypes;
@@ -75,6 +86,11 @@ export async function create(
     statuses,
     issueTypes,
     priorities,
+    customFields: (template?.customFields as unknown[] | undefined) ?? [],
+    fieldSchemes: (template?.fieldSchemes as unknown[] | undefined) ?? [],
+    projectRules: (template?.projectRules as unknown[] | undefined) ?? [],
+    estimateApprovalEnabled: template?.estimateApprovalEnabled ?? false,
+    rulesEnforcementMode: template?.rulesEnforcementMode ?? 'enforce',
   });
   const projectId = project._id.toString();
 
@@ -237,10 +253,42 @@ function withProjectDefaults(p: Record<string, unknown>): Record<string, unknown
     ];
   }
   if (!p.customFields) p.customFields = [];
+  if (!p.fieldSchemes) p.fieldSchemes = [];
   if (!p.versions) p.versions = [];
   if (!p.environments) p.environments = [];
   if (!p.releaseRules) p.releaseRules = [];
+  if (!p.projectRules) p.projectRules = [];
+  if (p.estimateApprovalEnabled === undefined) p.estimateApprovalEnabled = false;
+  if (!p.rulesEnforcementMode) p.rulesEnforcementMode = 'enforce';
   return p;
+}
+
+export async function getResolvedCustomFields(
+  projectId: string,
+  issueTypeName: string,
+  activeTaskflowOrganizationId: string,
+  previewIssue?: Record<string, unknown>
+): Promise<unknown[]> {
+  const project = await Project.findOne({
+    _id: projectId,
+    taskflowOrganizationId: activeTaskflowOrganizationId,
+  }).lean();
+  if (!project) throw new ApiError(404, 'Project not found');
+  const p = withProjectDefaults(project as Record<string, unknown>);
+  const issueTypes = (p.issueTypes ?? []) as Array<{ id: string; name: string }>;
+  const typeId = resolveIssueTypeId(issueTypes, issueTypeName);
+  const fields = resolveFieldsForIssueType(
+    (p.customFields ?? []) as IProjectCustomField[],
+    (p.fieldSchemes ?? []) as IFieldScheme[],
+    typeId
+  );
+  if (!previewIssue) return fields;
+  const { evaluateFormula } = await import('./customFieldFormula.service');
+  return fields.map((f) => {
+    if (f.fieldType !== 'formula') return f;
+    const val = evaluateFormula(f.formula, previewIssue);
+    return { ...f, computedValue: val };
+  });
 }
 
 export async function saveAsTemplate(
@@ -257,6 +305,11 @@ export async function saveAsTemplate(
     statuses?: unknown[];
     issueTypes?: unknown[];
     priorities?: unknown[];
+    customFields?: unknown[];
+    fieldSchemes?: unknown[];
+    projectRules?: unknown[];
+    estimateApprovalEnabled?: boolean;
+    rulesEnforcementMode?: 'log' | 'enforce';
   };
   return projectTemplatesService.createTemplateRecord({
     taskflowOrganizationId: activeTaskflowOrganizationId,
@@ -265,6 +318,11 @@ export async function saveAsTemplate(
     statuses: (p.statuses ?? []) as unknown[],
     issueTypes: (p.issueTypes ?? []) as unknown[],
     priorities: (p.priorities ?? []) as unknown[],
+    customFields: (p.customFields ?? []) as unknown[],
+    fieldSchemes: (p.fieldSchemes ?? []) as unknown[],
+    projectRules: (p.projectRules ?? []) as unknown[],
+    estimateApprovalEnabled: p.estimateApprovalEnabled ?? false,
+    rulesEnforcementMode: p.rulesEnforcementMode ?? 'enforce',
   });
 }
 
@@ -313,17 +371,36 @@ export async function update(
       activeTaskflowOrganizationId
     );
     if (!config) throw new ApiError(404, 'Template not found in this workspace');
-    const template = config as { statuses?: unknown[]; issueTypes?: unknown[]; priorities?: unknown[] };
+    const template = config as {
+      statuses?: unknown[];
+      issueTypes?: unknown[];
+      priorities?: unknown[];
+      customFields?: unknown[];
+      fieldSchemes?: unknown[];
+      projectRules?: unknown[];
+      estimateApprovalEnabled?: boolean;
+      rulesEnforcementMode?: 'log' | 'enforce';
+    };
     const defaultConfig = projectTemplatesService.getDefaultConfig();
     updateData.statuses = (template.statuses?.length ? template.statuses : defaultConfig.statuses) as unknown[];
     updateData.issueTypes = (template.issueTypes?.length ? template.issueTypes : defaultConfig.issueTypes) as unknown[];
     updateData.priorities = (template.priorities?.length ? template.priorities : defaultConfig.priorities) as unknown[];
+    if (template.customFields?.length) updateData.customFields = template.customFields;
+    if (template.fieldSchemes?.length) updateData.fieldSchemes = template.fieldSchemes;
+    if (template.projectRules?.length) updateData.projectRules = template.projectRules;
+    if (template.estimateApprovalEnabled !== undefined) {
+      updateData.estimateApprovalEnabled = template.estimateApprovalEnabled;
+    }
+    if (template.rulesEnforcementMode !== undefined) {
+      updateData.rulesEnforcementMode = template.rulesEnforcementMode;
+    }
   } else {
     if (input.statuses !== undefined) updateData.statuses = input.statuses;
     if (input.issueTypes !== undefined) updateData.issueTypes = input.issueTypes;
     if (input.priorities !== undefined) updateData.priorities = input.priorities;
   }
   if (input.customFields !== undefined) updateData.customFields = input.customFields;
+  if (input.fieldSchemes !== undefined) updateData.fieldSchemes = input.fieldSchemes;
   if (input.versions !== undefined) {
     updateData.versions = input.versions.map((v) => ({
       ...v,
@@ -332,6 +409,19 @@ export async function update(
   }
   if (input.environments !== undefined) updateData.environments = input.environments;
   if (input.releaseRules !== undefined) updateData.releaseRules = input.releaseRules;
+  if (input.projectRules !== undefined) updateData.projectRules = input.projectRules;
+  if (input.estimateApprovalEnabled !== undefined) {
+    updateData.estimateApprovalEnabled = input.estimateApprovalEnabled;
+    if (input.estimateApprovalEnabled) {
+      const { getDefaultEstimateApprovalRules } = await import('../projectRules/projectRules.defaultPack');
+      const existing = await Project.findById(id).select('projectRules').lean();
+      const rules = (existing as { projectRules?: unknown[] } | null)?.projectRules ?? [];
+      if (!rules.length && input.projectRules === undefined) {
+        updateData.projectRules = getDefaultEstimateApprovalRules();
+      }
+    }
+  }
+  if (input.rulesEnforcementMode !== undefined) updateData.rulesEnforcementMode = input.rulesEnforcementMode;
 
   const project = await Project.findOneAndUpdate(
     { _id: id, taskflowOrganizationId: activeTaskflowOrganizationId },

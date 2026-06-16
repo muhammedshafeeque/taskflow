@@ -2,7 +2,8 @@ import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { DescriptionEditor } from '../issue';
 import DateInputDDMMYYYY from '../DateInputDDMMYYYY';
-import type { Issue, Project, User, Milestone, Sprint } from '../../lib/api';
+import { useAuth } from '../../contexts/AuthContext';
+import { projectsApi, type Issue, type Project, type User, type Milestone, type Sprint, type ResolvedCustomField } from '../../lib/api';
 import { formatDateDDMMYYYY } from '../../lib/dateFormat';
 
 export interface IssueForm {
@@ -50,6 +51,19 @@ interface IssueCreateEditModalProps {
 
 export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
   const { modal, setModal, form, setForm, submitError, submitting, handleSubmit, typeList, priorityList, statusList, users, parentCandidates, editingIssueId, project, getIssueKey, projects = [], showProjectSelector, milestones = [], sprints = [], labelSuggestions = [], pendingFiles = [], onPendingFilesChange } = props;
+  const { token } = useAuth();
+  const [resolvedFields, setResolvedFields] = useState<ResolvedCustomField[]>([]);
+
+  useEffect(() => {
+    if (!modal || !token || !project?._id || !form.type) {
+      setResolvedFields([]);
+      return;
+    }
+    projectsApi.getResolvedCustomFields(project._id, form.type, token).then((res) => {
+      if (res.success && res.data) setResolvedFields(Array.isArray(res.data) ? res.data : []);
+      else setResolvedFields([]);
+    });
+  }, [modal, token, project?._id, form.type]);
   const showParentField = form.type !== 'Epic';
   const parentOptions = parentCandidates.filter((p) => p._id !== editingIssueId);
   if (!modal) return null;
@@ -375,17 +389,33 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
               </div>
             </div>
           )}
-          {project?.customFields?.length ? (
+          {resolvedFields.length > 0 ? (
             <div className="space-y-3 pt-2 border-t border-[color:var(--border-subtle)]">
               <p className="text-xs text-[color:var(--text-muted)]">Custom fields</p>
-              {project.customFields.map((field) => {
+              {resolvedFields.map((field) => {
                 const val = form.customFieldValues[field.key];
                 const value = val === undefined || val === null ? '' : String(val);
+                const required = field.effectiveRequired;
+                if (field.fieldType === 'formula') {
+                  const display =
+                    val !== undefined && val !== null && val !== ''
+                      ? String(val)
+                      : '—';
+                  return (
+                    <div key={field.id}>
+                      <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">
+                        {field.label}
+                        <span className="text-[color:var(--text-muted)] font-normal ml-1">(calculated)</span>
+                      </label>
+                      <input type="text" value={display} readOnly disabled className={`${inputCls} opacity-70`} />
+                    </div>
+                  );
+                }
                 return (
                   <div key={field.id}>
-                    <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">{field.label}{field.required ? ' *' : ''}</label>
-                    {field.fieldType === 'text' && <input type="text" value={value} onChange={(e) => setForm((f) => ({ ...f, customFieldValues: { ...f.customFieldValues, [field.key]: e.target.value || undefined } }))} required={field.required} className={inputCls} />}
-                    {field.fieldType === 'number' && <input type="number" value={value} onChange={(e) => setForm((f) => ({ ...f, customFieldValues: { ...f.customFieldValues, [field.key]: e.target.value === '' ? undefined : Number(e.target.value) } }))} required={field.required} className={inputCls} />}
+                    <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">{field.label}{required ? ' *' : ''}</label>
+                    {field.fieldType === 'text' && <input type="text" value={value} onChange={(e) => setForm((f) => ({ ...f, customFieldValues: { ...f.customFieldValues, [field.key]: e.target.value || undefined } }))} required={required} className={inputCls} />}
+                    {field.fieldType === 'number' && <input type="number" value={value} onChange={(e) => setForm((f) => ({ ...f, customFieldValues: { ...f.customFieldValues, [field.key]: e.target.value === '' ? undefined : Number(e.target.value) } }))} required={required} className={inputCls} />}
                     {field.fieldType === 'date' && (
                       <DateInputDDMMYYYY
                         value={typeof value === 'string' ? value : ''}
@@ -395,12 +425,12 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
                             customFieldValues: { ...f.customFieldValues, [field.key]: iso || undefined },
                           }))
                         }
-                        allowEmpty={!field.required}
+                        allowEmpty={!required}
                         className={inputCls}
                       />
                     )}
                     {field.fieldType === 'select' && (
-                      <select value={value} onChange={(e) => setForm((f) => ({ ...f, customFieldValues: { ...f.customFieldValues, [field.key]: e.target.value || undefined } }))} required={field.required} className={inputCls}>
+                      <select value={value} onChange={(e) => setForm((f) => ({ ...f, customFieldValues: { ...f.customFieldValues, [field.key]: e.target.value || undefined } }))} required={required} className={inputCls}>
                         <option value="">—</option>
                         {(field.options ?? []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                       </select>
@@ -419,7 +449,7 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
                       </select>
                     )}
                     {field.fieldType === 'user' && (
-                      <select value={value} onChange={(e) => setForm((f) => ({ ...f, customFieldValues: { ...f.customFieldValues, [field.key]: e.target.value || undefined } }))} required={field.required} className={inputCls}>
+                      <select value={value} onChange={(e) => setForm((f) => ({ ...f, customFieldValues: { ...f.customFieldValues, [field.key]: e.target.value || undefined } }))} required={required} className={inputCls}>
                         <option value="">—</option>
                         {users.map((u) => <option key={u._id} value={u._id}>{u.name}</option>)}
                       </select>

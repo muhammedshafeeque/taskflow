@@ -15,8 +15,42 @@ import {
   normalizeFixVersionsInput,
   withNormalizedFixVersion,
 } from './issueVersionFields';
+import type { IProjectCustomField } from '../projects/project.model';
 
 const DEFAULT_STATUS = 'Backlog';
+
+async function stripFormulaKeysFromCustomFieldValues(
+  projectId: string,
+  values: Record<string, unknown> | undefined
+): Promise<Record<string, unknown>> {
+  if (!values || Object.keys(values).length === 0) return values ?? {};
+  const project = await Project.findById(projectId).select('customFields').lean();
+  const formulaKeys = new Set(
+    ((project as { customFields?: IProjectCustomField[] } | null)?.customFields ?? [])
+      .filter((f) => f.fieldType === 'formula')
+      .map((f) => f.key)
+  );
+  if (formulaKeys.size === 0) return values;
+  const out = { ...values };
+  for (const k of formulaKeys) delete out[k];
+  return out;
+}
+
+async function enrichIssueRecord(issue: Record<string, unknown>): Promise<Record<string, unknown> & { key: string }> {
+  const projectRef = issue.project as { _id?: unknown } | string | undefined;
+  const projectId = projectRef
+    ? typeof projectRef === 'object' && projectRef && '_id' in projectRef
+      ? String(projectRef._id)
+      : String(projectRef)
+    : '';
+  if (!projectId) return mapIssue(issue);
+  const project = await Project.findById(projectId).select('customFields').lean();
+  const fields = (project as { customFields?: IProjectCustomField[] } | null)?.customFields ?? [];
+  if (!fields.some((f) => f.fieldType === 'formula')) return mapIssue(issue);
+  const { enrichCalculatedCustomFields } = await import('../projects/customFieldFormula.service');
+  const enriched = enrichCalculatedCustomFields(fields, issue);
+  return mapIssue({ ...issue, customFieldValues: enriched });
+}
 
 async function validateParent(
   parentId: string | null | undefined,
@@ -88,7 +122,10 @@ export async function create(
     storyPoints: input.storyPoints ?? undefined,
     timeEstimateMinutes: input.timeEstimateMinutes,
     checklist: input.checklist ?? [],
-    customFieldValues: input.customFieldValues ?? {},
+    customFieldValues: await stripFormulaKeysFromCustomFieldValues(
+      projectId,
+      (input.customFieldValues ?? {}) as Record<string, unknown>
+    ),
     fixVersion: (() => {
       const ids = normalizeFixVersionsInput(input.fixVersion);
       return ids?.length ? ids : undefined;
@@ -120,7 +157,7 @@ export async function create(
     }
   }
 
-  return withNormalizedFixVersion(doc.toObject() as unknown as Record<string, unknown>);
+  return enrichIssueRecord(withNormalizedFixVersion(doc.toObject() as unknown as Record<string, unknown>));
 }
 
 export interface ListIssuesFilters {
@@ -387,7 +424,7 @@ export async function findById(id: string): Promise<unknown | null> {
     .populate('parent', 'key title _id')
     .populate('milestone', 'name dueDate status')
     .lean();
-  return issue ? mapIssue(issue as Record<string, unknown>) : null;
+  return issue ? enrichIssueRecord(issue as Record<string, unknown>) : null;
 }
 
 export async function findChildren(parentId: string): Promise<unknown[]> {
@@ -459,7 +496,12 @@ export async function update(
     else updateData.timeEstimateMinutes = input.timeEstimateMinutes;
   }
   if (input.checklist !== undefined) updateData.checklist = input.checklist;
-  if (input.customFieldValues !== undefined) updateData.customFieldValues = input.customFieldValues;
+  if (input.customFieldValues !== undefined) {
+    updateData.customFieldValues = await stripFormulaKeysFromCustomFieldValues(
+      String(oldDoc.project),
+      input.customFieldValues as Record<string, unknown>
+    );
+  }
 
   if (input.assignee !== undefined && (input.assignee === '' || input.assignee === null)) unset.assignee = 1;
   if (input.sprint === null || input.sprint === '') unset.sprint = 1;
@@ -541,6 +583,21 @@ export async function update(
   }
   if (input.parent !== undefined) addChange('parent', oldRaw.parent, input.parent || undefined);
   if (input.milestone !== undefined) addChange('milestone', oldRaw.milestone, input.milestone || undefined);
+
+  const mergedIssue = { ...oldRaw, ...updateData };
+  if (authorId && (input.status !== undefined || Object.keys(updateData).length > 0)) {
+    const { getProjectPermissionsForUser } = await import('../../middleware/requireProjectPermission');
+    const { assertIssueUpdateAllowedByRules } = await import('../stageEstimates/stageEstimate.service');
+    const perms = await getProjectPermissionsForUser(String(oldDoc.project), authorId);
+    await assertIssueUpdateAllowedByRules(
+      id,
+      String(oldDoc.project),
+      oldRaw,
+      mergedIssue,
+      authorId,
+      perms
+    );
+  }
 
   if (authorId && changes.length > 0) {
     await issueHistoryService.recordFieldChanges(id, authorId, changes);
@@ -688,7 +745,7 @@ export async function update(
     syncIssueStatus(id, statuses, String(issue.status)).catch(() => {});
   }
 
-  return issue ? mapIssue(issue as Record<string, unknown>) : null;
+  return issue ? enrichIssueRecord(issue as Record<string, unknown>) : null;
 }
 
 export async function remove(id: string): Promise<boolean> {

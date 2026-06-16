@@ -231,6 +231,56 @@ export interface ProjectStatus {
   icon?: string;
   color?: string;
   fontColor?: string;
+  /** Work lane id when status represents in-progress work (dev, qa, etc.) */
+  userInLane?: string;
+}
+
+export type ProjectRuleTrigger =
+  | 'issue.created'
+  | 'issue.updated'
+  | 'estimate.submitted'
+  | 'worklog.creating'
+  | 'comment.creating';
+
+export interface ProjectRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  order: number;
+  mode: 'log' | 'enforce';
+  trigger: ProjectRuleTrigger;
+  conditions: Array<{ field: string; op: string; value?: unknown }>;
+  actions: Array<Record<string, unknown>>;
+}
+
+export interface StageEstimate {
+  _id: string;
+  issue: string;
+  project: string;
+  laneId: string;
+  statusId?: string;
+  assigneeId?: { _id: string; name: string; email?: string } | string;
+  minutes: number;
+  state: 'pending' | 'approved' | 'rejected';
+  submittedBy?: { _id: string; name: string; email?: string };
+  reviewedBy?: { _id: string; name: string; email?: string };
+  reviewedAt?: string;
+  rejectNote?: string;
+  forceApproveNote?: string;
+  createdAt?: string;
+}
+
+export interface EstimateSummary {
+  issueId: string;
+  byLane: Record<string, { pending: number; approved: number; rejected: number; entries: StageEstimate[] }>;
+  rollup: {
+    byLane: Record<string, number>;
+    totalApprovedMinutes: number;
+    totalPendingMinutes: number;
+    fromChildren: boolean;
+    leafCount: number;
+  };
+  hasPending: boolean;
 }
 
 export interface ProjectIssueType {
@@ -251,7 +301,7 @@ export interface ProjectPriority {
   fontColor?: string;
 }
 
-export type CustomFieldType = 'text' | 'number' | 'date' | 'select' | 'multiselect' | 'user';
+export type CustomFieldType = 'text' | 'number' | 'date' | 'select' | 'multiselect' | 'user' | 'formula';
 
 export interface ProjectCustomField {
   id: string;
@@ -261,6 +311,25 @@ export interface ProjectCustomField {
   required: boolean;
   options?: string[];
   order: number;
+  formula?: string;
+}
+
+export interface FieldSchemeRule {
+  fieldKey: string;
+  visible: boolean;
+  required?: boolean;
+}
+
+export interface FieldScheme {
+  issueTypeId: string;
+  rules: FieldSchemeRule[];
+}
+
+export interface ResolvedCustomField extends ProjectCustomField {
+  visible: boolean;
+  effectiveRequired: boolean;
+  readOnly: boolean;
+  computedValue?: number | null;
 }
 
 export type ProjectVersionStatus = 'unreleased' | 'released' | 'archived';
@@ -304,9 +373,13 @@ export interface Project {
   issueTypes?: ProjectIssueType[];
   priorities?: ProjectPriority[];
   customFields?: ProjectCustomField[];
+  fieldSchemes?: FieldScheme[];
   versions?: ProjectVersion[];
   environments?: ProjectEnvironment[];
   releaseRules?: ProjectReleaseRule[];
+  estimateApprovalEnabled?: boolean;
+  rulesEnforcementMode?: 'log' | 'enforce';
+  projectRules?: ProjectRule[];
   createdAt?: string;
   /** Set on list response: user has project:edit in this project */
   canEdit?: boolean;
@@ -353,9 +426,24 @@ export interface ProjectTemplate {
   _id: string;
   name: string;
   description?: string;
-  statuses?: Array<{ id: string; name: string; order: number; isClosed?: boolean; icon?: string; color?: string; fontColor?: string }>;
+  statuses?: Array<{ id: string; name: string; order: number; isClosed?: boolean; icon?: string; color?: string; fontColor?: string; userInLane?: string }>;
   issueTypes?: Array<{ id: string; name: string; order: number; icon?: string; color?: string; fontColor?: string }>;
   priorities?: Array<{ id: string; name: string; order: number; icon?: string; color?: string; fontColor?: string }>;
+  customFields?: ProjectCustomField[];
+  fieldSchemes?: FieldScheme[];
+  projectRules?: ProjectRule[];
+  estimateApprovalEnabled?: boolean;
+  rulesEnforcementMode?: 'log' | 'enforce';
+  isLibrary?: boolean;
+  currentVersion?: number;
+}
+
+export interface ProjectTemplateVersion {
+  _id: string;
+  templateId: string;
+  version: number;
+  changelog?: string;
+  createdAt: string;
 }
 
 /* In-app notifications */
@@ -444,9 +532,13 @@ export const projectsApi = {
       issueTypes: ProjectIssueType[];
       priorities: ProjectPriority[];
       customFields: ProjectCustomField[];
+      fieldSchemes: FieldScheme[];
       versions: ProjectVersion[];
       environments: ProjectEnvironment[];
       releaseRules: ProjectReleaseRule[];
+      projectRules: ProjectRule[];
+      estimateApprovalEnabled: boolean;
+      rulesEnforcementMode: 'log' | 'enforce';
     }>,
     token: string
   ) => api.patch<Project>(`/projects/${id}`, body, token),
@@ -522,11 +614,39 @@ export const projectsApi = {
 
   getImportJob: (projectId: string, jobId: string, token: string) =>
     api.get<ImportJobStatus>(`/projects/${projectId}/imports/${jobId}`, token),
+
+  getResolvedCustomFields: (projectId: string, issueType: string, token: string) =>
+    api.get<ResolvedCustomField[]>(
+      `/projects/${projectId}/resolved-fields?issueType=${encodeURIComponent(issueType)}`,
+      token
+    ),
+
+  getEstimateApprovals: (projectId: string, token: string) =>
+    api.get<StageEstimate[]>(`/projects/${projectId}/estimate-approvals`, token),
+
+  enableEstimateApproval: (projectId: string, token: string) =>
+    api.post<Project>(`/projects/${projectId}/enable-estimate-approval`, {}, token),
+
+  dryRunRules: (
+    projectId: string,
+    body: {
+      issue: Record<string, unknown>;
+      action: string;
+      payload?: Record<string, unknown>;
+      oldIssue?: Record<string, unknown>;
+    },
+    token: string
+  ) => api.post<unknown>(`/projects/${projectId}/rules/dry-run`, body, token),
 };
 
 export const projectTemplatesApi = {
   list: (token: string) => api.get<ProjectTemplate[]>('/project-templates', token),
+  listLibrary: (token: string) => api.get<ProjectTemplate[]>('/project-templates/library', token),
   get: (id: string, token: string) => api.get<ProjectTemplate>(`/project-templates/${id}`, token),
+  listVersions: (id: string, token: string) =>
+    api.get<ProjectTemplateVersion[]>(`/project-templates/${id}/versions`, token),
+  restoreVersion: (id: string, version: number, token: string) =>
+    api.post<ProjectTemplate>(`/project-templates/${id}/restore`, { version }, token),
   patch: (
     id: string,
     body: Partial<{
@@ -535,6 +655,10 @@ export const projectTemplatesApi = {
       statuses: ProjectTemplate['statuses'];
       issueTypes: ProjectTemplate['issueTypes'];
       priorities: ProjectTemplate['priorities'];
+      customFields: ProjectCustomField[];
+      fieldSchemes: FieldScheme[];
+      isLibrary: boolean;
+      changelog: string;
     }>,
     token: string
   ) => api.patch<ProjectTemplate>(`/project-templates/${id}`, body, token),
@@ -1388,6 +1512,19 @@ export const issuesApi = {
     URL.revokeObjectURL(url);
     return { success: true };
   },
+  getStageEstimates: (issueId: string, token: string) =>
+    api.get<StageEstimate[]>(`/issues/${issueId}/stage-estimates`, token),
+  getEstimateSummary: (issueId: string, token: string) =>
+    api.get<EstimateSummary>(`/issues/${issueId}/estimate-summary`, token),
+  submitStageEstimates: (
+    issueId: string,
+    estimates: Array<{ laneId: string; minutes: number; statusId?: string; assigneeId?: string }>,
+    token: string
+  ) => api.put<StageEstimate[]>(`/issues/${issueId}/stage-estimates`, { estimates }, token),
+  approveStageEstimate: (issueId: string, estimateId: string, token: string, body?: { note?: string; force?: boolean }) =>
+    api.post<StageEstimate>(`/issues/${issueId}/stage-estimates/${estimateId}/approve`, body ?? {}, token),
+  rejectStageEstimate: (issueId: string, estimateId: string, rejectNote: string, token: string) =>
+    api.post<StageEstimate>(`/issues/${issueId}/stage-estimates/${estimateId}/reject`, { rejectNote }, token),
 };
 
 export type IssueLinkType = 'blocks' | 'is_blocked_by' | 'duplicates' | 'is_duplicated_by' | 'relates_to';
@@ -1467,6 +1604,8 @@ export interface WorkLog {
   minutesSpent: number;
   date: string;
   description?: string;
+  laneId?: string;
+  overrunReason?: string;
   createdAt: string;
 }
 
@@ -1491,7 +1630,7 @@ export const workLogsApi = {
     ),
   create: (
     issueId: string,
-    body: { minutesSpent: number; date: string; description?: string },
+    body: { minutesSpent: number; date: string; description?: string; laneId?: string; overrunReason?: string },
     token: string
   ) => api.post<WorkLog>(`/issues/${issueId}/work-logs`, body, token),
   update: (
