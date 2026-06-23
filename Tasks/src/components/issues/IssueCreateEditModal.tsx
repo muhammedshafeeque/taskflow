@@ -64,17 +64,13 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
       else setResolvedFields([]);
     });
   }, [modal, token, project?._id, form.type]);
-  const showParentField = form.type !== 'Epic';
-  const parentOptions = parentCandidates.filter((p) => p._id !== editingIssueId);
-  if (!modal) return null;
+
   const [fixOpen, setFixOpen] = useState(false);
   const fixRef = useRef<HTMLDivElement | null>(null);
   const [affectsOpen, setAffectsOpen] = useState(false);
   const affectsRef = useRef<HTMLDivElement | null>(null);
   const [labelInput, setLabelInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const ACCEPTED_FILE_TYPES = 'image/*,video/*,.pdf,.xlsx,.xls,.docx,.doc';
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (!onPendingFilesChange) return;
@@ -88,11 +84,6 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
     if (!onPendingFilesChange) return;
     onPendingFilesChange(pendingFiles.filter((_, i) => i !== index));
   }, [pendingFiles, onPendingFilesChange]);
-
-  const inputCls =
-    'w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 transition-colors';
-  const selectedFix = (project?.versions || []).filter((v) => form.fixVersion.includes(v.id));
-  const selectedAffects = (project?.versions || []).filter((v) => form.affectsVersions.includes(v.id));
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -112,6 +103,17 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
   useEffect(() => {
     setLabelInput('');
   }, [modal, form.labels]);
+
+  const showParentField = form.type !== 'Epic';
+  const parentOptions = parentCandidates.filter((p) => p._id !== editingIssueId);
+  if (!modal) return null;
+
+  const inputCls =
+    'w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 transition-colors';
+  const selectedFix = (project?.versions || []).filter((v) => form.fixVersion.includes(v.id));
+  const selectedAffects = (project?.versions || []).filter((v) => form.affectsVersions.includes(v.id));
+
+  const ACCEPTED_FILE_TYPES = 'image/*,video/*,.pdf,.xlsx,.xls,.docx,.doc';
 
   const normalizedSuggestions = Array.from(
     new Set(
