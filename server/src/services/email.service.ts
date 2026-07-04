@@ -66,7 +66,6 @@ async function getGraphAccessToken(): Promise<string> {
 
 async function sendViaGraph(to: string, subject: string, html: string): Promise<void> {
   const accessToken = await getGraphAccessToken();
-  console.log('accessToken', accessToken);
   const fromEmail = env.azureGraphFromEmail;
 
   const payload = {
@@ -173,21 +172,12 @@ export interface ForgotPasswordEmailParams {
 
 export function renderForgotPasswordEmail(params: ForgotPasswordEmailParams): string {
   const { name, resetLink } = params;
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Reset your password</title></head>
-<body style="font-family: system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2 style="color: #4f46e5;">Reset your TaskFlow password</h2>
-  <p>Hi ${escapeHtml(name)},</p>
-  <p>You requested a password reset. Click the link below to set a new password:</p>
-  <p><a href="${escapeHtml(resetLink)}" style="color: #4f46e5;">Reset password</a></p>
-  <p>If you didn't request this, you can ignore this email.</p>
-  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
-  <p style="font-size: 12px; color: #64748b;">This link will expire in 1 hour.</p>
-</body>
-</html>
-  `.trim();
+  const inner = `${tfHeading('Reset your TaskFlow password', 'You requested a password reset.')}
+  <p style="margin:0 0 12px; color:#475569; font-size:14px;">Hi ${escapeHtml(name)},</p>
+  <p style="margin:0 0 16px; color:#475569; font-size:14px;">Click the button below to choose a new password. This link expires in 1 hour.</p>
+  ${tfCta(resetLink, 'Reset password')}
+  <p style="margin:16px 0 0; color:#64748b; font-size:13px;">If you did not request this, you can ignore this email. Your password will stay the same.</p>`;
+  return tfEmailWrap(inner, 'indigo');
 }
 
 export function escapeHtml(s: string): string {

@@ -438,19 +438,42 @@ export async function forgotPassword(email: string): Promise<void> {
   if (!isEmailPasswordAuthEnabled()) {
     throw new ApiError(403, 'Password authentication is disabled.');
   }
-  const user = await User.findOne({ email: email.toLowerCase().trim() }).lean();
-  if (!user) return;
+  const emailNorm = email.toLowerCase().trim();
+  if (!emailNorm) return;
+
+  const user = await User.findOne({
+    $or: [{ email: emailNorm }, { providerEmail: emailNorm }],
+    enabled: { $ne: false },
+  }).lean();
+
+  if (!user) {
+    console.warn('[auth] forgot-password: no enabled account matched requested email');
+    return;
+  }
+
   const token = crypto.randomBytes(32).toString('hex');
   const expires = new Date(Date.now() + 60 * 60 * 1000);
   await User.findByIdAndUpdate(user._id, {
     $set: { passwordResetToken: token, passwordResetExpires: expires },
   });
-  const resetLink = `${env.appUrl}/reset-password?token=${encodeURIComponent(token)}`;
-  await sendForgotPasswordEmail(user.email, {
-    name: user.name,
-    appUrl: env.appUrl,
-    resetLink,
-  }).catch((err) => console.error('Failed to send forgot password email:', err));
+
+  const appBase = (env.frontendUrl || env.appUrl).replace(/\/$/, '');
+  const resetLink = `${appBase}/reset-password?token=${encodeURIComponent(token)}`;
+  const to = String(user.email || emailNorm).trim();
+
+  try {
+    await sendForgotPasswordEmail(to, {
+      name: user.name,
+      appUrl: appBase,
+      resetLink,
+    });
+    console.info('[auth] forgot-password: reset email queued', { userId: String(user._id) });
+  } catch (err) {
+    console.error('[auth] forgot-password: email send failed', {
+      userId: String(user._id),
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<AuthUser> {
