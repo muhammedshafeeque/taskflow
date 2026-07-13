@@ -86,5 +86,6 @@ issueSchema.index({ project: 1, priority: 1 });
 issueSchema.index({ parent: 1 });
 issueSchema.index({ project: 1, sprint: 1, backlogOrder: 1 });
 issueSchema.index({ key: 1 }, { unique: true, sparse: true });
+issueSchema.index({ project: 1, 'customFieldValues.adoWorkItemId': 1 }, { sparse: true });
 
 export const Issue = mongoose.model<IIssue>('Issue', issueSchema);

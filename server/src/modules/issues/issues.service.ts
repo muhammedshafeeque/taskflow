@@ -81,7 +81,8 @@ async function validateParent(
 
 export async function create(
   input: CreateIssueBody,
-  reporterId: string
+  reporterId: string,
+  syncOptions?: { syncOrigin?: 'ado' | 'taskflow' }
 ): Promise<unknown> {
   const projectId = input.project;
   await validateParent(input.parent ?? undefined, projectId);
@@ -101,6 +102,8 @@ export async function create(
   const nextNum = project.nextIssueNumber ?? 1;
   const issueKey = `${project.key}-${nextNum}`;
 
+  const effectiveReporter = input.reporter ?? reporterId;
+
   const doc = await Issue.create({
     title: input.title,
     description: input.description ?? '',
@@ -108,7 +111,7 @@ export async function create(
     priority: input.priority ?? 'Medium',
     status: input.status ?? DEFAULT_STATUS,
     assignee: input.assignee ?? undefined,
-    reporter: reporterId,
+    reporter: effectiveReporter,
     project: projectId,
     key: issueKey,
     sprint:
@@ -134,12 +137,12 @@ export async function create(
     parent: input.parent ?? undefined,
     milestone: input.milestone ?? undefined,
   });
-  await issueHistoryService.recordCreated(String(doc._id), reporterId);
+  await issueHistoryService.recordCreated(String(doc._id), effectiveReporter);
   if (projectId) notifyProjectRefresh(String(projectId));
 
-  if (input.assignee) {
+  if (syncOptions?.syncOrigin !== 'ado' && input.assignee) {
     const assigneeId = String(input.assignee);
-    if (assigneeId !== reporterId) {
+    if (assigneeId !== effectiveReporter) {
       issueNotification
         .notifyIssueAssigned({
           issue: {
@@ -151,10 +154,16 @@ export async function create(
             project: projectId,
           },
           assigneeUserId: assigneeId,
-          actorUserId: reporterId,
+          actorUserId: effectiveReporter,
         })
         .catch((err) => console.error('[issue] assign notify on create failed:', err));
     }
+  }
+
+  if (syncOptions?.syncOrigin !== 'ado') {
+    import('../integrations/ado/adoSync.service')
+      .then((m) => m.syncIssueToAdo(String(doc._id), { syncOrigin: 'taskflow' }))
+      .catch((err) => console.error('[ado] outbound sync on create failed:', err));
   }
 
   return enrichIssueRecord(withNormalizedFixVersion(doc.toObject() as unknown as Record<string, unknown>));
@@ -455,7 +464,8 @@ function arraysEqual(a: unknown[] | undefined, b: unknown[] | undefined): boolea
 export async function update(
   id: string,
   input: UpdateIssueBody,
-  authorId?: string
+  authorId?: string,
+  syncOptions?: { syncOrigin?: 'ado' | 'taskflow' }
 ): Promise<unknown | null> {
   const oldDoc = await Issue.findById(id).lean();
   if (!oldDoc) return null;
@@ -469,6 +479,9 @@ export async function update(
   if (input.status !== undefined) updateData.status = input.status;
   if (input.assignee !== undefined && input.assignee !== '' && input.assignee !== null) {
     updateData.assignee = input.assignee;
+  }
+  if (input.reporter !== undefined && input.reporter !== '' && input.reporter !== null) {
+    updateData.reporter = input.reporter;
   }
   if (input.sprint !== undefined && input.sprint !== '' && input.sprint !== null) {
     updateData.sprint = input.sprint;
@@ -546,6 +559,7 @@ export async function update(
   if (input.priority !== undefined) addChange('priority', oldRaw.priority, input.priority);
   if (input.status !== undefined) addChange('status', oldRaw.status, input.status);
   if (input.assignee !== undefined) addChange('assignee', oldRaw.assignee, input.assignee || undefined);
+  if (input.reporter !== undefined) addChange('reporter', oldRaw.reporter, input.reporter || undefined);
   if (input.sprint !== undefined) addChange('sprint', oldRaw.sprint, input.sprint ?? undefined);
   if (input.boardColumn !== undefined) addChange('boardColumn', oldRaw.boardColumn, input.boardColumn);
   if (input.labels !== undefined) addChange('labels', oldRaw.labels, input.labels);
@@ -645,7 +659,7 @@ export async function update(
     : String(issue.project);
   notifyProjectRefresh(projectId);
 
-  if (authorId) {
+  if (authorId && syncOptions?.syncOrigin !== 'ado') {
     const issueKey = issueWithKey.key ?? '?';
     const notifySnapshot: issueNotification.IssueNotifySnapshot = {
       _id: id,
@@ -743,6 +757,12 @@ export async function update(
     const statuses = (project2 as { statuses?: Array<{ name: string; isClosed?: boolean }> })?.statuses ?? [];
     const { syncIssueStatus } = await import('../customer-portal/customer-request/customerRequest.service');
     syncIssueStatus(id, statuses, String(issue.status)).catch(() => {});
+  }
+
+  if (syncOptions?.syncOrigin !== 'ado') {
+    import('../integrations/ado/adoSync.service')
+      .then((m) => m.syncIssueToAdo(id, { syncOrigin: 'taskflow' }))
+      .catch((err) => console.error('[ado] outbound sync on update failed:', err));
   }
 
   return issue ? enrichIssueRecord(issue as Record<string, unknown>) : null;

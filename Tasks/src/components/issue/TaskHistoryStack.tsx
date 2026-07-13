@@ -19,7 +19,9 @@ function relativeTime(s: string | undefined) {
 }
 
 function formatMessage(entry: IssueHistoryItem): string {
-  if (entry.action === 'created') return 'created the work item';
+  if (entry.action === 'created') {
+    return entry.source === 'ado' ? 'created the work item in Azure DevOps' : 'created the work item';
+  }
   if (entry.action === 'comment_added') return 'added a comment';
   if (entry.action === 'comment_updated') return 'edited a comment';
   if (entry.action === 'field_change' && entry.field && entry.fromValue !== undefined && entry.toValue !== undefined) {
@@ -49,11 +51,18 @@ export default function TaskHistoryStack({ issue }: TaskHistoryStackProps) {
   const [history, setHistory] = useState<IssueHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const linkedAdoId =
+    typeof issue.customFieldValues?.adoWorkItemId === 'number'
+      ? issue.customFieldValues.adoWorkItemId
+      : undefined;
+  const adoUrl =
+    typeof issue.customFieldValues?.adoUrl === 'string' ? issue.customFieldValues.adoUrl : undefined;
+
   useEffect(() => {
     if (!token || !issue._id) return;
     setLoading(true);
     issuesApi
-      .getHistory(issue._id, 1, 50, token)
+      .getHistory(issue._id, 1, 100, token)
       .then((res) => {
         if (res.success && res.data?.data) setHistory(res.data.data);
       })
@@ -61,47 +70,77 @@ export default function TaskHistoryStack({ issue }: TaskHistoryStackProps) {
   }, [token, issue._id]);
 
   if (loading) {
-    return (
-      <p className="type-meta py-4">Loading history…</p>
-    );
-  }
-
-  if (history.length === 0) {
-    return (
-      <p className="type-meta py-4">No history yet.</p>
-    );
+    return <p className="type-meta py-4">Loading history…</p>;
   }
 
   return (
-    <ul className="space-y-0">
-      {history.map((entry, index) => (
-        <li
-          key={entry._id}
-          className="relative flex gap-4 py-3 first:pt-0"
-        >
-          {index < history.length - 1 && (
-            <div
-              className="absolute left-[7px] top-8 bottom-0 w-0.5 bg-[color:var(--border-subtle)]/70"
-              aria-hidden
-            />
+    <div className="space-y-3">
+      {linkedAdoId != null && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--text-muted)]">
+          <span className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] px-2 py-0.5">
+            Azure DevOps #{linkedAdoId}
+          </span>
+          {adoUrl && (
+            <a
+              href={adoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[color:var(--accent)] hover:underline"
+            >
+              Open in DevOps
+            </a>
           )}
-          <div className="relative z-10 shrink-0 w-4 h-4 rounded-full bg-[color:var(--bg-page)] border-2 border-[color:var(--border-subtle)] flex items-center justify-center mt-0.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-[color:var(--text-primary)]" />
-          </div>
-          <div className="flex-1 min-w-0 pb-2">
-            <p className="type-history-action">
-              <span className="type-history-actor">{entry.author.name}</span>{' '}
-              <span>{formatMessage(entry)}</span>
-            </p>
-            {(entry.action === 'comment_added' || entry.action === 'comment_updated') && entry.commentBody && (
-              <p className="type-meta mt-1.5 pl-3 border-l-2 border-[color:var(--border-subtle)] italic">
-                {truncateBody(entry.commentBody)}
-              </p>
-            )}
-            <p className="type-meta mt-0.5">{relativeTime(entry.createdAt)}</p>
-          </div>
-        </li>
-      ))}
-    </ul>
+        </div>
+      )}
+      {history.length === 0 ? (
+        <p className="type-meta py-4">No history yet.</p>
+      ) : (
+        <ul className="space-y-0">
+          {history.map((entry, index) => (
+            <li key={entry._id} className="relative flex gap-4 py-3 first:pt-0">
+              {index < history.length - 1 && (
+                <div
+                  className="absolute left-[7px] top-8 bottom-0 w-0.5 bg-[color:var(--border-subtle)]/70"
+                  aria-hidden
+                />
+              )}
+              <div
+                className={`relative z-10 shrink-0 w-4 h-4 rounded-full bg-[color:var(--bg-page)] border-2 flex items-center justify-center mt-0.5 ${
+                  entry.source === 'ado' ? 'border-blue-500/60' : 'border-[color:var(--border-subtle)]'
+                }`}
+              >
+                <div
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    entry.source === 'ado' ? 'bg-blue-500/80' : 'bg-[color:var(--text-primary)]'
+                  }`}
+                />
+              </div>
+              <div className="flex-1 min-w-0 pb-2">
+                <p className="type-history-action">
+                  <span className="type-history-actor">{entry.author.name}</span>{' '}
+                  <span>{formatMessage(entry)}</span>
+                  {entry.source === 'ado' && (
+                    <span className="ml-1.5 text-[10px] uppercase tracking-wide text-blue-500/90 font-medium">
+                      ADO
+                    </span>
+                  )}
+                </p>
+                {(entry.action === 'comment_added' || entry.action === 'comment_updated') && entry.commentBody && (
+                  <p className="type-meta mt-1.5 pl-3 border-l-2 border-[color:var(--border-subtle)] italic">
+                    {truncateBody(entry.commentBody)}
+                  </p>
+                )}
+                <p className="type-meta mt-0.5">
+                  {relativeTime(entry.createdAt)}
+                  {entry.source === 'ado' && entry.adoRev != null && entry.adoRev > 0 && (
+                    <span className="ml-1.5">· rev {entry.adoRev}</span>
+                  )}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

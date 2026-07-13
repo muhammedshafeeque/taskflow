@@ -5,9 +5,23 @@ import { Issue } from '../issues/issue.model';
 import { IssueLink } from '../issues/issueLink.model';
 import * as issuesService from '../issues/issues.service';
 import type { CreateIssueBody } from '../issues/issue.validation';
-
-const API_VERSION = '7.1';
-const WORKITEMS_CHUNK = 200;
+import {
+  type AdoConnection,
+  type AdoWorkItem,
+  WORKITEMS_CHUNK,
+  buildAdoWorkItemUrl,
+  chunk,
+  escapeWiqlString,
+  extractIdFromWorkItemUrl,
+  getParentAdoId,
+  getWorkItemsByIds,
+  wiqlQuery,
+} from '../integrations/ado/adoClient.service';
+import { adoWorkItemToCreateBody, adoWorkItemToUpdateBody } from '../integrations/ado/adoFieldMapper';
+import { syncAdoHistoryToIssue } from '../integrations/ado/adoWorkItemHistory.service';
+import { syncAdoAttachmentsToIssue } from '../integrations/ado/adoAttachments.service';
+import { ProjectAdoIntegration } from '../integrations/ado/projectAdoIntegration.model';
+import { decryptSecret } from '../../utils/secretCrypto';
 
 export type AzureDevOpsImportOptions = {
   org?: string;
@@ -17,125 +31,69 @@ export type AzureDevOpsImportOptions = {
   dryRun?: boolean;
   skipExisting?: boolean;
   wiql?: string;
+  onProgress?: (message: string) => void | Promise<void>;
 };
 
 export type AzureDevOpsImportResult = {
   created: number;
+  updated: number;
   skippedExisting: number;
   errors: number;
   parentsSet: number;
   linksCreated: number;
   dryRun: boolean;
+  touchedIssueIds: string[];
+  historyImported: number;
+  attachmentsImported: number;
 };
 
-interface AdoWorkItem {
-  id: number;
-  fields?: Record<string, unknown>;
-  relations?: Array<{ rel: string; url: string }>;
-}
+export async function resolveAdoCredentialsForProject(
+  projectId: string,
+  options: { org?: string; adoProject?: string; pat?: string }
+): Promise<{ org: string; adoProject: string; pat: string }> {
+  const integration = await ProjectAdoIntegration.findOne({ projectId }).lean();
 
-function adoAuthHeader(pat: string): Record<string, string> {
-  const token = Buffer.from(`:${pat}`, 'utf8').toString('base64');
-  return { Authorization: `Basic ${token}`, 'Content-Type': 'application/json' };
-}
+  const org =
+    options.org?.trim() ||
+    integration?.org?.trim() ||
+    process.env.AZURE_DEVOPS_ORG?.trim() ||
+    '';
+  const adoProject =
+    options.adoProject?.trim() ||
+    integration?.adoProject?.trim() ||
+    process.env.AZURE_DEVOPS_PROJECT?.trim() ||
+    '';
 
-function escapeWiqlString(s: string): string {
-  return s.replace(/'/g, "''");
-}
-
-function extractIdFromWorkItemUrl(url: string): number | null {
-  const m = /\/workitems\/(\d+)/i.exec(url);
-  return m ? parseInt(m[1], 10) : null;
-}
-
-function parseIdentityEmail(field: unknown): string | undefined {
-  if (field == null) return undefined;
-  if (typeof field === 'string') {
-    const t = field.trim();
-    if (t.includes('@')) return t.toLowerCase();
-    return undefined;
+  let pat = options.pat?.trim() || process.env.AZURE_DEVOPS_PAT?.trim() || '';
+  if (!pat && integration?.patEncrypted) {
+    pat = decryptSecret(integration.patEncrypted);
   }
-  if (typeof field === 'object' && 'uniqueName' in (field as object)) {
-    const u = field as { uniqueName?: string };
-    const name = (u.uniqueName || '').trim();
-    if (name.includes('@')) return name.toLowerCase();
+
+  if (!org || !adoProject || !pat) {
+    throw new Error(
+      'Azure DevOps org, project, and PAT are required (configure in Azure DevOps sync or enter here)'
+    );
   }
-  return undefined;
+
+  return { org, adoProject, pat };
 }
 
-function mapPriority(p: unknown): string {
-  if (typeof p === 'number' && Number.isFinite(p)) {
-    if (p === 1) return 'Highest';
-    if (p === 2) return 'High';
-    if (p === 3) return 'Medium';
-    if (p === 4) return 'Low';
+async function reportProgress(
+  options: AzureDevOpsImportOptions,
+  message: string
+): Promise<void> {
+  if (options.onProgress) {
+    await options.onProgress(message);
   }
-  if (typeof p === 'string' && p.trim()) return p.trim();
-  return 'Medium';
 }
 
-function parseTags(tags: unknown): string[] {
-  if (typeof tags !== 'string' || !tags.trim()) return [];
-  return tags
-    .split(/[;,]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-function chunk<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
-}
-
-function buildAdoWorkItemUrl(org: string, adoProject: string, id: number): string {
-  return `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(adoProject)}/_workitems/edit/${id}`;
-}
-
-function getParentAdoId(item: AdoWorkItem): number | undefined {
-  const rels = item.relations;
-  if (!rels?.length) return undefined;
-  for (const r of rels) {
-    if (r.rel === 'System.LinkTypes.Hierarchy-Reverse') {
-      const pid = extractIdFromWorkItemUrl(r.url);
-      if (pid != null) return pid;
-    }
-  }
-  return undefined;
-}
-
-async function wiqlQuery(
-  baseUrl: string,
-  org: string,
-  adoProject: string,
-  pat: string,
-  query: string
-): Promise<number[]> {
-  const url = `${baseUrl}/${encodeURIComponent(org)}/${encodeURIComponent(adoProject)}/_apis/wit/wiql?api-version=${API_VERSION}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: adoAuthHeader(pat),
-    body: JSON.stringify({ query }),
-  });
-  if (!res.ok) throw new Error(`WIQL failed ${res.status}: ${await res.text()}`);
-  const data = (await res.json()) as { workItems?: Array<{ id: number }> };
-  return (data.workItems || []).map((w) => w.id);
-}
-
-async function getWorkItemsByIds(
-  baseUrl: string,
-  org: string,
-  adoProject: string,
-  pat: string,
-  ids: number[]
-): Promise<AdoWorkItem[]> {
-  if (ids.length === 0) return [];
-  const idParam = ids.join(',');
-  const url = `${baseUrl}/${encodeURIComponent(org)}/${encodeURIComponent(adoProject)}/_apis/wit/workitems?ids=${idParam}&$expand=all&api-version=${API_VERSION}`;
-  const res = await fetch(url, { headers: adoAuthHeader(pat) });
-  if (!res.ok) throw new Error(`Get work items failed ${res.status}: ${await res.text()}`);
-  const data = (await res.json()) as { value?: AdoWorkItem[] };
-  return data.value || [];
+export async function getAdoMappingForProject(projectId: string) {
+  const integration = await ProjectAdoIntegration.findOne({ projectId }).lean();
+  return {
+    statusMap: (integration?.statusMap ?? {}) as Record<string, string>,
+    typeMap: (integration?.typeMap ?? {}) as Record<string, string>,
+    defaultWorkItemType: integration?.defaultWorkItemType ?? 'Task',
+  };
 }
 
 async function resolveTaskflowProject(
@@ -154,17 +112,12 @@ export async function runAzureDevOpsImport(
   projectIdOrKey: string,
   options: AzureDevOpsImportOptions
 ): Promise<AzureDevOpsImportResult> {
-  const org = options.org?.trim() || process.env.AZURE_DEVOPS_ORG?.trim();
-  const adoProject = options.adoProject?.trim() || process.env.AZURE_DEVOPS_PROJECT?.trim();
-  const pat = options.pat?.trim() || process.env.AZURE_DEVOPS_PAT?.trim();
-  if (!org || !adoProject || !pat) {
-    throw new Error('Azure DevOps org, project, and PAT are required');
-  }
+  const tfProject = await resolveTaskflowProject(projectIdOrKey);
+  const { org, adoProject, pat } = await resolveAdoCredentialsForProject(String(tfProject._id), options);
   if (!options.reporterEmail?.trim()) {
     throw new Error('Reporter email is required');
   }
 
-  const tfProject = await resolveTaskflowProject(projectIdOrKey);
   const reporter = await User.findOne({ email: options.reporterEmail.toLowerCase() })
     .select('_id enabled')
     .lean();
@@ -172,87 +125,131 @@ export async function runAzureDevOpsImport(
   if (reporter.enabled === false) throw new Error(`Reporter user is disabled: ${options.reporterEmail}`);
   const reporterId = String(reporter._id);
 
-  const baseUrl = 'https://dev.azure.com';
+  const conn: AdoConnection = { org, adoProject, pat };
+  await reportProgress(options, `Connecting to Azure DevOps org "${org}", project "${adoProject}"…`);
+
   const wiql =
     options.wiql?.trim() ||
     process.env.DEFAULT_WIQL?.trim() ||
     `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${escapeWiqlString(adoProject)}'`;
 
-  const allIds = await wiqlQuery(baseUrl, org, adoProject, pat, wiql);
+  const allIds = await wiqlQuery(conn, wiql);
+  await reportProgress(options, `Found ${allIds.length} work item(s) in Azure DevOps.`);
+
   const items: AdoWorkItem[] = [];
   for (const idChunk of chunk(allIds, WORKITEMS_CHUNK)) {
-    const batch = (await getWorkItemsByIds(baseUrl, org, adoProject, pat, idChunk)).filter(
+    const batch = (await getWorkItemsByIds(conn, idChunk)).filter(
       (w): w is AdoWorkItem => w != null && typeof w.id === 'number'
     );
     items.push(...batch);
+    if (items.length % 200 === 0 || items.length === allIds.length) {
+      await reportProgress(options, `Loaded ${items.length}/${allIds.length} work item details…`);
+    }
   }
 
   const dryRun = !!options.dryRun;
+  await reportProgress(
+    options,
+    dryRun ? 'Dry run — simulating import…' : `Importing ${items.length} work item(s)…`
+  );
+
   const skipExisting = !!options.skipExisting;
   const adoIdToMongoId = new Map<number, string>();
   const skipped = { existing: 0, errors: 0 };
   let created = 0;
+  let updated = 0;
+  let historyImported = 0;
+  let attachmentsImported = 0;
+  const touchedIssueIds = new Set<string>();
 
-  for (const item of items) {
+  const mapping = await getAdoMappingForProject(String(tfProject._id));
+  const projectIdStr = String(tfProject._id);
+
+  async function syncAdoIssueExtras(
+    issueId: string,
+    workItem: AdoWorkItem,
+    uploaderId: string
+  ): Promise<void> {
+    try {
+      historyImported += await syncAdoHistoryToIssue(issueId, { backfill: true });
+    } catch {
+      /* skip history import errors */
+    }
+    try {
+      attachmentsImported += await syncAdoAttachmentsToIssue(issueId, workItem, conn, uploaderId);
+    } catch {
+      /* skip attachment import errors */
+    }
+  }
+
+  for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
+    const item = items[itemIndex];
     const adoId = item.id;
-    const fields = item.fields || {};
-    const title = String(fields['System.Title'] ?? '(no title)').trim() || '(no title)';
+    const adoUrl = buildAdoWorkItemUrl(org, adoProject, adoId);
+    const itemTitle = String(item.fields?.['System.Title'] ?? adoId).slice(0, 60);
+    if (itemIndex === 0 || (itemIndex + 1) % 25 === 0 || itemIndex + 1 === items.length) {
+      await reportProgress(options, `Processing ${itemIndex + 1}/${items.length}: #${adoId} ${itemTitle}`);
+    }
 
-    if (skipExisting && !dryRun) {
-      const exists = await Issue.findOne({
-        project: tfProject._id,
-        'customFieldValues.adoWorkItemId': adoId,
-      })
-        .select('_id')
-        .lean();
-      if (exists) {
-        adoIdToMongoId.set(adoId, String(exists._id));
+    const existing = !dryRun
+      ? await Issue.findOne({
+          project: tfProject._id,
+          'customFieldValues.adoWorkItemId': adoId,
+        })
+          .select('_id customFieldValues')
+          .lean()
+      : null;
+
+    if (existing) {
+      adoIdToMongoId.set(adoId, String(existing._id));
+
+      if (skipExisting) {
         skipped.existing++;
+        if (!dryRun) {
+          await syncAdoIssueExtras(String(existing._id), item, reporterId);
+        }
         continue;
       }
+
+      if (dryRun) {
+        updated++;
+        continue;
+      }
+
+      try {
+        const updateBody = await adoWorkItemToUpdateBody(item, mapping, projectIdStr);
+        const mergedCustom = {
+          ...((existing.customFieldValues as Record<string, unknown>) ?? {}),
+          ...((updateBody.customFieldValues as Record<string, unknown>) ?? {}),
+          adoWorkItemId: adoId,
+          adoUrl,
+        };
+        delete updateBody.customFieldValues;
+
+        await issuesService.update(
+          String(existing._id),
+          { ...updateBody, customFieldValues: mergedCustom },
+          reporterId,
+          { syncOrigin: 'ado' }
+        );
+        const issueId = String(existing._id);
+        touchedIssueIds.add(issueId);
+        const uploaderId =
+          typeof updateBody.reporter === 'string' ? updateBody.reporter : reporterId;
+        await syncAdoIssueExtras(issueId, item, uploaderId);
+        updated++;
+      } catch {
+        skipped.errors++;
+      }
+      continue;
     }
 
-    const description =
-      typeof fields['System.Description'] === 'string' ? (fields['System.Description'] as string) : '';
-    const status = String(fields['System.State'] ?? 'Backlog');
-    const type = String(fields['System.WorkItemType'] ?? 'Task');
-    const priority = mapPriority(fields['Microsoft.VSTS.Common.Priority']);
-
-    let assigneeId: string | undefined;
-    const assigneeEmail = parseIdentityEmail(fields['System.AssignedTo']);
-    if (assigneeEmail) {
-      const u = await User.findOne({ email: assigneeEmail }).select('_id enabled').lean();
-      if (u?._id && u.enabled !== false) assigneeId = String(u._id);
-    }
-
-    const labels = parseTags(fields['System.Tags']);
-    let storyPoints: number | undefined;
-    const sp = fields['Microsoft.VSTS.Scheduling.StoryPoints'];
-    if (typeof sp === 'number' && Number.isFinite(sp)) storyPoints = sp;
-
-    let timeEstimateMinutes: number | undefined;
-    const rem = fields['Microsoft.VSTS.Scheduling.RemainingWork'];
-    if (typeof rem === 'number' && Number.isFinite(rem) && rem > 0) {
-      timeEstimateMinutes = Math.round(rem * 60);
-    }
-
-    const body: CreateIssueBody = {
-      title,
-      description,
-      type,
-      priority,
-      status,
-      assignee: assigneeId,
-      project: String(tfProject._id),
-      boardColumn: status,
-      labels,
-      storyPoints,
-      timeEstimateMinutes,
-      customFieldValues: {
-        adoWorkItemId: adoId,
-        adoUrl: buildAdoWorkItemUrl(org, adoProject, adoId),
-      },
-    };
+    const body: CreateIssueBody = await adoWorkItemToCreateBody(
+      item,
+      projectIdStr,
+      mapping,
+      adoUrl
+    );
 
     if (dryRun) {
       adoIdToMongoId.set(adoId, `dry-${adoId}`);
@@ -261,9 +258,12 @@ export async function runAzureDevOpsImport(
     }
 
     try {
-      const doc = await issuesService.create(body, reporterId);
+      const doc = await issuesService.create(body, reporterId, { syncOrigin: 'ado' });
       const mid = String((doc as { _id?: unknown })._id);
       adoIdToMongoId.set(adoId, mid);
+      touchedIssueIds.add(mid);
+      const uploaderId = body.reporter ?? reporterId;
+      await syncAdoIssueExtras(mid, item, uploaderId);
       created++;
     } catch {
       skipped.errors++;
@@ -271,14 +271,20 @@ export async function runAzureDevOpsImport(
   }
 
   if (dryRun) {
-    return {
+    const dryResult = {
       created,
+      updated,
       skippedExisting: skipped.existing,
       errors: skipped.errors,
       parentsSet: 0,
       linksCreated: 0,
       dryRun: true,
+      touchedIssueIds: [] as string[],
+      historyImported: 0,
+      attachmentsImported: 0,
     };
+    await finalizeAdoImportReport(options, dryResult);
+    return dryResult;
   }
 
   let parentsSet = 0;
@@ -289,7 +295,7 @@ export async function runAzureDevOpsImport(
     const parentMongo = adoIdToMongoId.get(parentAdo);
     if (!parentMongo) continue;
     try {
-      await issuesService.update(childMongo, { parent: parentMongo }, reporterId);
+      await issuesService.update(childMongo, { parent: parentMongo }, reporterId, { syncOrigin: 'ado' });
       parentsSet++;
     } catch {
       /* skip */
@@ -327,12 +333,29 @@ export async function runAzureDevOpsImport(
     }
   }
 
-  return {
+  const finalResult = {
     created,
+    updated,
     skippedExisting: skipped.existing,
     errors: skipped.errors,
     parentsSet,
     linksCreated,
     dryRun: false,
+    touchedIssueIds: [...touchedIssueIds],
+    historyImported,
+    attachmentsImported,
   };
+  await finalizeAdoImportReport(options, finalResult);
+  return finalResult;
+}
+
+async function finalizeAdoImportReport(
+  options: AzureDevOpsImportOptions,
+  summary: AzureDevOpsImportResult
+): Promise<void> {
+  await reportProgress(
+    options,
+    `Done — created: ${summary.created}, updated: ${summary.updated}, skipped: ${summary.skippedExisting}, ` +
+      `history: ${summary.historyImported}, attachments: ${summary.attachmentsImported}, errors: ${summary.errors}`
+  );
 }

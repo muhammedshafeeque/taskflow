@@ -26,6 +26,7 @@ import { ApiError } from '../../utils/ApiError';
 import { logAudit } from '../auditLogs/logAudit';
 import * as analyticsService from '../analytics/analytics.service';
 import * as issueHierarchyService from './issueHierarchy.service';
+import { getAdoHistoryForIssue, syncAdoHistoryToIssue } from '../integrations/ado/adoWorkItemHistory.service';
 
 export async function createIssue(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
   const reporterId = req.user?.id;
@@ -337,9 +338,23 @@ export async function getIssueRollup(req: Request & { user?: AuthPayload }, res:
 export async function getIssueHistory(req: Request, res: Response): Promise<void> {
   const issue = await issuesService.findById(req.params.id);
   if (!issue) throw new ApiError(404, 'Issue not found');
+
+  const custom = (issue as { customFieldValues?: Record<string, unknown> }).customFieldValues;
+  if (typeof custom?.adoWorkItemId === 'number') {
+    await syncAdoHistoryToIssue(req.params.id).catch(() => {});
+  }
+
   const page = parseInt(String(req.query.page), 10) || 1;
   const limit = Math.min(parseInt(String(req.query.limit), 10) || 50, 100);
   const result = await issueHistoryService.findByIssue(req.params.id, { page, limit });
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function getIssueAdoHistory(req: Request, res: Response): Promise<void> {
+  const issue = await issuesService.findById(req.params.id);
+  if (!issue) throw new ApiError(404, 'Issue not found');
+  const limit = Math.min(parseInt(String(req.query.limit), 10) || 100, 200);
+  const result = await getAdoHistoryForIssue(req.params.id, { limit });
   res.status(200).json({ success: true, data: result });
 }
 

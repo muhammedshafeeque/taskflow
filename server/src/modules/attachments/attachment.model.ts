@@ -7,6 +7,7 @@ export interface IAttachment extends Document {
   mimeType: string;
   size: number;
   uploadedBy: mongoose.Types.ObjectId;
+  adoAttachmentId?: string;
   createdAt: Date;
 }
 
@@ -18,10 +19,12 @@ const attachmentSchema = new Schema<IAttachment>(
     mimeType: { type: String, required: true },
     size: { type: Number, required: true },
     uploadedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    adoAttachmentId: { type: String },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );
 
 attachmentSchema.index({ issue: 1 });
+attachmentSchema.index({ issue: 1, adoAttachmentId: 1 }, { unique: true, sparse: true });
 
 export const Attachment = mongoose.model<IAttachment>('Attachment', attachmentSchema);

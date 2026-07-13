@@ -112,6 +112,7 @@ export async function getImportJob(req: Request & { user?: AuthPayload }, res: R
       status: job.status,
       dryRun: job.dryRun,
       progress: job.progress,
+      logs: job.logs ?? [],
       result: job.result,
       error: job.error,
       createdAt: job.createdAt,

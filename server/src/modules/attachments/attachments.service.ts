@@ -44,6 +44,35 @@ export async function create(
   return populated ?? doc.toObject();
 }
 
+export async function createFromAdoSync(
+  issueId: string,
+  userId: string,
+  data: {
+    url: string;
+    originalName: string;
+    mimeType: string;
+    size: number;
+    adoAttachmentId: string;
+  }
+): Promise<boolean> {
+  const existing = await Attachment.findOne({
+    issue: issueId,
+    adoAttachmentId: data.adoAttachmentId,
+  }).lean();
+  if (existing) return false;
+
+  await Attachment.create({
+    issue: issueId,
+    url: data.url,
+    originalName: data.originalName,
+    mimeType: data.mimeType,
+    size: data.size,
+    uploadedBy: userId,
+    adoAttachmentId: data.adoAttachmentId,
+  });
+  return true;
+}
+
 export async function remove(
   attachmentId: string,
   issueId: string,

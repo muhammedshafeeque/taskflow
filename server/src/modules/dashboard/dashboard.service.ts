@@ -6,6 +6,7 @@ import { ProjectMember } from '../projects/projectMember.model';
 import { User } from '../auth/user.model';
 import { WorkLog } from '../workLogs/workLog.model';
 import { ApiError } from '../../utils/ApiError';
+import { syncAdoHistoryForProject } from '../integrations/ado/adoWorkItemHistory.service';
 import type { ReportFilters } from '../reports/reportFilters';
 import { buildIssueMatch } from '../reports/reportFilters';
 import { getClosedStatusNamesForProject, getClosedStatusNamesFromStatuses } from '../projects/statusClassification';
@@ -915,6 +916,14 @@ export async function getPerformanceReport(
   const targetObjectIds = uniqueTargets.map((id) => new mongoose.Types.ObjectId(id));
   const { startDay, endDay } = normalizeDayRange(from, to);
 
+  if (projectObjectIds.length <= 3) {
+    await Promise.all(
+      projectObjectIds.map((pid) =>
+        syncAdoHistoryForProject(String(pid), undefined, { backfill: true }).catch(() => {})
+      )
+    );
+  }
+
   type PairKey = string;
   const pairMap = new Map<
     PairKey,
@@ -969,9 +978,13 @@ export async function getPerformanceReport(
     historyCount: number;
   }>([
     {
+      $addFields: {
+        effectiveAt: { $ifNull: ['$activityAt', '$createdAt'] },
+      },
+    },
+    {
       $match: {
-        author: { $in: targetObjectIds },
-        createdAt: { $gte: startDay, $lte: endDay },
+        effectiveAt: { $gte: startDay, $lte: endDay },
       },
     },
     {
@@ -985,8 +998,25 @@ export async function getPerformanceReport(
     { $unwind: '$issue' },
     { $match: { 'issue.project': { $in: projectObjectIds } } },
     {
+      $addFields: {
+        creditedUser: {
+          $cond: {
+            if: {
+              $and: [
+                { $eq: ['$source', 'ado'] },
+                { $ne: [{ $ifNull: ['$issue.assignee', null] }, null] },
+              ],
+            },
+            then: '$issue.assignee',
+            else: '$author',
+          },
+        },
+      },
+    },
+    { $match: { creditedUser: { $in: targetObjectIds } } },
+    {
       $group: {
-        _id: { author: '$author', issue: '$issue._id' },
+        _id: { author: '$creditedUser', issue: '$issue._id' },
         historyCount: { $sum: 1 },
       },
     },
