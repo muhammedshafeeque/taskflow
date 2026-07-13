@@ -66,7 +66,6 @@ async function getGraphAccessToken(): Promise<string> {
 
 async function sendViaGraph(to: string, subject: string, html: string): Promise<void> {
   const accessToken = await getGraphAccessToken();
-  console.log('accessToken', accessToken);
   const fromEmail = env.azureGraphFromEmail;
 
   const payload = {

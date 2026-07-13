@@ -3,6 +3,7 @@ import app from "./app";
 import { connectDb } from "./config/db";
 import { env, validateRuntimeConfig } from "./config/env";
 import { initWebSocket } from "./websocket";
+import { startAdoAutoSyncScheduler } from "./modules/integrations/ado/adoAutoSync.scheduler";
 
 async function startServer() {
   try {
@@ -12,6 +13,7 @@ async function startServer() {
     const server = http.createServer(app);
 
     initWebSocket(server);
+    startAdoAutoSyncScheduler();
 
     server.listen(env.port, () => {
       console.log(`Server running on port ${env.port}`);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsApi, type ImportJobStatus, type Project } from '../lib/api';
+import { projectsApi, type AdoImportResult, type ImportJobStatus, type Project } from '../lib/api';
 
 type Source = 'ado' | 'csv' | 'jira';
 
@@ -31,6 +31,13 @@ export default function ProjectImport() {
     if (!token || !projectId) return;
     projectsApi.get(projectId, token).then((res) => {
       if (res.success && res.data) setProject(res.data);
+    });
+    projectsApi.getAdoIntegration(projectId, token).then((res) => {
+      if (!res.success || !res.data) return;
+      const d = res.data;
+      if (d.org) setAdoOrg(d.org);
+      if (d.adoProject) setAdoProject(d.adoProject);
+      if (d.hasPat || d.org || d.adoProject) setSource('ado');
     });
   }, [token, projectId]);
 
@@ -112,6 +119,36 @@ export default function ProjectImport() {
     reader.readAsText(file);
   }
 
+  function renderImportResult(result: unknown) {
+    if (!result || typeof result !== 'object') return null;
+    const r = result as AdoImportResult;
+    const rows: Array<[string, number]> = [
+      ['Created', r.created],
+      ['Updated', r.updated],
+      ['Skipped (existing)', r.skippedExisting],
+      ['History imported', r.historyImported ?? 0],
+      ['Attachments imported', r.attachmentsImported ?? 0],
+      ['Parent links set', r.parentsSet ?? 0],
+      ['Related links', r.linksCreated ?? 0],
+      ['Errors', r.errors],
+    ];
+    return (
+      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {rows.map(([label, value]) => (
+          <div
+            key={label}
+            className="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2"
+          >
+            <p className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">{label}</p>
+            <p className="text-lg font-semibold tabular-nums text-[color:var(--text-primary)]">{value}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const jobRunning = job?.status === 'pending' || job?.status === 'running';
+
   return (
     <div className="flex-1 min-h-0 p-6 max-w-3xl">
       <div className="mb-6">
@@ -146,18 +183,21 @@ export default function ProjectImport() {
         </label>
 
         <label className="block text-xs">
-          <span className="text-[color:var(--text-muted)]">Reporter email (creator on imported issues)</span>
+          <span className="text-[color:var(--text-muted)]">Reporter email (Taskflow user for import audit only)</span>
           <input
             type="email"
             value={reporterEmail}
             onChange={(e) => setReporterEmail(e.target.value)}
             className="mt-1 w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
           />
+          <p className="mt-1 text-[10px] text-[color:var(--text-muted)]">
+            Does not filter which tasks are imported. ADO imports all work items in the project; assignees are mapped from ADO when the user exists in Taskflow.
+          </p>
         </label>
 
         <label className="flex items-center gap-2 text-xs text-[color:var(--text-primary)]">
           <input type="checkbox" checked={skipExisting} onChange={(e) => setSkipExisting(e.target.checked)} />
-          Skip items already imported (external id)
+          Skip already-imported items (uncheck to update existing tasks from ADO)
         </label>
 
         {source === 'csv' && (
@@ -177,7 +217,11 @@ export default function ProjectImport() {
         )}
 
         {source === 'ado' && (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-3">
+            <p className="text-xs text-[color:var(--text-muted)]">
+              Imports <strong>all work items</strong> in the ADO project (not filtered by user). Uses saved Azure DevOps sync credentials if fields are left empty. No notification emails are sent during import.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
             <input
               placeholder="Organization (or env AZURE_DEVOPS_ORG)"
               value={adoOrg}
@@ -198,12 +242,13 @@ export default function ProjectImport() {
               className="rounded-md border border-[color:var(--border-subtle)] px-3 py-2 text-sm sm:col-span-2"
             />
             <textarea
-              placeholder="Optional WIQL"
+              placeholder="Optional WIQL (leave empty to import all project work items)"
               value={adoWiql}
               onChange={(e) => setAdoWiql(e.target.value)}
               rows={2}
               className="sm:col-span-2 rounded-md border border-[color:var(--border-subtle)] px-3 py-2 text-xs font-mono"
             />
+          </div>
           </div>
         )}
 
@@ -259,16 +304,47 @@ export default function ProjectImport() {
           </pre>
         )}
         {job && (
-          <div className="text-sm border-t border-[color:var(--border-subtle)] pt-3">
-            <p>
-              Job <span className="font-mono text-xs">{job.jobId}</span> — {job.status}
-            </p>
-            {job.progress && <p className="text-[color:var(--text-muted)]">{job.progress}</p>}
+          <div className="text-sm border-t border-[color:var(--border-subtle)] pt-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                  job.status === 'completed'
+                    ? 'bg-green-500/15 text-green-600'
+                    : job.status === 'failed'
+                      ? 'bg-red-500/15 text-red-600'
+                      : jobRunning
+                        ? 'bg-blue-500/15 text-blue-600'
+                        : 'bg-[color:var(--bg-elevated)] text-[color:var(--text-muted)]'
+                }`}
+              >
+                {job.status}
+              </span>
+              <span className="font-mono text-xs text-[color:var(--text-muted)]">{job.jobId}</span>
+            </div>
+            {job.progress && (
+              <p className="text-[color:var(--text-primary)] font-medium">{job.progress}</p>
+            )}
+            {jobRunning && (
+              <p className="text-xs text-[color:var(--text-muted)] animate-pulse">Import in progress…</p>
+            )}
             {job.error && <p className="text-red-500">{job.error}</p>}
-            {job.result != null && (
-              <pre className="text-[11px] mt-2 bg-[color:var(--bg-page)] p-3 rounded-md overflow-auto max-h-48">
-                {JSON.stringify(job.result, null, 2)}
-              </pre>
+            {(job.logs?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-xs font-medium text-[color:var(--text-muted)] mb-1">Import log</p>
+                <div className="max-h-56 overflow-y-auto rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] p-3 font-mono text-[11px] leading-relaxed space-y-0.5">
+                  {job.logs!.map((line, i) => (
+                    <div key={`${i}-${line}`} className="text-[color:var(--text-primary)]">
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {job.result != null && job.status === 'completed' && (
+              <div>
+                <p className="text-xs font-medium text-[color:var(--text-muted)] mb-1">Summary</p>
+                {renderImportResult(job.result)}
+              </div>
             )}
           </div>
         )}

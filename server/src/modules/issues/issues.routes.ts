@@ -6,6 +6,7 @@ import {
   getIssueById,
   getIssueByKey,
   getIssueHistory,
+  getIssueAdoHistory,
   getSubtasks,
   getIssueRollup,
   getIssueLinks,
@@ -69,6 +70,7 @@ const estimateApprove = requireIssuePermission(PROJECT_PERMISSIONS.ISSUE.ESTIMAT
 const estimateView = requireIssuePermission(PROJECT_PERMISSIONS.ISSUE.ESTIMATE.VIEW);
 
 router.get('/:id/history', ...issueIdParamHandler, readIssue, asyncHandler(getIssueHistory));
+router.get('/:id/ado-history', ...issueIdParamHandler, readIssue, asyncHandler(getIssueAdoHistory));
 router.get('/:id/subtasks', ...issueIdParamHandler, readIssue, asyncHandler(getSubtasks));
 router.get('/:id/rollup', ...issueIdParamHandler, readIssue, asyncHandler(getIssueRollup));
 router.get('/:id/links', ...issueIdParamHandler, readIssue, asyncHandler(getIssueLinks));

@@ -16,6 +16,7 @@ const importJobSchema = new mongoose.Schema(
     dryRun: { type: Boolean, default: false },
     options: { type: mongoose.Schema.Types.Mixed },
     progress: { type: String },
+    logs: { type: [String], default: [] },
     result: { type: mongoose.Schema.Types.Mixed },
     error: { type: String },
   },

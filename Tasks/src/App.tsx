@@ -46,6 +46,7 @@ import ProjectDashboard from './pages/ProjectDashboard';
 import ProjectSettings from './pages/ProjectSettings';
 import EstimateApprovals from './pages/EstimateApprovals';
 import ProjectImport from './pages/ProjectImport';
+import ProjectAdoSync from './pages/ProjectAdoSync';
 import IssueLinkGraph from './pages/IssueLinkGraph';
 import Versions from './pages/Versions';
 import Timesheet from './pages/Timesheet';
@@ -135,6 +136,7 @@ function AppRoutes() {
           <Route path="issues/:ticketId" element={<IssueDetail />} />
           <Route path="link-graph" element={<IssueLinkGraph />} />
           <Route path="import" element={<ProjectImport />} />
+          <Route path="ado-sync" element={<ProjectAdoSync />} />
           <Route path="boards" element={<Boards />} />
           <Route path="backlog" element={<Backlog />} />
           <Route path="sprints" element={<Sprints />} />

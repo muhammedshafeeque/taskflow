@@ -31,6 +31,7 @@ import { customerProjectMappingRoutes } from '../modules/customer-portal/custome
 import { customerRequestRoutes } from '../modules/customer-portal/customer-request/customerRequest.routes';
 import { customerAuthRoutes } from '../modules/customer-portal/customer-auth/customerAuth.routes';
 import { organizationsRoutes } from '../modules/organizations/organizations.routes';
+import { webhooksRoutes } from './webhooks.routes';
 
 const router = Router();
 
@@ -70,6 +71,7 @@ router.use('/analytics', analyticsRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/notifications', notificationsRoutes);
 router.use('/uploads', uploadsRoutes);
+router.use('/webhooks', webhooksRoutes);
 
 // Customer Portal routes
 router.use('/customer/auth', customerAuthRoutes);

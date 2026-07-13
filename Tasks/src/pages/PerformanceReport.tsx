@@ -189,8 +189,10 @@ export default function PerformanceReport() {
         <h1 className="text-2xl font-semibold text-[color:var(--text-primary)]">Performance report</h1>
         <p className="text-sm text-[color:var(--text-muted)] mt-1">
           One row per teammate and issue with activity in the date range.{' '}
-          <span className="font-medium text-[color:var(--text-primary)]">Updates</span> counts every issue history event
-          (including creation) plus each work-log entry;{' '}
+          <span className="font-medium text-[color:var(--text-primary)]">Updates</span> counts issue history (including
+          imported Azure DevOps changes credited to the assignee) plus work-log entries in the date range; run{' '}
+          <span className="font-medium text-[color:var(--text-primary)]">Azure DevOps sync</span> to import DevOps
+          history first.
           <span className="font-medium text-[color:var(--text-primary)]">Time logged</span> sums only logs dated in the
           range. Leave projects empty to include all your projects.
         </p>

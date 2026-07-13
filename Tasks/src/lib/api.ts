@@ -615,6 +615,50 @@ export const projectsApi = {
   getImportJob: (projectId: string, jobId: string, token: string) =>
     api.get<ImportJobStatus>(`/projects/${projectId}/imports/${jobId}`, token),
 
+  getAdoIntegration: (projectId: string, token: string) =>
+    api.get<AdoIntegrationConfig>(`/projects/${projectId}/ado-integration`, token),
+
+  saveAdoIntegration: (
+    projectId: string,
+    body: {
+      enabled: boolean;
+      org: string;
+      adoProject: string;
+      pat?: string;
+      statusMap?: Record<string, string>;
+      typeMap?: Record<string, string>;
+      defaultWorkItemType?: string;
+      autoSyncEnabled?: boolean;
+      autoSyncIntervalMinutes?: number;
+    },
+    token: string
+  ) => api.put<AdoIntegrationConfig>(`/projects/${projectId}/ado-integration`, body, token),
+
+  testAdoIntegration: (
+    projectId: string,
+    body: { org: string; adoProject: string; pat?: string },
+    token: string
+  ) =>
+    api.post<{ ok: boolean; states: string[]; types: string[] }>(
+      `/projects/${projectId}/ado-integration/test`,
+      body,
+      token
+    ),
+
+  runAdoSyncNow: (projectId: string, token: string) =>
+    api.post<{
+      created: number;
+      updated: number;
+      skippedExisting: number;
+      errors: number;
+      historyImported?: number;
+      attachmentsImported?: number;
+    }>(
+      `/projects/${projectId}/ado-integration/sync`,
+      {},
+      token
+    ),
+
   getResolvedCustomFields: (projectId: string, issueType: string, token: string) =>
     api.get<ResolvedCustomField[]>(
       `/projects/${projectId}/resolved-fields?issueType=${encodeURIComponent(issueType)}`,
@@ -1310,10 +1354,40 @@ export interface ImportJobStatus {
   status: string;
   dryRun?: boolean;
   progress?: string;
+  logs?: string[];
   result?: unknown;
   error?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface AdoImportResult {
+  created: number;
+  updated: number;
+  skippedExisting: number;
+  errors: number;
+  parentsSet?: number;
+  linksCreated?: number;
+  historyImported?: number;
+  attachmentsImported?: number;
+  dryRun?: boolean;
+}
+
+export interface AdoIntegrationConfig {
+  enabled: boolean;
+  org: string;
+  adoProject: string;
+  hasPat: boolean;
+  statusMap: Record<string, string>;
+  typeMap: Record<string, string>;
+  defaultWorkItemType: string;
+  webhookUrl: string;
+  webhookSecret?: string;
+  lastSyncedAt?: string;
+  lastWebhookAt?: string;
+  lastAutoSyncAt?: string;
+  autoSyncEnabled?: boolean;
+  autoSyncIntervalMinutes?: number;
 }
 
 export interface Issue {
@@ -1433,6 +1507,11 @@ export const issuesApi = {
       `/issues/${issueId}/history?page=${page}&limit=${limit}`,
       token
     ),
+  getAdoHistory: (issueId: string, token: string, limit = 100) =>
+    api.get<IssueAdoHistoryResponse>(
+      `/issues/${issueId}/ado-history?limit=${limit}`,
+      token
+    ),
   getSubtasks: (issueId: string, token: string) =>
     api.get<Issue[]>(`/issues/${issueId}/subtasks`, token),
   getLinks: (issueId: string, token: string) =>
@@ -1549,6 +1628,27 @@ export interface IssueHistoryItem {
   toValue?: string;
   commentId?: string;
   commentBody?: string;
+  source?: 'taskflow' | 'ado';
+  adoRev?: number;
+}
+
+export interface AdoWorkItemHistoryItem {
+  _id: string;
+  source: 'azure_devops';
+  rev: number;
+  action: 'created' | 'field_change';
+  author: { name: string; email?: string };
+  createdAt: string;
+  field?: string;
+  fromValue?: string;
+  toValue?: string;
+  adoWorkItemId: number;
+}
+
+export interface IssueAdoHistoryResponse {
+  items: AdoWorkItemHistoryItem[];
+  adoWorkItemId?: number;
+  adoUrl?: string;
 }
 
 /* Comments */

@@ -1395,6 +1395,12 @@ export default function ProjectSettings() {
                   >
                     Import issues (ADO / CSV / Jira)
                   </Link>
+                  <Link
+                    to={`/projects/${projectId}/ado-sync`}
+                    className="text-xs text-[color:var(--accent)] hover:underline font-medium"
+                  >
+                    Azure DevOps sync
+                  </Link>
                 </div>
               )}
             </div>

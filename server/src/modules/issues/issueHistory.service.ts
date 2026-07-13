@@ -11,6 +11,7 @@ const FIELD_LABELS: Record<string, string> = {
   priority: 'Priority',
   status: 'Status',
   assignee: 'Assignee',
+  reporter: 'Reporter',
   sprint: 'Sprint',
   boardColumn: 'Board Column',
   labels: 'Labels',
@@ -36,10 +37,12 @@ function formatValue(val: unknown): string {
 }
 
 export async function recordCreated(issueId: string, authorId: string): Promise<void> {
+  const now = new Date();
   await IssueHistory.create({
     issue: issueId,
     author: authorId,
     action: 'created',
+    activityAt: now,
   });
 }
 
@@ -49,6 +52,7 @@ export async function recordFieldChanges(
   changes: Array<{ field: string; fromValue: unknown; toValue: unknown }>
 ): Promise<void> {
   if (changes.length === 0) return;
+  const now = new Date();
   await IssueHistory.insertMany(
     changes.map(({ field, fromValue, toValue }) => ({
       issue: issueId,
@@ -57,6 +61,7 @@ export async function recordFieldChanges(
       field,
       fromValue,
       toValue,
+      activityAt: now,
     }))
   );
 }
@@ -112,6 +117,8 @@ export async function findByIssue(
     if (r.action === 'field_change' && r.field) {
       if (r.field === 'assignee' && r.fromValue) userIds.add(String(r.fromValue));
       if (r.field === 'assignee' && r.toValue) userIds.add(String(r.toValue));
+      if (r.field === 'reporter' && r.fromValue) userIds.add(String(r.fromValue));
+      if (r.field === 'reporter' && r.toValue) userIds.add(String(r.toValue));
       if (r.field === 'sprint' && r.fromValue) sprintIds.add(String(r.fromValue));
       if (r.field === 'sprint' && r.toValue) sprintIds.add(String(r.toValue));
     }
@@ -138,6 +145,8 @@ export async function findByIssue(
       action,
       author: { _id: String((r.author as { _id: unknown })?._id ?? ''), name: author },
       createdAt: (r as { createdAt: Date }).createdAt?.toISOString?.() ?? new Date().toISOString(),
+      source: (r as RawHistoryRow).source ?? 'taskflow',
+      adoRev: (r as RawHistoryRow).adoRev,
     };
     if ((r.action === 'comment_added' || r.action === 'comment_updated') && r.commentId) {
       item.commentId = String(r.commentId);
@@ -154,6 +163,10 @@ export async function findByIssue(
       let fromDisplay = formatValue(r.fromValue);
       let toDisplay = formatValue(r.toValue);
       if (r.field === 'assignee') {
+        if (r.fromValue) fromDisplay = userMap.get(String(r.fromValue)) ?? fromDisplay;
+        if (r.toValue) toDisplay = userMap.get(String(r.toValue)) ?? toDisplay;
+      }
+      if (r.field === 'reporter') {
         if (r.fromValue) fromDisplay = userMap.get(String(r.fromValue)) ?? fromDisplay;
         if (r.toValue) toDisplay = userMap.get(String(r.toValue)) ?? toDisplay;
       }
@@ -186,6 +199,8 @@ interface RawHistoryRow {
   toValue?: unknown;
   commentId?: unknown;
   createdAt?: Date;
+  source?: 'taskflow' | 'ado';
+  adoRev?: number;
 }
 
 export interface IssueHistoryItem {
@@ -198,4 +213,6 @@ export interface IssueHistoryItem {
   toValue?: string;
   commentId?: string;
   commentBody?: string;
+  source?: 'taskflow' | 'ado';
+  adoRev?: number;
 }

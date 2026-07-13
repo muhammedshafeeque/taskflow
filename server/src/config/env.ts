@@ -18,6 +18,7 @@ export const env = {
   mongodbUri: process.env.MONGODB_URI ?? 'mongodb://localhost:27017/pm-tool',
   jwtSecret: process.env.JWT_SECRET ?? 'dev-secret-change-me',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
+  integrationEncryptionKey: cleanEnvValue(process.env.INTEGRATION_ENCRYPTION_KEY),
   appUrl: process.env.APP_URL ?? 'http://localhost:5174',
   isPublicSignupEnabled: bool(process.env.IS_PUBLIC_SIGNUP_ENABLED),
   isEmailPasswordAuthEnabled: bool(process.env.IS_EMAIL_PASSWORD_AUTH_ENABLED),
