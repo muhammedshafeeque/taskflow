@@ -12,7 +12,7 @@ export default function ForgotPassword() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const res = await authApi.forgotPassword(email);
+    const res = await authApi.forgotPassword(email.trim());
     setLoading(false);
     if (res.success) setSent(true);
     else setError((res as { message?: string }).message ?? 'Request failed');

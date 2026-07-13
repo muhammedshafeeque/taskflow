@@ -1,5 +1,6 @@
 import {
   escapeHtml,
+  renderForgotPasswordEmail,
   renderIssueAssignedEmail,
   renderIssueStatusChangedEmail,
   renderProjectInviteEmail,
@@ -13,6 +14,18 @@ import {
 describe('notification email templates', () => {
   it('escapes HTML in user content', () => {
     expect(escapeHtml('<script>')).toBe('&lt;script&gt;');
+  });
+
+  it('renderForgotPasswordEmail uses shared layout and reset CTA', () => {
+    const html = renderForgotPasswordEmail({
+      name: 'Alex',
+      appUrl: 'https://app.example.com',
+      resetLink: 'https://app.example.com/reset-password?token=abc',
+    });
+    expect(html).toContain('Reset your TaskFlow password');
+    expect(html).toContain('Reset password');
+    expect(html).toContain('https://app.example.com/reset-password?token=abc');
+    expect(html).not.toContain('<script>');
   });
 
   it('renderIssueAssignedEmail includes issue key and CTA', () => {
