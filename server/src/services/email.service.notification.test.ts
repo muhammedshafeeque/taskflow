@@ -22,7 +22,7 @@ describe('notification email templates', () => {
       appUrl: 'https://app.example.com',
       resetLink: 'https://app.example.com/reset-password?token=abc',
     });
-    expect(html).toContain('Reset your TaskFlow password');
+    expect(html).toContain('Reset your Atrium password');
     expect(html).toContain('Reset password');
     expect(html).toContain('https://app.example.com/reset-password?token=abc');
     expect(html).not.toContain('<script>');

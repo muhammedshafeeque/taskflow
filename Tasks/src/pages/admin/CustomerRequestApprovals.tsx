@@ -251,7 +251,7 @@ type ViewMode = 'table' | 'card';
 
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: 'All' },
-  { value: 'pending_taskflow_approval', label: 'Pending TF Approval' },
+  { value: 'pending_taskflow_approval', label: 'Pending Atrium Approval' },
   { value: 'pending_customer_approval', label: 'Pending Customer Approval' },
   { value: 'ticket_created', label: 'Ticket Created' },
   { value: 'in_progress', label: 'In Progress' },

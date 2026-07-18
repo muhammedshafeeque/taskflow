@@ -269,7 +269,7 @@ export default function RequestDetail() {
     const tsStatus: StepStatus =
       ts.status === 'approved' ? 'completed' : ts.status === 'rejected' ? 'failed' : 'pending';
     steps.push({
-      label: 'TaskFlow Approval',
+      label: 'Atrium Approval',
       status: tsStatus,
       date: ts.reviewedAt,
       reviewer: ts.reviewedBy?.name,

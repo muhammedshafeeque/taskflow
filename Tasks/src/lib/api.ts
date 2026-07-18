@@ -1,7 +1,7 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 export const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:5000';
 
-/** Persisted active TaskFlow workspace; sent as `X-Organization-Id` on API requests. */
+/** Persisted active Atrium workspace; sent as `X-Organization-Id` on API requests. */
 export const TASKFLOW_ACTIVE_ORG_STORAGE_KEY = 'taskflow_active_organization_id';
 
 function taskflowOrgHeaders(): Record<string, string> {
@@ -117,14 +117,14 @@ export interface AuthUser {
   name: string;
   avatarUrl?: string;
   userType: 'taskflow' | 'customer';
-  // TaskFlow fields
+  // Atrium fields
   role?: string;
   roleId?: string;
   roleName?: string;
   permissions?: string[];
   mustChangePassword?: boolean;
   createdAt?: string;
-  /** Active TaskFlow workspace (JWT + UI). */
+  /** Active Atrium workspace (JWT + UI). */
   activeOrganizationId?: string;
   organizations?: TaskflowOrganizationSummary[];
   // Customer fields
@@ -1222,6 +1222,7 @@ export const usersApi = {
 export interface PermissionItem {
   code: string;
   label: string;
+  group?: string;
 }
 
 export interface Role {
@@ -2052,6 +2053,716 @@ export interface CreateOrgInput {
   description?: string;
 }
 
+// ── CRM API ────────────────────────────────────────────────────────────────
+export interface CrmAccount {
+  _id: string;
+  name: string;
+  type: string;
+  industry?: string;
+  website?: string;
+  size?: string;
+  tags?: string[];
+  ownerId?: string;
+  customerOrgId?: string;
+  notes?: string;
+  healthScore?: number;
+}
+
+export interface CrmContact {
+  _id: string;
+  accountId: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  title?: string;
+  department?: string;
+  isPrimary?: boolean;
+}
+
+export interface CrmLead {
+  _id: string;
+  title: string;
+  source: string;
+  status: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  companyName?: string;
+  notes?: string;
+  dealId?: string;
+  accountId?: string;
+}
+
+export interface CrmDeal {
+  _id: string;
+  title: string;
+  accountId: string | { _id: string; name: string; type?: string };
+  stageId: string;
+  pipelineId: string;
+  value: number;
+  currency: string;
+  probability: number;
+  status: string;
+  expectedCloseDate?: string;
+}
+
+export interface CrmPipeline {
+  _id: string;
+  name: string;
+  isDefault: boolean;
+  stages: Array<{ _id: string; name: string; order: number; probability: number; isWon?: boolean; isLost?: boolean }>;
+}
+
+export interface CrmQuote {
+  _id: string;
+  title: string;
+  dealId: string;
+  accountId?: string;
+  status: string;
+  subtotal: number;
+  currency: string;
+  lineItems?: Array<{ description: string; quantity: number; unitPrice: number; billingType?: string }>;
+  notes?: string;
+  validUntil?: string;
+}
+
+export interface CrmActivity {
+  _id: string;
+  type: string;
+  subject: string;
+  body?: string;
+  dueAt?: string;
+  completedAt?: string;
+  relatedType?: string;
+  relatedId?: string;
+}
+
+export interface CrmContract {
+  _id: string;
+  title: string;
+  accountId: string | { _id: string; name: string; type?: string };
+  kind?: 'msa' | 'retainer' | 'amc' | 'other';
+  value: number;
+  currency: string;
+  status: string;
+  billingCycle?: string;
+  startDate?: string;
+  endDate?: string;
+  renewalDate?: string;
+  autoRenew?: boolean;
+  hoursIncluded?: number;
+  hoursUsed?: number;
+  notes?: string;
+  projectId?: string;
+  slaPolicyId?: string | { _id: string; name: string };
+}
+
+export interface SlaPolicy {
+  _id: string;
+  name: string;
+  enabled: boolean;
+  targets?: Array<{ priority: string; firstResponseMinutes: number; resolutionMinutes: number }>;
+}
+
+export interface CrmWebhook {
+  _id: string;
+  name: string;
+  url: string;
+  events: string[];
+  enabled: boolean;
+  secret?: string;
+}
+
+export interface ServiceTicketComment {
+  authorId?: string;
+  authorName?: string;
+  body: string;
+  internal: boolean;
+  createdAt: string;
+}
+
+export interface ServiceTicket {
+  _id: string;
+  subject: string;
+  description?: string;
+  status: string;
+  priority: string;
+  queue: string;
+  assigneeId?: string | { _id: string; name?: string; email?: string };
+  accountId?: string | { _id: string; name?: string };
+  contractId?: string | { _id: string; title?: string };
+  slaPolicyId?: string;
+  firstResponseDueAt?: string;
+  resolutionDueAt?: string;
+  firstRespondedAt?: string;
+  resolvedAt?: string;
+  csatScore?: number;
+  comments?: ServiceTicketComment[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface KbArticle {
+  _id: string;
+  title: string;
+  slug: string;
+  category: string;
+  body: string;
+  published: boolean;
+}
+
+export interface MailMailbox {
+  _id: string;
+  name: string;
+  email: string;
+  type: string;
+  syncEnabled: boolean;
+  lastSyncAt?: string;
+}
+
+export interface MailMessage {
+  _id: string;
+  mailboxId: string;
+  subject: string;
+  from: string;
+  to: string[];
+  direction: string;
+  sentAt: string;
+  isRead: boolean;
+  bodyHtml?: string;
+  bodyText?: string;
+  threadId?: string;
+}
+
+export const crmApi = {
+  dashboard: (token: string) => api.get('/crm/dashboard', token),
+  executiveMetrics: (token: string) => api.get('/crm/executive-metrics', token),
+  listAccounts: (token: string, params?: { search?: string; type?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<{ data: CrmAccount[]; total: number }>(`/crm/accounts${q}`, token);
+  },
+  getAccount: (id: string, token: string) => api.get<CrmAccount>(`/crm/accounts/${id}`, token),
+  getAccount360: (id: string, token: string) => api.get(`/crm/accounts/${id}/360`, token),
+  createAccount: (data: Partial<CrmAccount>, token: string) => api.post<CrmAccount>('/crm/accounts', data, token),
+  updateAccount: (id: string, data: Partial<CrmAccount>, token: string) => api.patch(`/crm/accounts/${id}`, data, token),
+  deleteAccount: (id: string, token: string) => api.delete(`/crm/accounts/${id}`, token),
+  linkProject: (accountId: string, projectId: string, token: string) =>
+    api.post(`/crm/accounts/${accountId}/link-project`, { projectId }, token),
+  listContacts: (token: string, params?: { accountId?: string; search?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<CrmContact[]>(`/crm/contacts${q}`, token);
+  },
+  createContact: (data: Partial<CrmContact>, token: string) => api.post('/crm/contacts', data, token),
+  updateContact: (id: string, data: Partial<CrmContact>, token: string) => api.patch(`/crm/contacts/${id}`, data, token),
+  deleteContact: (id: string, token: string) => api.delete(`/crm/contacts/${id}`, token),
+  listLeads: (token: string, status?: string) =>
+    api.get<CrmLead[]>(`/crm/leads${status ? `?status=${status}` : ''}`, token),
+  createLead: (data: Partial<CrmLead>, token: string) => api.post('/crm/leads', data, token),
+  updateLead: (id: string, data: Partial<CrmLead>, token: string) => api.patch(`/crm/leads/${id}`, data, token),
+  convertLead: (id: string, pipelineId: string | undefined, token: string) =>
+    api.post(`/crm/leads/${id}/convert`, { pipelineId }, token),
+  listDeals: (token: string, params?: { status?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<CrmDeal[]>(`/crm/deals${q}`, token);
+  },
+  createDeal: (data: Partial<CrmDeal>, token: string) => api.post('/crm/deals', data, token),
+  updateDeal: (id: string, data: Partial<CrmDeal>, token: string) => api.patch(`/crm/deals/${id}`, data, token),
+  moveDealStage: (id: string, stageId: string, token: string) => api.post(`/crm/deals/${id}/move-stage`, { stageId }, token),
+  createProjectFromDeal: (id: string, data: { name: string; key: string; templateId?: string }, token: string) =>
+    api.post(`/crm/deals/${id}/create-project`, data, token),
+  getForecast: (token: string) => api.get('/crm/deals/forecast', token),
+  listPipelines: (token: string) => api.get<CrmPipeline[]>('/crm/pipelines', token),
+  createPipeline: (data: Record<string, unknown>, token: string) => api.post<CrmPipeline>('/crm/pipelines', data, token),
+  updatePipeline: (id: string, data: Record<string, unknown>, token: string) =>
+    api.patch<CrmPipeline>(`/crm/pipelines/${id}`, data, token),
+  listQuotes: (token: string, opts?: { dealId?: string; accountId?: string }) => {
+    const p = new URLSearchParams();
+    if (opts?.dealId) p.set('dealId', opts.dealId);
+    if (opts?.accountId) p.set('accountId', opts.accountId);
+    const q = p.toString();
+    return api.get<CrmQuote[]>(`/crm/quotes${q ? `?${q}` : ''}`, token);
+  },
+  createQuote: (data: { dealId: string; title?: string; lineItems?: unknown[]; currency?: string; notes?: string }, token: string) =>
+    api.post('/crm/quotes', data, token),
+  updateQuote: (id: string, data: Record<string, unknown>, token: string) => api.patch(`/crm/quotes/${id}`, data, token),
+  deleteQuote: (id: string, token: string) => api.delete(`/crm/quotes/${id}`, token),
+  sendQuote: (id: string, toEmail: string, token: string) => api.post(`/crm/quotes/${id}/send`, { toEmail }, token),
+  listContracts: (token: string, opts?: { accountId?: string; kind?: string; status?: string; renewingWithinDays?: number }) => {
+    const p = new URLSearchParams();
+    if (opts?.accountId) p.set('accountId', opts.accountId);
+    if (opts?.kind) p.set('kind', opts.kind);
+    if (opts?.status) p.set('status', opts.status);
+    if (opts?.renewingWithinDays != null) p.set('renewingWithinDays', String(opts.renewingWithinDays));
+    const q = p.toString();
+    return api.get<CrmContract[]>(`/crm/contracts${q ? `?${q}` : ''}`, token);
+  },
+  createContract: (data: Partial<CrmContract> & { startDate?: string; accountId: string }, token: string) =>
+    api.post('/crm/contracts', data, token),
+  updateContract: (id: string, data: Partial<CrmContract>, token: string) =>
+    api.patch(`/crm/contracts/${id}`, data, token),
+  deleteContract: (id: string, token: string) => api.delete(`/crm/contracts/${id}`, token),
+  getContractBurnDown: (id: string, token: string) => api.get(`/crm/contracts/${id}/burn-down`, token),
+  listActivities: (token: string, relatedType?: string, relatedId?: string) => {
+    const p = new URLSearchParams();
+    if (relatedType) p.set('relatedType', relatedType);
+    if (relatedId) p.set('relatedId', relatedId);
+    const q = p.toString() ? `?${p}` : '';
+    return api.get<CrmActivity[]>(`/crm/activities${q}`, token);
+  },
+  createActivity: (data: Partial<CrmActivity> & { relatedType?: string; relatedId?: string }, token: string) =>
+    api.post('/crm/activities', data, token),
+  completeActivity: (id: string, token: string) => api.post(`/crm/activities/${id}/complete`, {}, token),
+  deleteActivity: (id: string, token: string) => api.delete(`/crm/activities/${id}`, token),
+  listWebhooks: (token: string) => api.get<CrmWebhook[]>('/crm/webhooks', token),
+  createWebhook: (data: { name: string; url: string; events: string[] }, token: string) =>
+    api.post<CrmWebhook>('/crm/webhooks', data, token),
+  deleteWebhook: (id: string, token: string) => api.delete(`/crm/webhooks/${id}`, token),
+};
+
+export const contractsApi = {
+  dashboard: (token: string) => api.get('/contracts/dashboard', token),
+  list: (token: string, opts?: { accountId?: string; kind?: string; status?: string; renewingWithinDays?: number }) => {
+    const p = new URLSearchParams();
+    if (opts?.accountId) p.set('accountId', opts.accountId);
+    if (opts?.kind) p.set('kind', opts.kind);
+    if (opts?.status) p.set('status', opts.status);
+    if (opts?.renewingWithinDays != null) p.set('renewingWithinDays', String(opts.renewingWithinDays));
+    const q = p.toString();
+    return api.get<CrmContract[]>(`/contracts${q ? `?${q}` : ''}`, token);
+  },
+  create: (data: Partial<CrmContract> & { startDate: string; accountId: string }, token: string) =>
+    api.post<CrmContract>('/contracts', data, token),
+  update: (id: string, data: Partial<CrmContract>, token: string) => api.patch<CrmContract>(`/contracts/${id}`, data, token),
+  remove: (id: string, token: string) => api.delete(`/contracts/${id}`, token),
+  burnDown: (id: string, token: string) =>
+    api.get<{ hoursUsed: number; hoursRemaining: number; percentUsed: number; contract: CrmContract }>(
+      `/contracts/${id}/burn-down`,
+      token
+    ),
+  listSla: (token: string) => api.get<SlaPolicy[]>('/contracts/sla/policies', token),
+  createSla: (data: Record<string, unknown>, token: string) => api.post<SlaPolicy>('/contracts/sla/policies', data, token),
+  updateSla: (id: string, data: Record<string, unknown>, token: string) =>
+    api.patch<SlaPolicy>(`/contracts/sla/policies/${id}`, data, token),
+};
+
+export interface BillingSubscription {
+  _id: string;
+  name: string;
+  planCode?: string;
+  status: string;
+  billingCycle: string;
+  amount: number;
+  currency: string;
+  seats: number;
+  unitPrice: number;
+  startDate?: string;
+  nextBillingDate?: string;
+  endDate?: string;
+  autoRenew?: boolean;
+  notes?: string;
+  accountId: string | { _id: string; name: string };
+  contractId?: string;
+}
+
+export interface BillingInvoiceLine {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  taxRate: number;
+  amount: number;
+  sourceType?: string;
+}
+
+export interface BillingInvoice {
+  _id: string;
+  number: string;
+  status: string;
+  issueDate: string;
+  dueDate?: string;
+  currency: string;
+  subtotal: number;
+  taxTotal: number;
+  total: number;
+  amountPaid: number;
+  lines: BillingInvoiceLine[];
+  notes?: string;
+  taxCode?: string;
+  postedToAccounts?: boolean;
+  accountId: string | { _id: string; name: string };
+  projectId?: string;
+  subscriptionId?: string;
+}
+
+export interface BillingTaxRule {
+  _id: string;
+  name: string;
+  code: string;
+  rate: number;
+  jurisdiction?: string;
+  hsnSac?: string;
+  inclusive: boolean;
+  enabled: boolean;
+  notes?: string;
+}
+
+export const billingApi = {
+  dashboard: (token: string) => api.get('/billing/dashboard', token),
+  listSubscriptions: (token: string, opts?: { status?: string; accountId?: string }) => {
+    const p = new URLSearchParams();
+    if (opts?.status) p.set('status', opts.status);
+    if (opts?.accountId) p.set('accountId', opts.accountId);
+    const q = p.toString();
+    return api.get<BillingSubscription[]>(`/billing/subscriptions${q ? `?${q}` : ''}`, token);
+  },
+  createSubscription: (data: Record<string, unknown>, token: string) =>
+    api.post<BillingSubscription>('/billing/subscriptions', data, token),
+  updateSubscription: (id: string, data: Record<string, unknown>, token: string) =>
+    api.patch<BillingSubscription>(`/billing/subscriptions/${id}`, data, token),
+  deleteSubscription: (id: string, token: string) => api.delete(`/billing/subscriptions/${id}`, token),
+  invoiceSubscription: (id: string, token: string) =>
+    api.post<BillingInvoice>(`/billing/subscriptions/${id}/invoice`, {}, token),
+  listInvoices: (token: string, opts?: { status?: string; accountId?: string }) => {
+    const p = new URLSearchParams();
+    if (opts?.status) p.set('status', opts.status);
+    if (opts?.accountId) p.set('accountId', opts.accountId);
+    const q = p.toString();
+    return api.get<BillingInvoice[]>(`/billing/invoices${q ? `?${q}` : ''}`, token);
+  },
+  createInvoice: (data: Record<string, unknown>, token: string) =>
+    api.post<BillingInvoice>('/billing/invoices', data, token),
+  updateInvoice: (id: string, data: Record<string, unknown>, token: string) =>
+    api.patch<BillingInvoice>(`/billing/invoices/${id}`, data, token),
+  deleteInvoice: (id: string, token: string) => api.delete(`/billing/invoices/${id}`, token),
+  recordPayment: (id: string, data: { amount?: number; markPaid?: boolean }, token: string) =>
+    api.post<BillingInvoice>(`/billing/invoices/${id}/pay`, data, token),
+  listTax: (token: string) => api.get<BillingTaxRule[]>('/billing/tax', token),
+  createTax: (data: Record<string, unknown>, token: string) => api.post<BillingTaxRule>('/billing/tax', data, token),
+  updateTax: (id: string, data: Record<string, unknown>, token: string) =>
+    api.patch<BillingTaxRule>(`/billing/tax/${id}`, data, token),
+  deleteTax: (id: string, token: string) => api.delete(`/billing/tax/${id}`, token),
+  timeToInvoice: (token: string) => api.get('/billing/time-to-invoice', token),
+  createFromTime: (data: Record<string, unknown>, token: string) =>
+    api.post<BillingInvoice>('/billing/time-to-invoice', data, token),
+};
+
+// ── HRMS ────────────────────────────────────────────────────────────────────
+export interface HrmsEmployee {
+  _id: string;
+  employeeCode: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  department?: string;
+  designation?: string;
+  employmentType: string;
+  status: string;
+  joinedDate: string;
+  exitDate?: string;
+  location?: string;
+  annualCtc?: number;
+  currency: string;
+  leaveBalanceDays: number;
+  notes?: string;
+}
+
+export interface HrmsLeaveRequest {
+  _id: string;
+  employeeId: string | { _id: string; name: string; employeeCode: string; department?: string };
+  type: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  days: number;
+  reason?: string;
+}
+
+export interface HrmsAttendance {
+  _id: string;
+  employeeId: string | { _id: string; name: string; employeeCode: string };
+  date: string;
+  status: string;
+  hoursWorked: number;
+  note?: string;
+}
+
+export const hrmsApi = {
+  dashboard: (token: string) => api.get('/hrms/dashboard', token),
+  listEmployees: (token: string, params?: { status?: string; department?: string; search?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<HrmsEmployee[]>(`/hrms/employees${q}`, token);
+  },
+  createEmployee: (data: Record<string, unknown>, token: string) => api.post<HrmsEmployee>('/hrms/employees', data, token),
+  updateEmployee: (id: string, data: Record<string, unknown>, token: string) => api.patch<HrmsEmployee>(`/hrms/employees/${id}`, data, token),
+  deleteEmployee: (id: string, token: string) => api.delete(`/hrms/employees/${id}`, token),
+  listLeave: (token: string, params?: { status?: string; employeeId?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<HrmsLeaveRequest[]>(`/hrms/leave${q}`, token);
+  },
+  createLeave: (data: Record<string, unknown>, token: string) => api.post<HrmsLeaveRequest>('/hrms/leave', data, token),
+  decideLeave: (id: string, status: string, token: string) => api.patch<HrmsLeaveRequest>(`/hrms/leave/${id}/decision`, { status }, token),
+  listAttendance: (token: string, params?: { from?: string; to?: string; employeeId?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<HrmsAttendance[]>(`/hrms/attendance${q}`, token);
+  },
+  markAttendance: (data: Record<string, unknown>, token: string) => api.post<HrmsAttendance>('/hrms/attendance', data, token),
+  payroll: (token: string) => api.get('/hrms/payroll', token),
+};
+
+// ── Assets / CMDB ────────────────────────────────────────────────────────────
+export interface Asset {
+  _id: string;
+  assetTag: string;
+  name: string;
+  category: string;
+  status: string;
+  serialNumber?: string;
+  manufacturer?: string;
+  deviceModel?: string;
+  assignedUserId?: string | { _id: string; name: string };
+  accountId?: string | { _id: string; name: string };
+  vendorAccountId?: string | { _id: string; name: string };
+  location?: string;
+  purchaseDate?: string;
+  purchaseCost?: number;
+  currency: string;
+  warrantyExpiry?: string;
+  amcExpiry?: string;
+  ipAddress?: string;
+  hostname?: string;
+  environment?: string;
+  notes?: string;
+}
+
+export interface AssetLicense {
+  _id: string;
+  name: string;
+  vendor?: string;
+  vendorAccountId?: string | { _id: string; name: string };
+  status: string;
+  seatsTotal: number;
+  seatsUsed: number;
+  seatCost?: number;
+  currency: string;
+  renewalDate?: string;
+  notes?: string;
+}
+
+export const assetsApi = {
+  dashboard: (token: string) => api.get('/assets/dashboard', token),
+  list: (token: string, params?: { category?: string; status?: string; warrantyWithinDays?: number; search?: string }) => {
+    const p = new URLSearchParams();
+    if (params?.category) p.set('category', params.category);
+    if (params?.status) p.set('status', params.status);
+    if (params?.warrantyWithinDays != null) p.set('warrantyWithinDays', String(params.warrantyWithinDays));
+    if (params?.search) p.set('search', params.search);
+    const q = p.toString();
+    return api.get<Asset[]>(`/assets/assets${q ? `?${q}` : ''}`, token);
+  },
+  create: (data: Record<string, unknown>, token: string) => api.post<Asset>('/assets/assets', data, token),
+  update: (id: string, data: Record<string, unknown>, token: string) => api.patch<Asset>(`/assets/assets/${id}`, data, token),
+  remove: (id: string, token: string) => api.delete(`/assets/assets/${id}`, token),
+  listLicenses: (token: string, params?: { status?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<AssetLicense[]>(`/assets/licenses${q}`, token);
+  },
+  createLicense: (data: Record<string, unknown>, token: string) => api.post<AssetLicense>('/assets/licenses', data, token),
+  updateLicense: (id: string, data: Record<string, unknown>, token: string) => api.patch<AssetLicense>(`/assets/licenses/${id}`, data, token),
+  removeLicense: (id: string, token: string) => api.delete(`/assets/licenses/${id}`, token),
+};
+
+// ── Procurement ───────────────────────────────────────────────────────────────
+export interface PurchaseOrder {
+  _id: string;
+  poNumber: string;
+  title: string;
+  vendorAccountId: string | { _id: string; name: string };
+  category: string;
+  status: string;
+  currency: string;
+  lines: { description: string; quantity: number; unitPrice: number; amount: number }[];
+  subtotal: number;
+  taxTotal: number;
+  total: number;
+  expectedDate?: string;
+  notes?: string;
+}
+
+export const procurementApi = {
+  dashboard: (token: string) => api.get('/procurement/dashboard', token),
+  listVendors: (token: string) => api.get<CrmAccount[]>('/procurement/vendors', token),
+  createVendor: (data: Record<string, unknown>, token: string) => api.post<CrmAccount>('/procurement/vendors', data, token),
+  listPos: (token: string, params?: { status?: string; vendorAccountId?: string; category?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<PurchaseOrder[]>(`/procurement/pos${q}`, token);
+  },
+  createPo: (data: Record<string, unknown>, token: string) => api.post<PurchaseOrder>('/procurement/pos', data, token),
+  updatePo: (id: string, data: Record<string, unknown>, token: string) => api.patch<PurchaseOrder>(`/procurement/pos/${id}`, data, token),
+  transitionPo: (id: string, status: string, token: string) => api.patch<PurchaseOrder>(`/procurement/pos/${id}/status`, { status }, token),
+  removePo: (id: string, token: string) => api.delete(`/procurement/pos/${id}`, token),
+};
+
+// ── Accounts (finance) ─────────────────────────────────────────────────────────
+export interface AccountExpense {
+  _id: string;
+  reference: string;
+  description: string;
+  category: string;
+  status: string;
+  vendorAccountId?: string | { _id: string; name: string };
+  amount: number;
+  currency: string;
+  expenseDate: string;
+  paidDate?: string;
+  notes?: string;
+}
+
+export const accountsApi = {
+  dashboard: (token: string) => api.get('/accounts/dashboard', token),
+  ledger: (token: string) => api.get('/accounts/ledger', token),
+  listInvoices: (token: string, params?: { status?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<BillingInvoice[]>(`/accounts/invoices${q}`, token);
+  },
+  postInvoice: (id: string, token: string) => api.patch(`/accounts/invoices/${id}/post`, {}, token),
+  listExpenses: (token: string, params?: { status?: string; category?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<AccountExpense[]>(`/accounts/expenses${q}`, token);
+  },
+  createExpense: (data: Record<string, unknown>, token: string) => api.post<AccountExpense>('/accounts/expenses', data, token),
+  updateExpense: (id: string, data: Record<string, unknown>, token: string) => api.patch<AccountExpense>(`/accounts/expenses/${id}`, data, token),
+  removeExpense: (id: string, token: string) => api.delete(`/accounts/expenses/${id}`, token),
+};
+
+// ── Documents ──────────────────────────────────────────────────────────────────
+export interface DocumentRecord {
+  _id: string;
+  title: string;
+  kind: string;
+  status: string;
+  version: number;
+  entityType: string;
+  entityId?: string;
+  accountId?: string | { _id: string; name: string };
+  value?: number;
+  currency: string;
+  tags: string[];
+  summary?: string;
+  content?: string;
+  isTemplate: boolean;
+  sentAt?: string;
+  signedAt?: string;
+  updatedAt?: string;
+}
+
+export const documentsApi = {
+  dashboard: (token: string) => api.get('/documents/dashboard', token),
+  list: (token: string, params?: { kind?: string; status?: string; isTemplate?: boolean; accountId?: string; search?: string }) => {
+    const p = new URLSearchParams();
+    if (params?.kind) p.set('kind', params.kind);
+    if (params?.status) p.set('status', params.status);
+    if (params?.isTemplate != null) p.set('isTemplate', String(params.isTemplate));
+    if (params?.accountId) p.set('accountId', params.accountId);
+    if (params?.search) p.set('search', params.search);
+    const q = p.toString();
+    return api.get<DocumentRecord[]>(`/documents/documents${q ? `?${q}` : ''}`, token);
+  },
+  create: (data: Record<string, unknown>, token: string) => api.post<DocumentRecord>('/documents/documents', data, token),
+  update: (id: string, data: Record<string, unknown>, token: string) => api.patch<DocumentRecord>(`/documents/documents/${id}`, data, token),
+  clone: (id: string, data: Record<string, unknown>, token: string) => api.post<DocumentRecord>(`/documents/documents/${id}/clone`, data, token),
+  remove: (id: string, token: string) => api.delete(`/documents/documents/${id}`, token),
+};
+
+// ── Calendar ───────────────────────────────────────────────────────────────────
+export interface CalendarEvent {
+  _id: string;
+  title: string;
+  kind: string;
+  start: string;
+  end?: string;
+  allDay: boolean;
+  location?: string;
+  meetingUrl?: string;
+  accountId?: string | { _id: string; name: string };
+  notes?: string;
+}
+
+export interface UnifiedCalendarEvent {
+  id: string;
+  source: string;
+  kind: string;
+  title: string;
+  start: string;
+  end?: string;
+  allDay: boolean;
+  editable: boolean;
+  link?: string;
+  meta?: Record<string, unknown>;
+}
+
+export const calendarApi = {
+  dashboard: (token: string) => api.get('/calendar/dashboard', token),
+  feed: (token: string, params?: { from?: string; to?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<UnifiedCalendarEvent[]>(`/calendar/feed${q}`, token);
+  },
+  listEvents: (token: string, params?: { kind?: string; from?: string; to?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<CalendarEvent[]>(`/calendar/events${q}`, token);
+  },
+  createEvent: (data: Record<string, unknown>, token: string) => api.post<CalendarEvent>('/calendar/events', data, token),
+  updateEvent: (id: string, data: Record<string, unknown>, token: string) => api.patch<CalendarEvent>(`/calendar/events/${id}`, data, token),
+  removeEvent: (id: string, token: string) => api.delete(`/calendar/events/${id}`, token),
+};
+
+// ── Global search ──────────────────────────────────────────────────────────────
+export interface SearchHit {
+  type: string;
+  id: string;
+  title: string;
+  subtitle?: string;
+  link: string;
+}
+
+export const searchApi = {
+  query: (q: string, token: string) =>
+    api.get<{ query: string; hits: SearchHit[]; groups: Record<string, number> }>(`/search?q=${encodeURIComponent(q)}`, token),
+};
+
+export const mailApi = {
+  listMailboxes: (token: string) => api.get<MailMailbox[]>('/mail/mailboxes', token),
+  createMailbox: (data: Record<string, unknown>, token: string) => api.post('/mail/mailboxes', data, token),
+  syncMailbox: (id: string, token: string) => api.post(`/mail/mailboxes/${id}/sync`, {}, token),
+  listMessages: (token: string, params?: { mailboxId?: string; threadId?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<{ data: MailMessage[]; total: number }>(`/mail/messages${q}`, token);
+  },
+  getMessage: (id: string, token: string) => api.get<MailMessage>(`/mail/messages/${id}`, token),
+  send: (data: { mailboxId: string; to: string[]; subject: string; bodyHtml: string; inReplyTo?: string; threadId?: string }, token: string) =>
+    api.post('/mail/send', data, token),
+};
+
+export const serviceApi = {
+  dashboard: (token: string) => api.get('/service/dashboard', token),
+  listSla: (token: string) => api.get<SlaPolicy[]>('/service/sla', token),
+  createSla: (data: Record<string, unknown>, token: string) => api.post<SlaPolicy>('/service/sla', data, token),
+  updateSla: (id: string, data: Record<string, unknown>, token: string) => api.patch<SlaPolicy>(`/service/sla/${id}`, data, token),
+  listTickets: (token: string, params?: { status?: string; queue?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<ServiceTicket[]>(`/service/tickets${q}`, token);
+  },
+  getTicket: (id: string, token: string) => api.get<ServiceTicket>(`/service/tickets/${id}`, token),
+  createTicket: (data: Partial<ServiceTicket> & { description?: string }, token: string) => api.post('/service/tickets', data, token),
+  updateTicket: (id: string, data: Partial<ServiceTicket>, token: string) => api.patch(`/service/tickets/${id}`, data, token),
+  addComment: (id: string, data: { body: string; internal?: boolean }, token: string) =>
+    api.post<ServiceTicket>(`/service/tickets/${id}/comments`, data, token),
+  submitCsat: (id: string, score: number, comment: string | undefined, token: string) =>
+    api.post(`/service/tickets/${id}/csat`, { score, comment }, token),
+  listKb: (token: string) => api.get<KbArticle[]>('/service/kb', token),
+  searchKb: (q: string, token: string) => api.get<KbArticle[]>(`/service/kb/search?q=${encodeURIComponent(q)}`, token),
+  createKb: (data: Partial<KbArticle>, token: string) => api.post('/service/kb', data, token),
+  updateKb: (id: string, data: Partial<KbArticle>, token: string) => api.patch(`/service/kb/${id}`, data, token),
+};
+
 // ── Customer Portal API ────────────────────────────────────────────────────
 export const portalApi = {
   // Auth
@@ -2163,3 +2874,83 @@ export const adminSystemApi = {
   getIntegrationsConfig: (token: string) =>
     api.get<{ items: AdminIntegrationConfigItem[]; sampleEnvKeys: string[] }>('/admin/integrations-config', token),
 };
+
+export interface ResourceAllocation {
+  _id: string;
+  userId: { _id: string; name: string; email: string } | string;
+  projectId: { _id: string; name: string; key: string } | string;
+  percent: number;
+  startDate: string;
+  endDate?: string | null;
+  billable: boolean;
+  softBooked: boolean;
+  roleLabel?: string;
+  notes?: string;
+}
+
+export interface ResourceDemand {
+  _id: string;
+  title: string;
+  projectId?: { _id: string; name: string; key: string } | string | null;
+  roleLabel?: string;
+  hoursNeeded: number;
+  periodStart: string;
+  periodEnd: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: 'open' | 'partially_filled' | 'filled' | 'cancelled';
+  skills: string[];
+  notes?: string;
+}
+
+export interface ResourceProfileRow {
+  userId: string;
+  name: string;
+  email: string;
+  capacityHoursPerWeek: number;
+  skills: string[];
+  seniority?: string;
+  department?: string;
+  location?: string;
+  availableFrom?: string | null;
+  notes?: string;
+  profileId?: string | null;
+}
+
+export const resourcesApi = {
+  dashboard: (token: string) => api.get('/resources/dashboard', token),
+  options: (token: string) =>
+    api.get<{ users: Array<{ id: string; name: string; email: string }>; projects: Array<{ id: string; name: string; key: string }> }>(
+      '/resources/options',
+      token
+    ),
+  listAllocations: (token: string, params?: { userId?: string; projectId?: string; activeOnly?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get<ResourceAllocation[]>(`/resources/allocations${q}`, token);
+  },
+  createAllocation: (data: Record<string, unknown>, token: string) =>
+    api.post<{ allocation: ResourceAllocation; conflicts: { overAllocated: boolean; committedPercent: number } }>(
+      '/resources/allocations',
+      data,
+      token
+    ),
+  updateAllocation: (id: string, data: Record<string, unknown>, token: string) =>
+    api.patch(`/resources/allocations/${id}`, data, token),
+  deleteAllocation: (id: string, token: string) => api.delete(`/resources/allocations/${id}`, token),
+  conflicts: (token: string) => api.get('/resources/conflicts', token),
+  utilization: (token: string, params?: { from?: string; to?: string }) => {
+    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return api.get(`/resources/utilization${q}`, token);
+  },
+  bench: (token: string, threshold?: number) =>
+    api.get(`/resources/bench${threshold != null ? `?threshold=${threshold}` : ''}`, token),
+  forecast: (token: string) => api.get('/resources/forecast', token),
+  listDemands: (token: string, status?: string) =>
+    api.get<ResourceDemand[]>(`/resources/demands${status ? `?status=${status}` : ''}`, token),
+  createDemand: (data: Record<string, unknown>, token: string) => api.post<ResourceDemand>('/resources/demands', data, token),
+  updateDemand: (id: string, data: Record<string, unknown>, token: string) =>
+    api.patch<ResourceDemand>(`/resources/demands/${id}`, data, token),
+  deleteDemand: (id: string, token: string) => api.delete(`/resources/demands/${id}`, token),
+  listProfiles: (token: string) => api.get<ResourceProfileRow[]>('/resources/profiles', token),
+  upsertProfile: (data: Record<string, unknown>, token: string) => api.put('/resources/profiles', data, token),
+};
+

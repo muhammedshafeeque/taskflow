@@ -13,10 +13,17 @@ export function resolveEffectiveGlobalPermissions(input: {
   permissionOverrides?: { granted?: string[]; revoked?: string[] } | null;
 }): string[] {
   const basePermissions = Array.isArray(input.rolePermissions) ? [...input.rolePermissions] : [];
-  let effective =
-    basePermissions.length === 0 && input.role === 'admin'
-      ? [...ALL_TASK_FLOW_PERMISSIONS]
-      : basePermissions;
+  let effective = [...basePermissions];
+
+  // Admins always receive the full TaskFlow catalog so new modules (CRM, mail, etc.) work
+  // without re-seeding roles or clearing per-user permission snapshots.
+  if (input.role === 'admin') {
+    for (const p of ALL_TASK_FLOW_PERMISSIONS) {
+      if (!effective.includes(p)) effective.push(p);
+    }
+  } else if (basePermissions.length === 0) {
+    effective = [];
+  }
 
   const granted = input.permissionOverrides?.granted ?? [];
   const revoked = input.permissionOverrides?.revoked ?? [];

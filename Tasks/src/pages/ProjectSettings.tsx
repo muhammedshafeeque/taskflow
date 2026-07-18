@@ -2741,7 +2741,7 @@ export default function ProjectSettings() {
                         </button>
                       </div>
                       <p className="text-[color:var(--text-muted)] text-[11px]">
-                        User must have a TaskFlow account. Select from the list or type email.
+                        User must have an Atrium account. Select from the list or type email.
                       </p>
                     </form>
                     {inviteError && (

@@ -5,6 +5,8 @@ import { asyncHandler } from '../../utils/asyncHandler';
 import * as dashboardService from './dashboard.service';
 import { ApiError } from '../../utils/ApiError';
 import { formatMinutesForExport } from '../workLogs/workLogs.service';
+import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
+import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 
 export async function getDashboardStats(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
   const userId = req.user?.id;
@@ -22,8 +24,12 @@ export async function getWorkloadStats(req: Request & { user?: AuthPayload }, re
 }
 
 export async function getExecutiveStats(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
-  if (req.user?.role !== 'admin') {
-    throw new ApiError(403, 'Admin only');
+  const perms = req.user?.permissions ?? [];
+  if (
+    req.user?.role !== 'admin' &&
+    !userHasPermission(perms, TASK_FLOW_PERMISSIONS.TASKFLOW.PLATFORM.EXECUTIVE.READ)
+  ) {
+    throw new ApiError(403, 'Insufficient permissions');
   }
   const data = await dashboardService.getExecutiveStats();
   res.status(200).json({ success: true, data });

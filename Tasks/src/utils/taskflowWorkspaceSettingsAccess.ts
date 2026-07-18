@@ -10,7 +10,7 @@ export type TaskflowWorkspaceSettingsAccessUser = {
 } | null;
 
 /**
- * Whether the user may open TaskFlow workspace settings. Workspace org admins
+ * Whether the user may open Atrium workspace settings. Workspace org admins
  * (creators and promoted admins) have access even without global org.* permissions;
  * other users need org scope permissions or platform admin.
  */

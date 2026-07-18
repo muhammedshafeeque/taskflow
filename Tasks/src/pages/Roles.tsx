@@ -18,8 +18,19 @@ export default function Roles() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const permMap = useMemo(() => new Map(permissions.map((p) => [p.code, p.label])), [permissions]);
+  const permissionsByGroup = useMemo(() => {
+    const map = new Map<string, PermissionItem[]>();
+    for (const p of permissions) {
+      const group = p.group ?? 'Other';
+      const list = map.get(group) ?? [];
+      list.push(p);
+      map.set(group, list);
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [permissions]);
   const filteredRoles = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return roles;
@@ -67,6 +78,27 @@ export default function Roles() {
         ? prev.permissions.filter((p) => p !== code)
         : [...prev.permissions, code],
     }));
+  }
+
+  function toggleGroup(group: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  }
+
+  function toggleGroupAll(groupPerms: PermissionItem[]) {
+    const codes = groupPerms.map((p) => p.code);
+    setForm((prev) => {
+      const allSelected = codes.every((c) => prev.permissions.includes(c));
+      if (allSelected) {
+        return { ...prev, permissions: prev.permissions.filter((c) => !codes.includes(c)) };
+      }
+      const merged = new Set([...prev.permissions, ...codes]);
+      return { ...prev, permissions: [...merged] };
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -156,10 +188,7 @@ export default function Roles() {
               const isExpanded = expandedId === role._id;
               return (
                 <Fragment key={role._id}>
-                  <tr
-                    key={role._id}
-                    className="border-b border-[color:var(--border-subtle)]/60 last:border-b-0 hover:bg-[color:var(--bg-page)]/30 transition-colors"
-                  >
+                  <tr className="border-b border-[color:var(--border-subtle)]/60 last:border-b-0 hover:bg-[color:var(--bg-page)]/30 transition-colors">
                     <td className="px-6 py-4">
                       {perms.length > 0 ? (
                         <button
@@ -253,7 +282,7 @@ export default function Roles() {
           onClick={() => setModal(null)}
         >
           <div
-            className="bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto animate-scale-in"
+            className="bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 lg:p-8">
@@ -261,7 +290,7 @@ export default function Roles() {
                 {modal === 'create' ? 'Create role' : 'Edit role'}
               </h2>
               <p className="text-sm text-[color:var(--text-muted)] mb-6">
-                Assign permissions from the predefined list.
+                Assign permissions by module from the predefined catalog.
               </p>
               <form onSubmit={handleSubmit} className="space-y-4">
                 {error && (
@@ -281,21 +310,63 @@ export default function Roles() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[color:var(--text-primary)] mb-2">Permissions</label>
-                  <div className="max-h-64 overflow-y-auto space-y-2 p-3 rounded-lg bg-[color:var(--bg-page)]/60 border border-[color:var(--border-subtle)]">
-                    {permissions.map((p) => (
-                      <label key={p.code} className="flex items-center gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={form.permissions.includes(p.code)}
-                          onChange={() => togglePermission(p.code)}
-                          className="h-4 w-4 rounded border-[color:var(--border-subtle)] text-[color:var(--accent)] focus:ring-[color:var(--accent)]/40"
-                        />
-                        <span className="text-sm text-[color:var(--text-primary)]">
-                          {p.label} <span className="text-[color:var(--text-muted)]">({p.code})</span>
-                        </span>
-                      </label>
-                    ))}
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-[color:var(--text-primary)]">Permissions</label>
+                    <span className="text-xs text-[color:var(--text-muted)]">
+                      {form.permissions.length} selected
+                    </span>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto space-y-2 p-3 rounded-lg bg-[color:var(--bg-page)]/60 border border-[color:var(--border-subtle)]">
+                    {permissionsByGroup.map(([group, groupPerms]) => {
+                      const collapsed = collapsedGroups.has(group);
+                      const selectedCount = groupPerms.filter((p) => form.permissions.includes(p.code)).length;
+                      return (
+                        <div key={group} className="rounded-lg border border-[color:var(--border-subtle)]/80 overflow-hidden">
+                          <div className="flex items-center gap-2 px-3 py-2 bg-[color:var(--bg-surface)]">
+                            <button
+                              type="button"
+                              onClick={() => toggleGroup(group)}
+                              className="p-0.5 text-[color:var(--text-muted)] hover:text-[color:var(--accent)]"
+                              title={collapsed ? 'Expand' : 'Collapse'}
+                            >
+                              {collapsed ? (
+                                <ChevronDownIcon className="w-4 h-4" />
+                              ) : (
+                                <ChevronUpIcon className="w-4 h-4" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleGroupAll(groupPerms)}
+                              className="flex-1 text-left text-sm font-medium text-[color:var(--text-primary)] hover:text-[color:var(--accent)]"
+                            >
+                              {group}
+                              <span className="ml-2 text-xs font-normal text-[color:var(--text-muted)]">
+                                {selectedCount}/{groupPerms.length}
+                              </span>
+                            </button>
+                          </div>
+                          {!collapsed && (
+                            <div className="space-y-1.5 px-3 py-2">
+                              {groupPerms.map((p) => (
+                                <label key={p.code} className="flex items-start gap-3 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={form.permissions.includes(p.code)}
+                                    onChange={() => togglePermission(p.code)}
+                                    className="mt-0.5 h-4 w-4 rounded border-[color:var(--border-subtle)] text-[color:var(--accent)] focus:ring-[color:var(--accent)]/40"
+                                  />
+                                  <span className="text-sm text-[color:var(--text-primary)]">
+                                    {p.label}
+                                    <span className="block text-[11px] text-[color:var(--text-muted)] font-mono">{p.code}</span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="flex gap-3 pt-2">

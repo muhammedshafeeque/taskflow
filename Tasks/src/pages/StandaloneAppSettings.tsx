@@ -5,6 +5,8 @@ import Inbox from './Inbox';
 import { taskflowAppSettingsHref } from '../lib/appSettingsHref';
 import { SunIcon, MoonIcon, InboxIcon, LogOutIcon, DashboardIcon, SettingsIcon } from '../components/icons/NavigationIcons';
 import { APP_VERSION } from '../appVersion';
+import { APP_NAME } from '../brand';
+import AtriumLogo from '../components/AtriumLogo';
 import { organizationsApi, projectsApi, inboxApi, type TaskflowOrganizationSummary } from '../lib/api';
 import { canAccessTaskflowWorkspaceSettings } from '../utils/taskflowWorkspaceSettingsAccess';
 
@@ -25,7 +27,7 @@ function canSeeCustomerOrgs(perms: string[]) {
 
 export default function StandaloneAppSettings() {
   const navigate = useNavigate();
-  const { user, token, refreshUser, switchWorkspace, logout } = useAuth();
+  const { user, token, logout } = useAuth();
   const [tab, setTab] = useState<TabId>('home');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window === 'undefined') return 'dark';
@@ -38,12 +40,6 @@ export default function StandaloneAppSettings() {
   const [projectTotal, setProjectTotal] = useState<number | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
   const [inboxUnread, setInboxUnread] = useState<number | null>(null);
-
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createName, setCreateName] = useState('');
-  const [createDesc, setCreateDesc] = useState('');
-  const [createBusy, setCreateBusy] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -76,7 +72,7 @@ export default function StandaloneAppSettings() {
       items.push({ label: 'Customer organisations', path: '/admin/customer-orgs' });
     }
     if (workspaceSettingsAllowed) {
-      items.push({ label: 'Workspace', path: '/settings/workspace' });
+      items.push({ label: 'Organization', path: '/settings/workspace' });
     }
     items.push({ label: 'Profile', path: '/profile' });
     return items;
@@ -132,58 +128,20 @@ export default function StandaloneAppSettings() {
 
   async function enterWorkspaceInProjectManager(orgId: string) {
     if (!orgId) return;
-    if (orgId !== user?.activeOrganizationId) {
-      const r = await switchWorkspace(orgId);
-      if (!r.ok) {
-        window.alert(r.error ?? 'Could not switch workspace');
-        return;
-      }
-      await refreshUser();
-    }
     navigate('/');
-  }
-
-  async function submitCreateWorkspace(e: React.FormEvent) {
-    e.preventDefault();
-    if (!token || !createName.trim()) return;
-    setCreateBusy(true);
-    setCreateError(null);
-    const res = await organizationsApi.create({ name: createName.trim(), description: createDesc.trim() || undefined }, token);
-    setCreateBusy(false);
-    if (!res.success || !res.data) {
-      setCreateError((res as { message?: string }).message ?? 'Could not create workspace');
-      return;
-    }
-    const org = res.data.organization as { _id?: string; id?: string } | undefined;
-    const newId = org?._id ?? org?.id;
-    if (newId) {
-      const sw = await switchWorkspace(String(newId));
-      if (!sw.ok) {
-        setCreateError(sw.error ?? 'Workspace created but could not switch to it');
-        await refreshUser();
-        setCreateOpen(false);
-        setCreateName('');
-        setCreateDesc('');
-        return;
-      }
-    }
-    await refreshUser();
-    setCreateOpen(false);
-    setCreateName('');
-    setCreateDesc('');
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
       <header className="shrink-0 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-4 sm:px-5 lg:px-6 xl:px-8 py-3 flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1 flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[color:var(--sidebar-logo-bg)] text-[color:var(--sidebar-text-active)] font-bold text-sm shrink-0">
-            TF
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
+            <AtriumLogo variant="mark" className="h-7 w-7" useSvg={false} />
           </span>
           <div className="min-w-0">
-            <h1 className="text-sm font-semibold tracking-tight">TaskFlow — workspace &amp; settings</h1>
+            <h1 className="text-sm font-semibold tracking-tight">{APP_NAME} — settings</h1>
             <p className="text-[11px] text-[color:var(--text-muted)] mt-0.5 truncate">
-              This window uses a separate layout from the Project Manager. You can close the tab when you are done.
+              Organization settings and inbox. You can close this tab when you are done.
             </p>
           </div>
         </div>
@@ -203,7 +161,7 @@ export default function StandaloneAppSettings() {
               onClick={() => navigate('/')}
               className="rounded-md border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-primary)] hover:bg-[color:var(--bg-elevated)]"
             >
-              Open Project Manager
+              Open Home
             </button>
           )}
         </div>
@@ -279,7 +237,7 @@ export default function StandaloneAppSettings() {
               <LogOutIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
               Sign out
             </button>
-            <p className="px-1 pt-2 text-[10px] text-[color:var(--text-muted)]/60" title={`TaskFlow v${APP_VERSION}`}>
+            <p className="px-1 pt-2 text-[10px] text-[color:var(--text-muted)]/60" title={`${APP_NAME} v${APP_VERSION}`}>
               v{APP_VERSION}
             </p>
           </div>
@@ -289,11 +247,9 @@ export default function StandaloneAppSettings() {
           {tab === 'home' && (
             <section className="space-y-6 w-full min-w-0">
               <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5 sm:p-6">
-                <h2 className="text-lg font-semibold tracking-tight text-[color:var(--text-primary)]">Workspace hub</h2>
+                <h2 className="text-lg font-semibold tracking-tight text-[color:var(--text-primary)]">Settings hub</h2>
                 <p className="mt-1 text-sm text-[color:var(--text-muted)]">
-                  Choose a workspace below to open the Project Manager with that context, or create a new one. For workspace
-                  profile and integrations, open the Project Manager and use the <strong className="text-[color:var(--text-primary)]">Workspace</strong>{' '}
-                  item in the left sidebar.
+                  Open Home to use modules, or manage your organization profile from the Project Manager sidebar.
                 </p>
               </div>
 
@@ -303,7 +259,7 @@ export default function StandaloneAppSettings() {
                   <p className="mt-2 text-2xl font-semibold tabular-nums">
                     {inboxUnread === null ? '—' : inboxUnread}
                   </p>
-                  <p className="mt-1 text-xs text-[color:var(--text-muted)]">Unread messages (global)</p>
+                  <p className="mt-1 text-xs text-[color:var(--text-muted)]">Unread messages</p>
                   <button
                     type="button"
                     onClick={() => setTab('inbox')}
@@ -313,7 +269,7 @@ export default function StandaloneAppSettings() {
                   </button>
                 </div>
                 <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-4 sm:p-5">
-                  <p className="text-xs uppercase tracking-wide text-[color:var(--text-muted)]">Active workspace</p>
+                  <p className="text-xs uppercase tracking-wide text-[color:var(--text-muted)]">Organization</p>
                   <p className="mt-2 text-base font-semibold truncate">{activeOrg?.name ?? '—'}</p>
                   <p className="mt-1 text-xs text-[color:var(--text-muted)]">
                     {usageLoading ? (
@@ -325,6 +281,15 @@ export default function StandaloneAppSettings() {
                       </>
                     )}
                   </p>
+                  {hasWorkspaceAccess && (
+                    <button
+                      type="button"
+                      onClick={() => void enterWorkspaceInProjectManager(activeOrgId!)}
+                      className="mt-3 text-xs font-medium text-[color:var(--accent)] hover:underline"
+                    >
+                      Open Home →
+                    </button>
+                  )}
                 </div>
                 <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-4 sm:p-5">
                   <p className="text-xs uppercase tracking-wide text-[color:var(--text-muted)]">Account</p>
@@ -332,54 +297,6 @@ export default function StandaloneAppSettings() {
                   <p className="mt-1 text-xs text-[color:var(--text-muted)] truncate">{user?.email ?? 'Signed in'}</p>
                 </div>
               </div>
-
-              <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">Your workspaces</h3>
-
-              {!hasWorkspaceAccess ? (
-                <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-8 text-center">
-                  <p className="text-sm text-[color:var(--text-muted)]">You are not in any workspace yet.</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCreateError(null);
-                      setCreateOpen(true);
-                    }}
-                    className="mt-4 rounded-lg bg-[color:var(--accent)] px-4 py-2 text-xs font-medium text-white"
-                  >
-                    Create your first workspace
-                  </button>
-                </div>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                  {orgs.map((o) => {
-                    const isActive = o.id === activeOrgId;
-                    return (
-                      <button
-                        key={o.id}
-                        type="button"
-                        onClick={() => void enterWorkspaceInProjectManager(o.id)}
-                        className={`rounded-xl border p-4 text-left transition hover:bg-[color:var(--bg-surface)] ${
-                          isActive
-                            ? 'border-[color:var(--accent)]/60 ring-1 ring-[color:var(--accent)]/25 bg-[color:var(--bg-elevated)]'
-                            : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="text-sm font-semibold text-[color:var(--text-primary)] truncate">{o.name}</span>
-                          {isActive && (
-                            <span className="shrink-0 text-[10px] uppercase font-semibold text-[color:var(--accent)]">Active</span>
-                          )}
-                        </div>
-                        <p className="mt-1 font-mono text-[11px] text-[color:var(--text-muted)] truncate">{o.slug}</p>
-                        <p className="mt-2 text-xs text-[color:var(--text-muted)]">
-                          Role: <span className="text-[color:var(--text-primary)]">{o.role === 'org_admin' ? 'Admin' : 'Member'}</span>
-                        </p>
-                        <p className="mt-3 text-xs font-medium text-[color:var(--accent)]">Open in Project Manager →</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
             </section>
           )}
 
@@ -393,7 +310,7 @@ export default function StandaloneAppSettings() {
             <section className="space-y-4 w-full min-w-0">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">Open in Project Manager</h2>
               <p className="text-xs text-[color:var(--text-muted)]">
-                Opens the standard TaskFlow layout in a new browser tab (same account).
+                Opens the standard {APP_NAME} layout in a new browser tab (same account).
               </p>
               <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {shortcutLinks.map((item) => (
@@ -416,68 +333,6 @@ export default function StandaloneAppSettings() {
           )}
         </main>
       </div>
-
-      {createOpen && (
-        <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="create-ws-title"
-        >
-          <div className="w-full max-w-md rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-modal)] p-5 shadow-xl">
-            <h2 id="create-ws-title" className="text-sm font-semibold text-[color:var(--text-primary)] mb-1">
-              Create workspace
-            </h2>
-            <p className="text-[11px] text-[color:var(--text-muted)] mb-4">You will become an org admin and can switch to it immediately.</p>
-            {createError && (
-              <div className="mb-3 rounded-md border border-[color:var(--color-blocked)]/40 bg-[color:var(--color-blocked)]/10 px-2 py-1.5 text-xs text-[color:var(--color-blocked)]">
-                {createError}
-              </div>
-            )}
-            <form onSubmit={submitCreateWorkspace} className="space-y-3">
-              <label className="block space-y-1">
-                <span className="text-[11px] text-[color:var(--text-muted)]">Name</span>
-                <input
-                  required
-                  value={createName}
-                  onChange={(e) => setCreateName(e.target.value)}
-                  className="w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-2 py-2 text-xs"
-                  placeholder="Acme delivery"
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="text-[11px] text-[color:var(--text-muted)]">Description (optional)</span>
-                <textarea
-                  value={createDesc}
-                  onChange={(e) => setCreateDesc(e.target.value)}
-                  rows={2}
-                  className="w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-2 py-2 text-xs"
-                />
-              </label>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  disabled={createBusy}
-                  onClick={() => {
-                    setCreateOpen(false);
-                    setCreateError(null);
-                  }}
-                  className="rounded-md border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createBusy}
-                  className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-                >
-                  {createBusy ? 'Creating…' : 'Create & switch'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

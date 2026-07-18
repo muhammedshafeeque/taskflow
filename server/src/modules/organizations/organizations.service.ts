@@ -120,7 +120,7 @@ export async function addMemberByEmail(
   const norm = email.toLowerCase().trim();
   const target = await User.findOne({ email: norm }).lean();
   if (!target) {
-    throw new ApiError(404, 'No TaskFlow user exists with that email. They must sign in once before being added.');
+    throw new ApiError(404, 'No Atrium user exists with that email. They must sign in once before being added.');
   }
   if (String(target._id) === actorUserId) {
     throw new ApiError(400, 'You are already a member');

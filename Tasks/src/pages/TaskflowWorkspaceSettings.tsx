@@ -7,7 +7,6 @@ import {
   organizationsApi,
   projectsApi,
   type AdminIntegrationConfigItem,
-  type Project,
 } from '../lib/api';
 import { userHasPermission } from '../utils/permissions';
 import { TASK_FLOW_PERMISSIONS } from '@shared/constants/permissions';
@@ -22,11 +21,10 @@ function canViewIntegrationsConfig(user: { permissions?: string[]; role?: string
 }
 
 export default function TaskflowWorkspaceSettings() {
-  const { user, token, refreshUser, switchWorkspace } = useAuth();
+  const { user, token, refreshUser } = useAuth();
   const [tab, setTab] = useState<TabId>('organization');
   const [memberCount, setMemberCount] = useState<number | null>(null);
   const [projectTotal, setProjectTotal] = useState<number | null>(null);
-  const [projectsPreview, setProjectsPreview] = useState<Project[]>([]);
   const [usageLoading, setUsageLoading] = useState(false);
 
   const [integrations, setIntegrations] = useState<AdminIntegrationConfigItem[]>([]);
@@ -47,7 +45,6 @@ export default function TaskflowWorkspaceSettings() {
     if (!token || !activeOrgId || user?.userType !== 'taskflow') {
       setMemberCount(null);
       setProjectTotal(null);
-      setProjectsPreview([]);
       return;
     }
     let cancelled = false;
@@ -55,7 +52,7 @@ export default function TaskflowWorkspaceSettings() {
     void (async () => {
       const [orgRes, projRes] = await Promise.all([
         organizationsApi.get(activeOrgId, token),
-        projectsApi.list(1, 50, token),
+        projectsApi.list(1, 1, token),
       ]);
       if (cancelled) return;
       if (orgRes.success && orgRes.data?.members) {
@@ -63,10 +60,8 @@ export default function TaskflowWorkspaceSettings() {
       } else setMemberCount(null);
       if (projRes.success && projRes.data) {
         setProjectTotal(projRes.data.total);
-        setProjectsPreview(projRes.data.data.slice(0, 12));
       } else {
         setProjectTotal(null);
-        setProjectsPreview([]);
       }
       setUsageLoading(false);
     })();
@@ -153,7 +148,7 @@ export default function TaskflowWorkspaceSettings() {
   }, [integrationKeys]);
 
   const tabButtons = useMemo(() => {
-    const items: { id: TabId; label: string }[] = [{ id: 'organization', label: 'Workspace' }];
+    const items: { id: TabId; label: string }[] = [{ id: 'organization', label: 'Profile' }];
     if (showIntegrationsTab) items.push({ id: 'integrations', label: 'Integrations' });
     return items;
   }, [showIntegrationsTab]);
@@ -161,9 +156,9 @@ export default function TaskflowWorkspaceSettings() {
   if (!user || user.userType !== 'taskflow') {
     return (
       <div className="w-full px-4 lg:px-6 xl:px-8 py-6">
-        <p className="text-sm text-[color:var(--text-muted)]">Workspace settings are available for TaskFlow accounts.</p>
-        <Link to="/" className="mt-4 inline-block text-sm text-[color:var(--accent)]">
-          ← Back to Project Manager
+        <p className="text-sm text-[color:var(--text-muted)]">Organization settings are available for Atrium accounts.</p>
+        <Link to="/users" className="mt-4 inline-block text-sm text-[color:var(--accent)]">
+          ← Back to Auth
         </Link>
       </div>
     );
@@ -176,12 +171,12 @@ export default function TaskflowWorkspaceSettings() {
   if (!workspaceSettingsAllowed) {
     return (
       <div className="w-full px-4 lg:px-6 xl:px-8 py-6 space-y-4">
-        <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">Workspace settings</h1>
+        <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">Organization settings</h1>
         <p className="text-sm text-[color:var(--text-muted)]">
-          You do not have permission to view workspace settings.
+          You do not have permission to view organization settings.
         </p>
-        <Link to="/" className="inline-block text-sm text-[color:var(--accent)] hover:underline">
-          Back to Project Manager →
+        <Link to="/users" className="inline-block text-sm text-[color:var(--accent)] hover:underline">
+          Back to Auth →
         </Link>
       </div>
     );
@@ -190,12 +185,12 @@ export default function TaskflowWorkspaceSettings() {
   if (orgs.length === 0) {
     return (
       <div className="w-full px-4 lg:px-6 xl:px-8 py-6 space-y-4">
-        <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">Workspace settings</h1>
+        <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">Organization settings</h1>
         <p className="text-sm text-[color:var(--text-muted)]">
-          You are not a member of any workspace yet. Create one from the workspace hub, or ask an admin to invite you.
+          You are not a member of an organization yet. Ask an admin to invite you.
         </p>
-        <Link to="/app-settings" className="inline-block text-sm text-[color:var(--accent)] hover:underline">
-          Open workspace hub →
+        <Link to="/" className="inline-block text-sm text-[color:var(--accent)] hover:underline">
+          Back to Home →
         </Link>
       </div>
     );
@@ -204,10 +199,9 @@ export default function TaskflowWorkspaceSettings() {
   return (
     <div className="w-full min-w-0 px-4 lg:px-6 xl:px-8 py-4 lg:py-6 space-y-6">
       <div className="min-w-0">
-        <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">Workspace settings</h1>
+        <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">Organization settings</h1>
         <p className="mt-1 text-sm text-[color:var(--text-muted)]">
-          Workspace profile and projects for the context you select below. Environment-driven integrations are on the
-          Integrations tab.
+          Company profile and environment integrations for your organization.
         </p>
       </div>
 
@@ -230,85 +224,39 @@ export default function TaskflowWorkspaceSettings() {
 
       {tab === 'organization' && (
         <section className="space-y-6 min-w-0">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">Active workspace</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">Organization</h2>
 
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start min-w-0">
-            <div className="xl:col-span-7 space-y-4 min-w-0">
-              {orgs.length > 0 && (
-                <label className="flex flex-col gap-1.5 text-xs min-w-0">
-                  <span className="text-[color:var(--text-muted)]">Switch workspace</span>
-                  <select
-                    className="w-full max-w-full sm:max-w-none rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-3 py-2.5 text-sm text-[color:var(--text-primary)]"
-                    value={activeOrgId ?? ''}
-                    onChange={async (e) => {
-                      const id = e.target.value;
-                      if (!id || id === user?.activeOrganizationId) return;
-                      const r = await switchWorkspace(id);
-                      if (!r.ok) {
-                        window.alert(r.error ?? 'Could not switch workspace');
-                        return;
-                      }
-                      await refreshUser();
-                    }}
-                  >
-                    {orgs.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
-              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-4 py-3 flex flex-wrap gap-x-8 gap-y-2 text-sm">
-                <span className="text-[color:var(--text-muted)]">
-                  Members:{' '}
-                  <strong className="text-[color:var(--text-primary)] tabular-nums">{usageLoading ? '…' : memberCount ?? '—'}</strong>
-                </span>
-                <span className="text-[color:var(--text-muted)]">
-                  Projects:{' '}
-                  <strong className="text-[color:var(--text-primary)] tabular-nums">{usageLoading ? '…' : projectTotal ?? '—'}</strong>
-                </span>
+          <div className="max-w-2xl space-y-4 min-w-0">
+            {activeOrgId && (
+              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-4 py-3 text-sm">
+                <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Organization</p>
+                <p className="mt-1 font-semibold text-[color:var(--text-primary)]">
+                  {orgs.find((o) => o.id === activeOrgId)?.name ?? '—'}
+                </p>
               </div>
+            )}
 
-              <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-4 sm:p-5 min-w-0">
-                <OrganizationSettingsPanel
-                  token={token}
-                  activeOrganizationId={activeOrgId}
-                  user={user}
-                  hideMembers
-                  onMembersChanged={() => {
-                    void refreshUser();
-                  }}
-                />
-              </div>
+            <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-4 py-3 flex flex-wrap gap-x-8 gap-y-2 text-sm">
+              <span className="text-[color:var(--text-muted)]">
+                Members:{' '}
+                <strong className="text-[color:var(--text-primary)] tabular-nums">{usageLoading ? '…' : memberCount ?? '—'}</strong>
+              </span>
+              <span className="text-[color:var(--text-muted)]">
+                Projects:{' '}
+                <strong className="text-[color:var(--text-primary)] tabular-nums">{usageLoading ? '…' : projectTotal ?? '—'}</strong>
+              </span>
             </div>
 
-            <div className="xl:col-span-5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-4 sm:p-5 min-w-0">
-              <h3 className="text-sm font-semibold text-[color:var(--text-primary)] mb-1">Projects in this workspace</h3>
-              <p className="text-xs text-[color:var(--text-muted)] mb-4">
-                Open a project below. Scope follows the workspace selected on the left.
-              </p>
-              {projectsPreview.length === 0 ? (
-                <p className="text-sm text-[color:var(--text-muted)]">{usageLoading ? 'Loading…' : 'No projects or no access.'}</p>
-              ) : (
-                <ul className="divide-y divide-[color:var(--border-subtle)]/80 min-w-0">
-                  {projectsPreview.map((p) => (
-                    <li key={p._id} className="py-3 flex items-center justify-between gap-3 min-w-0">
-                      <span className="text-sm min-w-0 truncate">
-                        <span className="font-mono text-[color:var(--text-muted)]">{p.key}</span>{' '}
-                        <span className="text-[color:var(--text-primary)]">{p.name}</span>
-                      </span>
-                      <Link
-                        to={`/projects/${p._id}/dashboard`}
-                        className="shrink-0 rounded-md border border-[color:var(--border-subtle)] px-2.5 py-1 text-xs font-medium text-[color:var(--accent)] hover:bg-[color:var(--bg-surface)]"
-                      >
-                        Open
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
+            <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-4 sm:p-5 min-w-0">
+              <OrganizationSettingsPanel
+                token={token}
+                activeOrganizationId={activeOrgId}
+                user={user}
+                hideMembers
+                onMembersChanged={() => {
+                  void refreshUser();
+                }}
+              />
             </div>
           </div>
         </section>

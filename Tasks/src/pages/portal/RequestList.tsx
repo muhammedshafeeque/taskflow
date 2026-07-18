@@ -51,7 +51,7 @@ const STATUS_OPTIONS = [
   { value: 'draft', label: 'Draft' },
   { value: 'submitted', label: 'Submitted' },
   { value: 'pending_customer_approval', label: 'Pending Customer Approval' },
-  { value: 'pending_taskflow_approval', label: 'Pending TaskFlow Approval' },
+  { value: 'pending_taskflow_approval', label: 'Pending Atrium Approval' },
   { value: 'approved', label: 'Approved' },
   { value: 'ticket_created', label: 'Ticket Created' },
   { value: 'in_progress', label: 'In Progress' },

@@ -1,10 +1,15 @@
 /**
- * UI labels for permission pickers (colon-era codes).
- * Runtime checks use dot notation from `@shared/constants/permissions` via isValidPermission.
+ * Permission validation + legacy labeled lists for project-member defaults.
+ * Roles UI catalog lives in `@shared/constants/permissionCatalog`.
  */
 import { ALL_PERMISSIONS as ALL_DOT_PERMISSIONS } from '../shared/constants/permissions';
 import { LEGACY_COLON_TO_DOT, LEGACY_CUSTOMER_COLON_TO_DOT } from '../shared/constants/legacyPermissionMap';
+import {
+  WORKSPACE_ROLE_PERMISSION_CATALOG,
+  WORKSPACE_ROLE_PERMISSION_CODES,
+} from '../shared/constants/permissionCatalog';
 
+/** @deprecated Prefer WORKSPACE_ROLE_PERMISSION_CATALOG; kept for older callers. */
 export const GLOBAL_PERMISSIONS = [
   { code: 'inbox:read', label: 'View inbox' },
   { code: 'users:list', label: 'List users' },
@@ -48,11 +53,24 @@ export const PROJECT_PERMISSIONS = [
   { code: 'testManagement:edit', label: 'Edit test management' },
 ] as const;
 
-/** Combined global + project permission definitions for admin UI (colon codes + labels). */
-export const ALL_PERMISSIONS = [...GLOBAL_PERMISSIONS, ...PROJECT_PERMISSIONS];
+/** Full workspace catalog for Roles UI (dot codes + labels + groups). */
+export const ALL_PERMISSIONS = WORKSPACE_ROLE_PERMISSION_CATALOG;
+
+const LEGACY_CODES = [
+  ...GLOBAL_PERMISSIONS.map((p) => p.code),
+  ...PROJECT_PERMISSIONS.map((p) => p.code),
+] as string[];
 
 /** Accept dot-notation and legacy colon codes */
-export const PERMISSION_CODES = [...ALL_DOT_PERMISSIONS, ...ALL_PERMISSIONS.map((p) => p.code)] as string[];
+export const PERMISSION_CODES = [
+  ...new Set([
+    ...ALL_DOT_PERMISSIONS,
+    ...WORKSPACE_ROLE_PERMISSION_CODES,
+    ...LEGACY_CODES,
+    ...Object.keys(LEGACY_COLON_TO_DOT),
+    ...Object.keys(LEGACY_CUSTOMER_COLON_TO_DOT),
+  ]),
+] as string[];
 
 export const DEFAULT_PROJECT_MEMBER_PERMISSION_CODES = PROJECT_PERMISSIONS.filter(
   (p) => p.code !== 'settings:manage' && p.code !== 'project:edit' && p.code !== 'project:delete'
@@ -86,8 +104,11 @@ export const ORG_MEMBER_PERMISSION_CODES: string[] = [
 
 export type PermissionCode = string;
 
+const WORKSPACE_CODE_SET = new Set<string>(WORKSPACE_ROLE_PERMISSION_CODES);
+
 export function isValidPermission(code: string): code is PermissionCode {
+  if (WORKSPACE_CODE_SET.has(code)) return true;
   if (ALL_DOT_PERMISSIONS.includes(code)) return true;
   if (code in LEGACY_COLON_TO_DOT || code in LEGACY_CUSTOMER_COLON_TO_DOT) return true;
-  return ALL_PERMISSIONS.some((p) => p.code === code);
+  return LEGACY_CODES.includes(code);
 }

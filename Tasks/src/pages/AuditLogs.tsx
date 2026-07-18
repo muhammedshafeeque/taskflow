@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { auditLogsApi, usersApi, projectsApi, type AuditLogEntry, type User, type Project } from '../lib/api';
 import { formatDateTimeDDMMYYYY } from '../lib/dateFormat';
+import { canAny } from '../utils/moduleAccess';
 
 export default function AuditLogs() {
   const { token, user } = useAuth();
+  const canView = canAny(user, 'taskflow.platform.audit.read');
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -28,7 +30,7 @@ export default function AuditLogs() {
   }, [token, user?.activeOrganizationId]);
 
   useEffect(() => {
-    if (!token || user?.role !== 'admin') return;
+    if (!token || !canView) return;
     setLoading(true);
     auditLogsApi.list(
       { page, limit, user: filterUser || undefined, action: filterAction || undefined, resourceType: filterResourceType || undefined, projectId: filterProjectId || undefined },
@@ -40,12 +42,12 @@ export default function AuditLogs() {
         setTotal(res.data.total ?? 0);
       }
     });
-  }, [token, user?.role, user?.activeOrganizationId, page, limit, filterUser, filterAction, filterResourceType, filterProjectId]);
+  }, [token, canView, user?.activeOrganizationId, page, limit, filterUser, filterAction, filterResourceType, filterProjectId]);
 
-  if (user?.role !== 'admin') {
+  if (!canView) {
     return (
       <div className="p-8">
-        <p className="text-[color:var(--text-muted)]">Access denied. Admin only.</p>
+        <p className="text-[color:var(--text-muted)]">Access denied. Insufficient permissions.</p>
       </div>
     );
   }

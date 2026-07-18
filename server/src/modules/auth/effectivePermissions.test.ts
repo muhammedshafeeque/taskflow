@@ -11,6 +11,20 @@ describe('resolveEffectiveGlobalPermissions', () => {
     expect(result).toEqual(expect.arrayContaining(ALL_TASK_FLOW_PERMISSIONS));
   });
 
+  it('merges new catalog permissions for admin with a stale role snapshot', () => {
+    const result = resolveEffectiveGlobalPermissions({
+      role: 'admin',
+      rolePermissions: ['project.project.list', 'taskflow.customer_portal.org.view'],
+    });
+
+    expect(result).toContain('project.project.list');
+    expect(result).toContain('taskflow.customer_portal.org.view');
+    expect(result).toContain('taskflow.crm.account.list');
+    expect(result).toContain('taskflow.mail.mailbox.read');
+    expect(result).toContain('taskflow.platform.executive.read');
+    expect(result).toContain('taskflow.platform.audit.read');
+  });
+
   it('applies granted and revoked permission overrides', () => {
     const result = resolveEffectiveGlobalPermissions({
       role: 'user',

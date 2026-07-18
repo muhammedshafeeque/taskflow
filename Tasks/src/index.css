@@ -286,6 +286,109 @@
 .animation-delay-200 { animation-delay: 200ms; }
 .animation-delay-300 { animation-delay: 300ms; }
 
+/* Home hub module card “live” scenes */
+@keyframes hub-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes hub-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+@keyframes hub-slide-x {
+  0%, 100% { transform: translateX(0); opacity: 0.7; }
+  50% { transform: translateX(6px); opacity: 1; }
+}
+@keyframes hub-kanban-card {
+  0% { transform: translate(0, 0); opacity: 0.9; }
+  35% { transform: translate(36px, -18px); opacity: 1; }
+  70% { transform: translate(72px, -4px); opacity: 0.95; }
+  100% { transform: translate(0, 0); opacity: 0.9; }
+}
+@keyframes hub-orbit {
+  0% { transform: rotate(0deg) translateX(18px) rotate(0deg); }
+  100% { transform: rotate(360deg) translateX(18px) rotate(-360deg); }
+}
+@keyframes hub-check {
+  0%, 70%, 100% { stroke-dashoffset: 24; opacity: 0.4; }
+  35% { stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes hub-grow-y {
+  0%, 100% { transform: scaleY(0.92); transform-origin: bottom; }
+  50% { transform: scaleY(1); transform-origin: bottom; }
+}
+@keyframes hub-mail-fly {
+  0% { transform: translate(18px, 62px) rotate(-8deg); opacity: 0; }
+  15% { opacity: 1; }
+  55% { transform: translate(92px, 28px) rotate(6deg); opacity: 1; }
+  85% { transform: translate(118px, 40px) rotate(12deg); opacity: 0; }
+  100% { transform: translate(18px, 62px) rotate(-8deg); opacity: 0; }
+}
+@keyframes hub-blink {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+@keyframes hub-clock {
+  from { transform: rotate(0deg); transform-origin: 124px 36px; }
+  to { transform: rotate(360deg); transform-origin: 124px 36px; }
+}
+@keyframes hub-clock-slow {
+  from { transform: rotate(0deg); transform-origin: 124px 36px; }
+  to { transform: rotate(360deg); transform-origin: 124px 36px; }
+}
+@keyframes hub-notif-in {
+  0% { transform: translateY(10px); opacity: 0; }
+  20% { transform: translateY(0); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(-4px); opacity: 0.55; }
+}
+@keyframes hub-bell {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(12deg); }
+  40% { transform: rotate(-10deg); }
+  60% { transform: rotate(6deg); }
+  80% { transform: rotate(-4deg); }
+}
+
+.hub-anim-float { animation: hub-float 2.8s ease-in-out infinite; }
+.hub-anim-pulse { animation: hub-pulse 2.4s ease-in-out infinite; }
+.hub-anim-slide-x { animation: hub-slide-x 2.6s ease-in-out infinite; }
+.hub-anim-kanban-card { animation: hub-kanban-card 4.2s ease-in-out infinite; }
+.hub-anim-orbit { animation: hub-orbit 4s linear infinite; transform-origin: 98px 48px; }
+.hub-anim-check {
+  stroke-dasharray: 24;
+  animation: hub-check 2.8s ease-in-out infinite;
+}
+.hub-anim-grow-y { animation: hub-grow-y 2.6s ease-in-out infinite; }
+.hub-anim-mail-fly { animation: hub-mail-fly 3.8s ease-in-out infinite; }
+.hub-anim-blink { animation: hub-blink 1.6s ease-in-out infinite; }
+.hub-anim-clock-hand { animation: hub-clock 4s linear infinite; }
+.hub-anim-clock-hand-slow { animation: hub-clock-slow 12s linear infinite; }
+.hub-anim-notif-in { animation: hub-notif-in 3.6s ease-in-out infinite; }
+.hub-anim-bell { animation: hub-bell 2.2s ease-in-out infinite; transform-origin: 134px 28px; }
+
+.group:hover .hub-visual {
+  ring-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-anim-float,
+  .hub-anim-pulse,
+  .hub-anim-slide-x,
+  .hub-anim-kanban-card,
+  .hub-anim-orbit,
+  .hub-anim-check,
+  .hub-anim-grow-y,
+  .hub-anim-mail-fly,
+  .hub-anim-blink,
+  .hub-anim-clock-hand,
+  .hub-anim-clock-hand-slow,
+  .hub-anim-notif-in,
+  .hub-anim-bell {
+    animation: none !important;
+  }
+}
+
 .btn-secondary {
   background-color: var(--bg-button-secondary);
   color: var(--text-primary);

@@ -162,18 +162,15 @@ async function toAuthUser(user: IUser & { roleId?: unknown; mustChangePassword?:
 
   const mustChange = user.mustChangePassword ?? false;
   const overrides = (user as IUser & { permissionOverrides?: { granted?: string[]; revoked?: string[] } }).permissionOverrides;
-  const stored = (user as IUser).permissions;
-  let permissions =
-    Array.isArray(stored) && stored.length > 0
-      ? mergeTaskflowPermissionFloor(stored)
-      : mergeTaskflowPermissionFloor(
-          resolveEffectiveGlobalPermissions({
-            rolePermissions,
-            role: user.role,
-            mustChangePassword: mustChange,
-            permissionOverrides: overrides,
-          })
-        );
+  // Always resolve from role + overrides (same as authMiddleware) — do not prefer stale user.permissions snapshot.
+  const permissions = mergeTaskflowPermissionFloor(
+    resolveEffectiveGlobalPermissions({
+      rolePermissions,
+      role: user.role,
+      mustChangePassword: mustChange,
+      permissionOverrides: overrides,
+    })
+  );
   const u = user as IUser & { avatarUrl?: string; createdAt?: Date };
   return {
     id: user._id.toString(),

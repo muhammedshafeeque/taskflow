@@ -72,7 +72,7 @@ function trimDesc(s: string, max: number): string {
 }
 
 /**
- * A customer request is waiting in the TaskFlow approval queue.
+ * A customer request is waiting in the Atrium approval queue.
  */
 export async function notifyTaskflowRequestQueued(params: {
   requestId: string;
@@ -91,7 +91,7 @@ export async function notifyTaskflowRequestQueued(params: {
   const messageTitle = `Customer request — review needed: ${t}`;
 
   const body = [
-    'A new customer request is in the TaskFlow approval queue and is waiting for your team.',
+    'A new customer request is in the Atrium approval queue and is waiting for your team.',
     '',
     '── Summary ──',
     `Title        ${params.title}`,
@@ -104,7 +104,7 @@ export async function notifyTaskflowRequestQueued(params: {
     '── Description ──',
     trimDesc(params.description, 2000) || '—',
     '',
-    'Open Customer requests in TaskFlow to approve (creates a project ticket) or decline with a reason.',
+    'Open Customer requests in Atrium to approve (creates a project ticket) or decline with a reason.',
   ].join('\n');
 
   const url = buildCustomerRequestsAdminUrl();
@@ -167,7 +167,7 @@ export async function notifyProjectMembersTicketFromCustomerRequest(params: {
     `Priority     ${priorityLabel(params.priority)}`,
     `Approved by  ${params.approvedByName}`,
     ...noteBlock,
-    '── Open in TaskFlow ──',
+    '── Open in Atrium ──',
     issueUrl,
   ]
     .filter((line) => line !== undefined)
@@ -195,7 +195,7 @@ export async function notifyProjectMembersTicketFromCustomerRequest(params: {
 }
 
 /**
- * TaskFlow declined a customer request.
+ * Atrium declined a customer request.
  */
 export async function notifyTaskflowRequestDeclined(params: {
   requestId: string;
@@ -217,7 +217,7 @@ export async function notifyTaskflowRequestDeclined(params: {
   const messageTitle = `Customer request declined: ${t}`;
 
   const parts: string[] = [
-    'The following customer request was declined by a TaskFlow reviewer. The customer has been informed.',
+    'The following customer request was declined by a Atrium reviewer. The customer has been informed.',
     '',
     '── Request ──',
     `Title          ${params.title}`,

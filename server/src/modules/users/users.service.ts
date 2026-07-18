@@ -41,7 +41,7 @@ async function ensureGlobalProjectMembership(user: any) {
         permissionOverrides: user.permissionOverrides,
       })
     );
-    // Persist calculated permissions if missing
+    // Cache only — session (/me) always re-resolves from role + overrides
     await User.findByIdAndUpdate(user._id, { $set: { permissions: perms } });
   }
 
@@ -313,7 +313,7 @@ export async function invite(
     await upsertActiveOrgMember(organizationId, existingId);
 
     const org = await Organization.findById(organizationId).select('name').lean();
-    const workspaceName = (org as { name?: string } | null)?.name ?? 'TaskFlow workspace';
+    const workspaceName = (org as { name?: string } | null)?.name ?? 'Atrium workspace';
     const inviter = inviterUserId
       ? await User.findById(inviterUserId).select('name').lean()
       : null;
@@ -337,7 +337,7 @@ export async function invite(
           toUser: existingUserId,
           type: 'workspace_join',
           title: `Added to workspace: ${workspaceName}`,
-          body: `${inviterName} added you to the workspace "${workspaceName}". Sign in with your existing TaskFlow account — no new password was sent.`,
+          body: `${inviterName} added you to the workspace "${workspaceName}". Sign in with your existing Atrium account — no new password was sent.`,
           meta: { organizationId, inviterUserId: inviterUserId ?? null },
         })
         .catch((err) => console.error('Failed to create workspace join inbox message:', err));
@@ -401,7 +401,7 @@ export async function invite(
     .createMessage({
       toUser: user._id.toString(),
       type: 'welcome',
-      title: 'Welcome to TaskFlow',
+      title: 'Welcome to Atrium',
       body: 'Your account has been created. Please change your password from your profile or use Forgot password after signing out.',
     })
     .catch((err) => console.error('Failed to create welcome message:', err));

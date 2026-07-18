@@ -149,14 +149,14 @@ export function renderInviteEmail(params: InviteEmailParams): string {
   return `
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>Your TaskFlow account</title></head>
+<head><meta charset="utf-8"><title>Your Atrium account</title></head>
 <body style="font-family: system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2 style="color: #4f46e5;">Welcome to TaskFlow</h2>
+  <h2 style="color: #4f46e5;">Welcome to Atrium</h2>
   <p>Hi ${escapeHtml(name)},</p>
-  <p>Your TaskFlow account has been created. Use the credentials below to sign in:</p>
+  <p>Your Atrium account has been created. Use the credentials below to sign in:</p>
   <p><strong>Email:</strong> ${escapeHtml(email)}<br><strong>Password:</strong> <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">${escapeHtml(password)}</code></p>
   <p>Please change your password after your first login (from your profile or Forgot password).</p>
-  <p><a href="${escapeHtml(appUrl)}/login" style="color: #4f46e5;">Sign in to TaskFlow</a></p>
+  <p><a href="${escapeHtml(appUrl)}/login" style="color: #4f46e5;">Sign in to Atrium</a></p>
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
   <p style="font-size: 12px; color: #64748b;">This is an automated message. Do not reply.</p>
 </body>
@@ -172,7 +172,7 @@ export interface ForgotPasswordEmailParams {
 
 export function renderForgotPasswordEmail(params: ForgotPasswordEmailParams): string {
   const { name, resetLink } = params;
-  const inner = `${tfHeading('Reset your TaskFlow password', 'You requested a password reset.')}
+  const inner = `${tfHeading('Reset your Atrium password', 'You requested a password reset.')}
   <p style="margin:0 0 12px; color:#475569; font-size:14px;">Hi ${escapeHtml(name)},</p>
   <p style="margin:0 0 16px; color:#475569; font-size:14px;">Click the button below to choose a new password. This link expires in 1 hour.</p>
   ${tfCta(resetLink, 'Reset password')}
@@ -188,7 +188,7 @@ export function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-// ── Shared HTML layout (TaskFlow + Customer Portal) ─────────────────────────
+// ── Shared HTML layout (Atrium + Customer Portal) ─────────────────────────
 
 export type EmailAccent = 'indigo' | 'green' | 'red';
 
@@ -243,7 +243,7 @@ export function tfEmailWrap(inner: string, accent: EmailAccent = 'indigo'): stri
       <div style="height:5px;background:${top};"></div>
       <div style="padding:28px 24px 32px; color:#0f172a; line-height:1.6;">
         ${inner}
-        <p style="margin:28px 0 0; padding-top:20px; border-top:1px solid #e2e8f0; font-size:12px; color:#64748b;">This is an automated message from TaskFlow. Please do not reply to this email.</p>
+        <p style="margin:28px 0 0; padding-top:20px; border-top:1px solid #e2e8f0; font-size:12px; color:#64748b;">This is an automated message from Atrium. Please do not reply to this email.</p>
       </div>
     </div>
   </div>
@@ -298,7 +298,7 @@ function issueDetailRows(params: {
 }
 
 export async function sendInviteEmail(params: InviteEmailParams): Promise<void> {
-  await sendEmail(params.email, 'Your TaskFlow account', renderInviteEmail(params));
+  await sendEmail(params.email, 'Your Atrium account', renderInviteEmail(params));
 }
 
 export interface WorkspaceJoinInviteEmailParams {
@@ -319,9 +319,9 @@ export function renderWorkspaceJoinInviteEmail(params: WorkspaceJoinInviteEmailP
 <body style="font-family: system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
   <h2 style="color: #4f46e5;">You’ve been added to a workspace</h2>
   <p>Hi ${escapeHtml(inviteeName)},</p>
-  <p>${escapeHtml(inviterName)} added you to the workspace <strong>${escapeHtml(workspaceName)}</strong> in TaskFlow.</p>
+  <p>${escapeHtml(inviterName)} added you to the workspace <strong>${escapeHtml(workspaceName)}</strong> in Atrium.</p>
   <p>Sign in with your existing account — no new password was created for you.</p>
-  <p><a href="${escapeHtml(loginUrl)}" style="color: #4f46e5;">Open TaskFlow</a></p>
+  <p><a href="${escapeHtml(loginUrl)}" style="color: #4f46e5;">Open Atrium</a></p>
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
   <p style="font-size: 12px; color: #64748b;">This is an automated message. Do not reply.</p>
 </body>
@@ -332,13 +332,13 @@ export function renderWorkspaceJoinInviteEmail(params: WorkspaceJoinInviteEmailP
 export async function sendWorkspaceJoinInviteEmail(params: WorkspaceJoinInviteEmailParams): Promise<void> {
   await sendEmail(
     params.email,
-    `TaskFlow: Join workspace ${params.workspaceName}`,
+    `Atrium: Join workspace ${params.workspaceName}`,
     renderWorkspaceJoinInviteEmail(params)
   );
 }
 
 export async function sendForgotPasswordEmail(to: string, params: ForgotPasswordEmailParams): Promise<void> {
-  await sendEmail(to, 'Reset your TaskFlow password', renderForgotPasswordEmail(params));
+  await sendEmail(to, 'Reset your Atrium password', renderForgotPasswordEmail(params));
 }
 
 export interface ProjectInviteEmailParams {
@@ -356,10 +356,10 @@ export function renderProjectInviteEmail(params: ProjectInviteEmailParams): stri
     { label: 'Invited by', value: inviterName },
   ];
   if (roleName) rows.push({ label: 'Role', value: roleName });
-  const inner = `${tfHeading('Project invitation', 'You have been invited to collaborate on a project in TaskFlow.')}
+  const inner = `${tfHeading('Project invitation', 'You have been invited to collaborate on a project in Atrium.')}
 ${tfDetailTable(rows)}
 ${tfNextStepsBox('What to do next', [
-  'Open your TaskFlow inbox to accept or decline this invitation.',
+  'Open your Atrium inbox to accept or decline this invitation.',
   'Once accepted, you will see the project in your workspace.',
 ])}
 ${tfCta(inboxUrl, 'Open inbox')}`;
@@ -386,7 +386,7 @@ export interface CustomerRequestSubmittedParams {
   projectLabel: string;
   typeLabel: string;
   priorityLabel: string;
-  /** What happens next (org admin path vs direct to TaskFlow) */
+  /** What happens next (org admin path vs direct to Atrium) */
   routingMessage: string;
 }
 
@@ -431,7 +431,7 @@ export function renderCustomerRequestApprovedByOrgAdminEmail(p: CustomerRequestA
       : '';
   const inner = `<p style="font-size:15px; margin:0 0 8px; color:#334155;">Hi ${escapeHtml(p.requesterName)},</p>
 <p style="font-size:16px; font-weight:600; margin:0 0 12px; color:#16a34a;">Your organisation has approved this request</p>
-<p style="margin:0 0 16px; color:#475569; font-size:14px;">It’s been forwarded to the <strong>TaskFlow</strong> team for technical review. You don’t need to do anything for now — we’ll notify you if we need more information or when work begins.</p>
+<p style="margin:0 0 16px; color:#475569; font-size:14px;">It’s been forwarded to the <strong>Atrium</strong> team for technical review. You don’t need to do anything for now — we’ll notify you if we need more information or when work begins.</p>
 ${crDetailTable([
   { label: 'Title', value: p.requestTitle },
   { label: 'Organisation', value: p.orgName },
@@ -441,7 +441,7 @@ ${crDetailTable([
 ])}
 ${noteBlock}
 ${crNextStepsBox('What happens next', [
-  'TaskFlow reviewers will accept or decline the work based on scope and capacity.',
+  'Atrium reviewers will accept or decline the work based on scope and capacity.',
   'If accepted, a ticket is created in the project and you’ll receive the ticket key by email.',
 ])}
 ${crCtaBlock(detailUrl, 'Open request in portal')}`;
@@ -477,7 +477,7 @@ export function renderCustomerRequestRejectedEmail(p: CustomerRequestRejectedByO
       : '';
   const inner = `<p style="font-size:15px; margin:0 0 8px; color:#334155;">Hi ${escapeHtml(p.requesterName)},</p>
 <p style="font-size:16px; font-weight:600; margin:0 0 12px; color:#b91c1c;">This request was not approved at your organisation</p>
-<p style="margin:0 0 16px; color:#475569; font-size:14px;">Your organisation admin decided not to send this to TaskFlow. You can submit a new request with more detail, or ask your admin if you have questions about this decision.</p>
+<p style="margin:0 0 16px; color:#475569; font-size:14px;">Your organisation admin decided not to send this to Atrium. You can submit a new request with more detail, or ask your admin if you have questions about this decision.</p>
 ${crDetailTable([
   { label: 'Request', value: p.requestTitle },
   { label: 'Project', value: p.projectLabel },
@@ -506,7 +506,7 @@ export function renderTicketCreatedEmail(p: CustomerTicketCreatedEmailParams): s
   const detailUrl = `${p.appUrl}/portal/requests/${p.requestId}`;
   const inner = `<p style="font-size:15px; margin:0 0 8px; color:#334155;">Hi ${escapeHtml(p.recipientName)},</p>
 <p style="font-size:16px; font-weight:600; margin:0 0 12px; color:#16a34a;">Your work is officially on the board</p>
-<p style="margin:0 0 16px; color:#475569; font-size:14px;">TaskFlow approved your request and created a <strong>ticket</strong> in the project. The team can track, estimate, and discuss it with the same tools they use for all internal work.</p>
+<p style="margin:0 0 16px; color:#475569; font-size:14px;">Atrium approved your request and created a <strong>ticket</strong> in the project. The team can track, estimate, and discuss it with the same tools they use for all internal work.</p>
 ${crDetailTable([
   { label: 'Ticket', value: p.issueKey },
   { label: 'From request', value: p.requestTitle },
@@ -550,7 +550,7 @@ export function renderTfRejectedEmail(p: CustomerTfRejectedEmailParams): string 
       </div>`
     : '';
   const inner = `<p style="font-size:15px; margin:0 0 8px; color:#334155;">Hi ${escapeHtml(p.requesterName)},</p>
-<p style="font-size:16px; font-weight:600; margin:0 0 12px; color:#b91c1c;">The TaskFlow team could not take this request forward</p>
+<p style="font-size:16px; font-weight:600; margin:0 0 12px; color:#b91c1c;">The Atrium team could not take this request forward</p>
 <p style="margin:0 0 16px; color:#475569; font-size:14px;">This isn’t a reflection on you — the team may decline when work is out of scope, duplicates existing effort, or can’t be scheduled right now. You can refine the description and try again, or work with your organisation on another approach.</p>
 ${crDetailTable([
   { label: 'Request', value: p.requestTitle },
@@ -578,7 +578,7 @@ export function renderCustomerOrgAdminInviteEmail(
 <html>
 <head><meta charset="utf-8"><title>Welcome to ${escapeHtml(orgName)} Customer Portal</title></head>
 <body style="font-family: system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2 style="color: #4f46e5;">Welcome to ${escapeHtml(orgName)} on TaskFlow</h2>
+  <h2 style="color: #4f46e5;">Welcome to ${escapeHtml(orgName)} on Atrium</h2>
   <p>Hi ${escapeHtml(name)},</p>
   <p>Your customer portal account has been created as the Organization Admin for <strong>${escapeHtml(orgName)}</strong>. Use the credentials below to sign in:</p>
   <p><strong>Email:</strong> ${escapeHtml(email)}<br><strong>Temporary Password:</strong> <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">${escapeHtml(password)}</code></p>

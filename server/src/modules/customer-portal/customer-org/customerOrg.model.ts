@@ -10,6 +10,7 @@ export interface ICustomerOrg extends Document {
   contactEmail: string;
   contactPhone?: string;
   status: 'active' | 'inactive' | 'suspended';
+  crmAccountId?: Types.ObjectId;
   createdBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -25,6 +26,7 @@ const customerOrgSchema = new Schema<ICustomerOrg>(
     contactEmail: { type: String, required: true, lowercase: true, trim: true },
     contactPhone: { type: String },
     status: { type: String, enum: ['active', 'inactive', 'suspended'], default: 'active' },
+    crmAccountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount', default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   },
   { timestamps: true }

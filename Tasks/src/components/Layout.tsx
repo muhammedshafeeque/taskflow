@@ -6,19 +6,17 @@ import { toAppPath } from '../lib/navigationUrl';
 import NotificationToast from './NotificationToast';
 import SuccessToast from './SuccessToast';
 import ConfirmModal from './ConfirmModal';
-import { taskflowAppSettingsHref } from '../lib/appSettingsHref';
+import CommandPalette from './CommandPalette';
 import { projectsApi, issuesApi, type Project, type Issue, getIssueKey } from '../lib/api';
 import { APP_VERSION } from '../appVersion';
-import { canAccessTaskflowWorkspaceSettings } from '../utils/taskflowWorkspaceSettingsAccess';
+import { APP_NAME } from '../brand';
+import AtriumLogo from './AtriumLogo';
 import { userHasPermission } from '../utils/permissions';
 import { PROJECT_PERMISSIONS } from '@shared/constants/permissions';
+import type { NavItem } from './moduleNavigation';
 import {
   DashboardIcon,
-  InboxIcon,
   ProjectsIcon,
-  UsersIcon,
-  RolesIcon,
-  ProfileIcon,
   IssuesIcon,
   BoardsIcon,
   GanttIcon,
@@ -26,12 +24,10 @@ import {
   VersionsIcon,
   TimesheetIcon,
   SettingsIcon,
-  AppHubSettingsIcon,
   SearchIcon,
   SunIcon,
   MoonIcon,
   BellIcon,
-  PackageIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   LogOutIcon,
@@ -39,92 +35,14 @@ import {
   FullscreenExitIcon,
 } from './icons/NavigationIcons';
 
-interface NavItem {
-  to: string;
-  label: string;
-  icon: ReactNode;
-  end?: boolean;
-}
-
-function buildGlobalNav(
-  user: { mustChangePassword?: boolean; permissions?: string[]; role?: string; userType?: string; organizations?: { id: string }[] } | null
-): NavItem[] {
-  const perms = user?.permissions ?? [];
-  const nav: NavItem[] = [
-    { to: '/', label: 'Dashboard', icon: <DashboardIcon />, end: true },
-    { to: '/inbox', label: 'Inbox', icon: <InboxIcon /> },
-  ];
-  const can = (...required: string[]) => required.some((p) => userHasPermission(perms, p));
-
-  if (
-    can(
-      'project.project.list',
-      'projects:list',
-      'project.project.create',
-      'projects:create'
-    )
-  ) {
-    nav.push({ to: '/projects', label: 'Projects', icon: <ProjectsIcon /> });
-  }
-  if (can('project.project.create', 'projects:create')) {
-    nav.push({ to: '/project-templates', label: 'Templates', icon: <PackageIcon /> });
-  }
-  if (can('project.project.list', 'projects:list')) {
-    nav.push({ to: '/issues', label: 'All Issues', icon: <IssuesIcon /> });
-  }
-  if (can('taskflow.report.read', 'reports:view')) {
-    nav.push({ to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon /> });
-    nav.push({ to: '/estimates', label: 'Estimates', icon: <TimesheetIcon /> });
-    nav.push({ to: '/reports', label: 'Reports', icon: <SettingsIcon /> });
-  }
-  if (can('taskflow.analytics.view', 'analytics:view')) {
-    nav.push({ to: '/performance-report', label: 'Performance', icon: <TimesheetIcon /> });
-    nav.push({ to: '/workload', label: 'Workload', icon: <TimesheetIcon /> });
-    nav.push({ to: '/analytics', label: 'Analytics', icon: <SettingsIcon /> });
-  }
-  if (
-    can('taskflow.analytics.view', 'analytics:view', 'taskflow.report.read', 'reports:view', 'project.project.list', 'projects:list')
-  ) {
-    nav.push({ to: '/portfolio', label: 'Portfolio', icon: <SettingsIcon /> });
-    nav.push({ to: '/defect-metrics', label: 'Defect Metrics', icon: <SettingsIcon /> });
-  }
-  if (user?.role === 'admin') {
-    nav.push({ to: '/executive', label: 'Executive', icon: <SettingsIcon /> });
-    nav.push({ to: '/audit-logs', label: 'Audit logs', icon: <SettingsIcon /> });
-  }
-  if (can('taskflow.cost_report.view')) {
-    nav.push({ to: '/cost-usage', label: 'Cost report', icon: <TimesheetIcon /> });
-  }
-  if (can('auth.user.list', 'auth.user.create', 'users:list', 'users:invite')) {
-    nav.push({ to: '/users', label: 'Users', icon: <UsersIcon /> });
-  }
-  if (can('auth.role.manage_all', 'roles:manage')) {
-    nav.push({ to: '/roles', label: 'Roles', icon: <RolesIcon /> });
-  }
-  if (
-    can(
-      'taskflow.customer_portal.org.manage',
-      'taskflow.customer_portal.org.view',
-      'customers:manage',
-      'customers:view'
-    )
-  ) {
-    nav.push({ to: '/admin/customer-orgs', label: 'Customer Orgs', icon: <UsersIcon /> });
-  }
-  if (can('taskflow.customer_portal.request.approve', 'customer-requests:approve')) {
-    nav.push({ to: '/admin/customer-requests', label: 'Customer Requests', icon: <IssuesIcon /> });
-  }
-  if (
-    user &&
-    'userType' in user &&
-    user.userType === 'taskflow' &&
-    (user.organizations?.length ?? 0) > 0 &&
-    canAccessTaskflowWorkspaceSettings(user)
-  ) {
-    nav.push({ to: '/settings/workspace', label: 'Workspace', icon: <AppHubSettingsIcon /> });
-  }
-  nav.push({ to: '/profile', label: 'Profile', icon: <ProfileIcon /> });
-  return nav;
+interface LayoutProps {
+  children: React.ReactNode;
+  /** Module-specific sidebar items (ignored inside a project). */
+  navItems?: NavItem[];
+  /** Shown in the sidebar header when not inside a project. */
+  moduleTitle?: string;
+  /** When false, renders content only (use HomeLayout instead for home). */
+  showSidebar?: boolean;
 }
 
 const PROJECT_NAV_ITEMS: { to: string; label: string; icon: ReactNode; permission: string; global?: boolean; globalPerm?: boolean }[] = [
@@ -181,8 +99,7 @@ function projectNav(projectId: string, projectPermissions: string[], globalPermi
     return userHasPermission(pp, item.permission) || userHasPermission(gp, item.permission);
   };
   const items = [
-    { to: '/projects', label: 'Projects', icon: <ProjectsIcon />, end: true },
-    { to: '/inbox', label: 'Inbox', icon: <InboxIcon />, end: true },
+    { to: '/projects', label: 'All projects', icon: <ProjectsIcon /> },
     ...PROJECT_NAV_ITEMS.filter((item) => can(item)).map((item) => ({
       to: item.global ? item.to : `${base}${item.to}`,
       label: item.label,
@@ -192,8 +109,13 @@ function projectNav(projectId: string, projectPermissions: string[], globalPermi
   return items;
 }
 
-export default function Layout({ children }: { children: React.ReactNode }) {
-  const { user, logout, token, switchWorkspace } = useAuth();
+export default function Layout({
+  children,
+  navItems: navItemsProp,
+  moduleTitle,
+  showSidebar = true,
+}: LayoutProps) {
+  const { user, logout, token } = useAuth();
   const {
     latestInboxMessage,
     latestPushNotification,
@@ -295,8 +217,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     }
   }, [theme]);
 
-  const globalNavItems = useMemo(() => buildGlobalNav(user), [user]);
-  const nav = projectId ? projectNav(projectId, projectPermissions, user?.permissions ?? []) : globalNavItems;
+  const moduleNavItems = useMemo(() => navItemsProp ?? [], [navItemsProp]);
+  const nav = projectId ? projectNav(projectId, projectPermissions, user?.permissions ?? []) : moduleNavItems;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Issue[]>([]);
@@ -332,6 +254,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="h-screen min-h-0 flex bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
+      {showSidebar && (
       <aside
         className={`flex flex-col border-r border-[color:var(--sidebar-active-bg)] bg-[color:var(--sidebar-bg)] card-shadow shrink-0 transition-[width] duration-200 ease-in-out ${
           sidebarCollapsed ? 'w-16' : 'w-55'
@@ -339,23 +262,35 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       >
         <div className="p-3 border-b border-[color:var(--sidebar-active-bg)] flex items-center gap-2 min-h-[4.5rem]">
           {sidebarCollapsed ? (
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color:var(--sidebar-logo-bg)] text-[color:var(--sidebar-text-active)] font-bold text-sm flex-1" title="TaskFlow">
-              TF
-            </span>
+            <Link
+              to="/"
+              className="flex h-9 w-9 items-center justify-center rounded-lg overflow-hidden bg-white flex-1 hover:opacity-90 transition shadow-sm"
+              title="Home"
+              aria-label="Go to Home"
+            >
+              <AtriumLogo variant="mark" className="h-7 w-7" useSvg={false} />
+            </Link>
           ) : (
-            <div className="min-w-0 flex-1 flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color:var(--sidebar-logo-bg)] text-[color:var(--sidebar-text-active)] font-bold text-sm shrink-0">
-                TF
+            <Link
+              to="/"
+              className="min-w-0 flex-1 flex items-center gap-2.5 rounded-md px-0.5 py-0.5 hover:bg-[color:var(--sidebar-hover-bg)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/40"
+              title="Go to Home"
+              aria-label="Go to Home"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
+                <AtriumLogo variant="mark" className="h-7 w-7" useSvg={false} />
               </span>
-              <div className="min-w-0">
-                <h1 className="text-base font-bold tracking-tight text-[color:var(--sidebar-text-active)]">TaskFlow</h1>
-                {projectId && (
-                  <p className="text-[11px] text-[color:var(--sidebar-text)] mt-0.5 truncate" title={project?.name ?? '…'}>
-                    {projectLoading ? 'Loading…' : project?.name ?? '…'}
-                  </p>
-                )}
+              <div className="min-w-0 text-left">
+                <h1 className="text-base font-bold tracking-tight text-[color:var(--sidebar-text-active)]">{APP_NAME}</h1>
+                <p className="text-[11px] text-[color:var(--sidebar-text)] mt-0.5 truncate" title={projectId ? (project?.name ?? '…') : (moduleTitle ?? '')}>
+                  {projectId
+                    ? projectLoading
+                      ? 'Loading…'
+                      : project?.name ?? '…'
+                    : moduleTitle ?? 'Module'}
+                </p>
               </div>
-            </div>
+            </Link>
           )}
           <button
             type="button"
@@ -432,7 +367,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <LogOutIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 Sign out
               </button>
-              <p className="px-1 pt-1 text-[10px] text-[color:var(--sidebar-text)]/50" title={`TaskFlow v${APP_VERSION}`}>
+              <p className="px-1 pt-1 text-[10px] text-[color:var(--sidebar-text)]/50" title={`${APP_NAME} v${APP_VERSION}`}>
                 v{APP_VERSION}
               </p>
             </>
@@ -454,13 +389,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               >
                 <LogOutIcon className="h-4 w-4" aria-hidden />
               </button>
-              <span className="text-[9px] text-[color:var(--sidebar-text)]/50" title={`TaskFlow v${APP_VERSION}`}>
+              <span className="text-[9px] text-[color:var(--sidebar-text)]/50" title={`${APP_NAME} v${APP_VERSION}`}>
                 v{APP_VERSION}
               </span>
             </>
           )}
         </div>
       </aside>
+      )}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="shrink-0 flex flex-wrap items-center gap-2 sm:gap-3 px-4 py-2 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] shadow-[0_1px_0_var(--border-subtle)]">
           <div className="relative min-w-0 flex-1 basis-full sm:basis-auto max-w-md">
@@ -508,6 +444,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             )}
           </div>
           <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('atrium:open-command-palette'))}
+            title="Search everything (⌘K)"
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-[color:var(--text-muted)] hover:border-[color:var(--accent)]/40 hover:text-[color:var(--text-primary)] transition text-xs"
+          >
+            <SearchIcon className="w-3.5 h-3.5" />
+            <kbd className="text-[10px]">⌘K</kbd>
+          </button>
           <button
             type="button"
             onClick={toggleFullScreen}
@@ -605,45 +550,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </>
             )}
           </div>
-            {user?.userType === 'taskflow' && (user.organizations?.length ?? 0) > 0 && (
-              <label className="flex min-w-0 max-w-[10rem] sm:max-w-[14rem] items-center gap-2 text-xs text-[color:var(--text-muted)]">
-                <span className="hidden xl:inline whitespace-nowrap">Workspace</span>
-                <select
-                  className="min-w-0 flex-1 truncate rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-2 py-1 text-xs text-[color:var(--text-primary)]"
-                  value={user.activeOrganizationId ?? user.organizations![0].id}
-                  onChange={async (e) => {
-                    const id = e.target.value;
-                    if (!id || id === user.activeOrganizationId) return;
-                    const r = await switchWorkspace(id);
-                    if (!r.ok) {
-                      window.alert(r.error ?? 'Could not switch workspace');
-                      return;
-                    }
-                    navigate('/projects', { replace: true });
-                  }}
-                  title="Switch workspace"
-                >
-                  {user.organizations?.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {user?.userType === 'taskflow' && (
-              <button
-                type="button"
-                onClick={() => {
-                  window.open(taskflowAppSettingsHref(), '_blank', 'noopener,noreferrer');
-                }}
-                aria-label="Workspace hub and inbox window (opens in new tab)"
-                title="Workspace hub"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--accent)]/50 text-[color:var(--text-muted)] hover:bg-[color:var(--bg-surface)] hover:text-[color:var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40 focus:ring-offset-0 transition shadow-[0_0_0_1px_var(--accent)_inset]"
-              >
-                <AppHubSettingsIcon className="w-3.5 h-3.5" />
-              </button>
-            )}
           </div>
         </header>
         <main className="flex-1 min-h-0 overflow-auto bg-[color:var(--bg-page)] flex flex-col">
@@ -703,6 +609,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         onConfirm={performLogout}
         onCancel={() => setLogoutConfirmOpen(false)}
       />
+      <CommandPalette />
     </div>
   );
 }

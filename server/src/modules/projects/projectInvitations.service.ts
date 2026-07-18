@@ -134,7 +134,7 @@ export async function inviteToProject(
   if (!project) throw new ApiError(404, 'Project not found');
 
   const user = await User.findOne({ email: email.toLowerCase().trim() }).select('_id name email').lean();
-  if (!user) throw new ApiError(400, 'User not found. They must have a TaskFlow account.');
+  if (!user) throw new ApiError(400, 'User not found. They must have a Atrium account.');
 
   const userIdStr = user._id.toString();
   const existingMember = await ProjectMember.findOne({ project: projectId, user: userIdStr }).lean();

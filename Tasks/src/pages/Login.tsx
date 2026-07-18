@@ -6,6 +6,8 @@ import { FaMicrosoft } from 'react-icons/fa';
 import { useAuth } from '../contexts/AuthContext';
 import { authApi, type PublicAuthConfig } from '../lib/api';
 import { resolvePostAuthRoute } from '../lib/postAuthRedirect';
+import { APP_NAME, APP_TAGLINE } from '../brand';
+import AtriumLogo from '../components/AtriumLogo';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -120,39 +122,39 @@ export default function Login() {
         <div className="grid overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-modal)] shadow-[0_24px_64px_rgba(0,0,0,0.4)] lg:grid-cols-[1.05fr_1fr]">
           <section className="relative hidden lg:flex flex-col justify-between border-r border-[color:var(--border-subtle)]/70 bg-[color:var(--bg-elevated)] p-10">
             <div>
-              <span className="inline-flex items-center rounded-full border border-transparent bg-[color:var(--accent)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white">
-                TaskFlow
-              </span>
-              <h1 className="mt-5 text-4xl font-extrabold leading-tight tracking-tight text-[color:var(--text-primary)]">
-                Plan faster.
+              <div className="flex items-center gap-3 mb-6">
+                <AtriumLogo variant="mark" className="h-11 w-11" useSvg={false} />
+                <span className="text-xl font-bold tracking-tight text-[color:var(--text-primary)]">{APP_NAME}</span>
+              </div>
+              <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-[color:var(--text-primary)]">
+                One hub.
                 <br />
-                Deliver smarter.
+                Every module.
               </h1>
               <p className="mt-4 max-w-sm text-sm leading-relaxed text-[color:var(--text-muted)]">
-                Manage projects, issues, and teams in one focused workspace built for clarity and speed.
+                {APP_TAGLINE}. Run projects, CRM, mail, and service desks from one clean workspace.
               </p>
             </div>
             <div className="space-y-3 text-sm text-[color:var(--text-muted)]">
               <p className="flex items-center gap-2">
                 <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--color-done)]" />
-                Unified issue tracking and reporting
+                Unified projects, CRM, and service
               </p>
               <p className="flex items-center gap-2">
                 <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--color-done)]" />
-                Real-time collaboration with your team
+                Shared mail and team collaboration
               </p>
               <p className="flex items-center gap-2">
                 <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--color-done)]" />
-                Better visibility from backlog to delivery
+                Clear visibility from pipeline to delivery
               </p>
             </div>
           </section>
 
           <section className="p-6 sm:p-8 lg:p-10">
-            <div className="mb-6 lg:hidden">
-              <span className="inline-flex items-center rounded-full border border-transparent bg-[color:var(--accent)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white">
-                TaskFlow
-              </span>
+            <div className="mb-6 lg:hidden flex items-center gap-2.5">
+              <AtriumLogo variant="mark" className="h-9 w-9" useSvg={false} />
+              <span className="text-lg font-bold tracking-tight text-[color:var(--text-primary)]">{APP_NAME}</span>
             </div>
             <div className="mb-7">
               <h2 className="text-2xl font-bold tracking-tight text-[color:var(--text-primary)]">Welcome back</h2>

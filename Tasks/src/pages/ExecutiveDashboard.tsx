@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { dashboardApi } from '../lib/api';
+import { dashboardApi, crmApi } from '../lib/api';
+import { canAny } from '../utils/moduleAccess';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function ExecutiveDashboard() {
   const { token, user } = useAuth();
+  const canView = canAny(user, 'taskflow.platform.executive.read');
   const [data, setData] = useState<{
     totalIssues: number;
     totalProjects: number;
@@ -13,6 +15,11 @@ export default function ExecutiveDashboard() {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [crmMetrics, setCrmMetrics] = useState<{
+    wonDeals: number;
+    activeContracts: number;
+    ticketsByStatus: Record<string, number>;
+  } | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -23,12 +30,15 @@ export default function ExecutiveDashboard() {
       if (res.success && res.data) setData(res.data);
       else setError(res.message ?? 'Failed to load');
     });
+    crmApi.executiveMetrics(token).then((res) => {
+      if (res.success && res.data) setCrmMetrics(res.data as typeof crmMetrics);
+    });
   }, [token]);
 
-  if (user?.role !== 'admin') {
+  if (!canView) {
     return (
       <div className="p-8">
-        <p className="text-[color:var(--text-muted)]">Access denied. Admin only.</p>
+        <p className="text-[color:var(--text-muted)]">Access denied. Insufficient permissions.</p>
       </div>
     );
   }
@@ -62,6 +72,18 @@ export default function ExecutiveDashboard() {
                 <p className="text-[12px] text-[color:var(--text-muted)] uppercase tracking-wider">Total issues</p>
                 <p className="text-2xl font-semibold text-[color:var(--text-primary)] mt-1">{data.totalIssues}</p>
               </div>
+              {crmMetrics && (
+                <>
+                  <div className="rounded-2xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] p-5">
+                    <p className="text-[12px] text-[color:var(--text-muted)] uppercase tracking-wider">Won deals</p>
+                    <p className="text-2xl font-semibold text-[color:var(--text-primary)] mt-1">{crmMetrics.wonDeals}</p>
+                  </div>
+                  <div className="rounded-2xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] p-5">
+                    <p className="text-[12px] text-[color:var(--text-muted)] uppercase tracking-wider">Active contracts</p>
+                    <p className="text-2xl font-semibold text-[color:var(--text-primary)] mt-1">{crmMetrics.activeContracts}</p>
+                  </div>
+                </>
+              )}
             </div>
 
             {chartData.length > 0 && (

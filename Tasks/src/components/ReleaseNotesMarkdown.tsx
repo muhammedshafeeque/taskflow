@@ -14,7 +14,7 @@ export function sanitizeReleaseNotesForDisplay(notes: string): string {
 }
 
 /**
- * TaskFlow issue keys: e.g. PROJ-42 or PROJ-a3f2b1 (project key + numeric suffix or last 6 of ObjectId hex).
+ * Atrium issue keys: e.g. PROJ-42 or PROJ-a3f2b1 (project key + numeric suffix or last 6 of ObjectId hex).
  */
 const ISSUE_KEY_TOKEN_RE = /^[A-Za-z][A-Za-z0-9]{0,20}-(?:\d+|[a-fA-F0-9]{6})$/;
 

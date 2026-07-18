@@ -85,11 +85,7 @@ export default function CustomerOrgs() {
           <div>
             <h1 className="text-xl font-semibold text-[color:var(--text-primary)]">Customer organisations</h1>
             <p className="text-sm text-[color:var(--text-muted)] mt-1">
-              External client companies in your current TaskFlow workspace
-              {user?.organizations?.find((o) => o.id === user.activeOrganizationId)?.name
-                ? ` (${user.organizations.find((o) => o.id === user.activeOrganizationId)?.name})`
-                : ''}
-              . Switch workspace from the header to manage another workspace.
+              External client companies linked to your organization.
             </p>
           </div>
           <button

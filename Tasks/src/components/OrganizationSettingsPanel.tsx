@@ -218,7 +218,7 @@ export default function OrganizationSettingsPanel({
         <>
           {isOrgAdmin ? (
             <form onSubmit={saveOrganizationProfile} className="space-y-3 border-b border-[color:var(--border-subtle)] pb-4">
-              <div className="text-xs font-semibold text-[color:var(--text-primary)]">Workspace profile</div>
+              <div className="text-xs font-semibold text-[color:var(--text-primary)]">Organization profile</div>
               <label className="block space-y-1">
                 <span className="text-[11px] text-[color:var(--text-muted)]">Name</span>
                 <input
@@ -239,7 +239,7 @@ export default function OrganizationSettingsPanel({
                 />
               </label>
               <label className={`block space-y-1 ${hideMembers ? 'max-w-md' : 'max-w-xs'}`}>
-                <span className="text-[11px] text-[color:var(--text-muted)]">Workspace status</span>
+                <span className="text-[11px] text-[color:var(--text-muted)]">Organization status</span>
                 <select
                   value={orgStatus}
                   onChange={(e) => setOrgStatus(e.target.value as 'active' | 'archived')}
@@ -289,12 +289,12 @@ export default function OrganizationSettingsPanel({
               </div>
             </div>
             <div>
-              <div className="text-xs font-medium text-[color:var(--text-muted)]">Workspace ID</div>
+              <div className="text-xs font-medium text-[color:var(--text-muted)]">Organization ID</div>
               <div className="mt-0.5 flex items-center gap-2">
                 <span className="font-mono text-[10px] text-[color:var(--text-primary)] break-all">{detail.organization._id}</span>
                 <button
                   type="button"
-                  onClick={() => void copyText('workspace id', detail.organization._id)}
+                  onClick={() => void copyText('organization id', detail.organization._id)}
                   className="text-[11px] text-[color:var(--accent)] hover:underline shrink-0"
                 >
                   Copy
@@ -366,7 +366,7 @@ export default function OrganizationSettingsPanel({
                           onClick={() => setRemoveTarget({ userId: uid, label: 'your account', isSelf: true })}
                           className="text-[11px] text-[color:var(--text-muted)] hover:underline"
                         >
-                          Leave workspace
+                          Leave organization
                         </button>
                       )}
                     </div>
@@ -382,7 +382,7 @@ export default function OrganizationSettingsPanel({
               <form onSubmit={submitInvite} className="space-y-2 border-t border-[color:var(--border-subtle)] pt-3">
                 <div className="text-xs font-semibold text-[color:var(--text-primary)]">Add member</div>
                 <p className="text-[11px] text-[color:var(--text-muted)]">
-                  User must already have a TaskFlow account (same email).
+                  User must already have an Atrium account (same email).
                 </p>
                 <label className="block space-y-1 max-w-md">
                   <span className="text-[11px] text-[color:var(--text-muted)]">Role</span>
@@ -443,11 +443,11 @@ export default function OrganizationSettingsPanel({
 
       <ConfirmModal
         open={Boolean(removeTarget)}
-        title={removeTarget?.isSelf ? 'Leave workspace?' : 'Remove member?'}
+        title={removeTarget?.isSelf ? 'Leave organization?' : 'Remove member?'}
         message={
           removeTarget?.isSelf
-            ? 'You will lose access to this workspace until an admin adds you again.'
-            : `Remove ${removeTarget?.label ?? 'this member'} from this workspace?`
+            ? 'You will lose access to this organization until an admin adds you again.'
+            : `Remove ${removeTarget?.label ?? 'this member'} from this organization?`
         }
         confirmLabel={removeTarget?.isSelf ? 'Leave' : 'Remove'}
         variant="danger"

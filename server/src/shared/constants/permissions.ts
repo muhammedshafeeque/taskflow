@@ -118,9 +118,99 @@ export const TASK_FLOW_PERMISSIONS = {
     },
     COST_REPORT: { VIEW: 'taskflow.cost_report.view' },
     LICENSE: { VIEW: 'taskflow.license.view' },
+    PLATFORM: {
+      EXECUTIVE: { READ: 'taskflow.platform.executive.read' },
+      AUDIT: { READ: 'taskflow.platform.audit.read' },
+    },
     HR: {
       /** Company job titles (legacy designations collection) */
       DESIGNATION_MANAGE: 'taskflow.hr.designation.manage',
+      DASHBOARD: { READ: 'taskflow.hr.dashboard.read' },
+      EMPLOYEE: {
+        LIST: 'taskflow.hr.employee.list',
+        READ: 'taskflow.hr.employee.read',
+        CREATE: 'taskflow.hr.employee.create',
+        UPDATE: 'taskflow.hr.employee.update',
+      },
+      ATTENDANCE: {
+        READ: 'taskflow.hr.attendance.read',
+        MANAGE: 'taskflow.hr.attendance.manage',
+      },
+      LEAVE: {
+        READ: 'taskflow.hr.leave.read',
+        MANAGE: 'taskflow.hr.leave.manage',
+      },
+      PAYROLL: {
+        READ: 'taskflow.hr.payroll.read',
+        MANAGE: 'taskflow.hr.payroll.manage',
+      },
+    },
+    ACCOUNTS: {
+      DASHBOARD: { READ: 'taskflow.accounts.dashboard.read' },
+      LEDGER: {
+        READ: 'taskflow.accounts.ledger.read',
+        MANAGE: 'taskflow.accounts.ledger.manage',
+      },
+      INVOICE: {
+        LIST: 'taskflow.accounts.invoice.list',
+        READ: 'taskflow.accounts.invoice.read',
+        CREATE: 'taskflow.accounts.invoice.create',
+        UPDATE: 'taskflow.accounts.invoice.update',
+      },
+      EXPENSE: {
+        LIST: 'taskflow.accounts.expense.list',
+        READ: 'taskflow.accounts.expense.read',
+        CREATE: 'taskflow.accounts.expense.create',
+        UPDATE: 'taskflow.accounts.expense.update',
+      },
+      REPORT: { READ: 'taskflow.accounts.report.read' },
+    },
+    CONTRACTS: {
+      DASHBOARD: { READ: 'taskflow.contracts.dashboard.read' },
+      MSA: { LIST: 'taskflow.contracts.msa.list', READ: 'taskflow.contracts.msa.read', MANAGE: 'taskflow.contracts.msa.manage' },
+      RETAINER: { LIST: 'taskflow.contracts.retainer.list', MANAGE: 'taskflow.contracts.retainer.manage' },
+      RENEWAL: { READ: 'taskflow.contracts.renewal.read', MANAGE: 'taskflow.contracts.renewal.manage' },
+      SLA: { READ: 'taskflow.contracts.sla.read', MANAGE: 'taskflow.contracts.sla.manage' },
+    },
+    BILLING: {
+      DASHBOARD: { READ: 'taskflow.billing.dashboard.read' },
+      SUBSCRIPTION: { LIST: 'taskflow.billing.subscription.list', MANAGE: 'taskflow.billing.subscription.manage' },
+      INVOICE: { LIST: 'taskflow.billing.invoice.list', CREATE: 'taskflow.billing.invoice.create', MANAGE: 'taskflow.billing.invoice.manage' },
+      TIME_TO_INVOICE: { READ: 'taskflow.billing.time_to_invoice.read', MANAGE: 'taskflow.billing.time_to_invoice.manage' },
+      TAX: { READ: 'taskflow.billing.tax.read', MANAGE: 'taskflow.billing.tax.manage' },
+    },
+    ASSETS: {
+      DASHBOARD: { READ: 'taskflow.assets.dashboard.read' },
+      INVENTORY: { LIST: 'taskflow.assets.inventory.list', MANAGE: 'taskflow.assets.inventory.manage' },
+      LICENSE: { LIST: 'taskflow.assets.license.list', MANAGE: 'taskflow.assets.license.manage' },
+      SERVER: { LIST: 'taskflow.assets.server.list', MANAGE: 'taskflow.assets.server.manage' },
+      WARRANTY: { READ: 'taskflow.assets.warranty.read', MANAGE: 'taskflow.assets.warranty.manage' },
+    },
+    RESOURCES: {
+      DASHBOARD: { READ: 'taskflow.resources.dashboard.read' },
+      UTILIZATION: { READ: 'taskflow.resources.utilization.read' },
+      BENCH: { READ: 'taskflow.resources.bench.read' },
+      FORECAST: { READ: 'taskflow.resources.forecast.read', MANAGE: 'taskflow.resources.forecast.manage' },
+      ALLOCATION: { READ: 'taskflow.resources.allocation.read', MANAGE: 'taskflow.resources.allocation.manage' },
+    },
+    PROCUREMENT: {
+      DASHBOARD: { READ: 'taskflow.procurement.dashboard.read' },
+      VENDOR: { LIST: 'taskflow.procurement.vendor.list', MANAGE: 'taskflow.procurement.vendor.manage' },
+      PO: { LIST: 'taskflow.procurement.po.list', CREATE: 'taskflow.procurement.po.create', MANAGE: 'taskflow.procurement.po.manage' },
+      LICENSE: { LIST: 'taskflow.procurement.license.list', MANAGE: 'taskflow.procurement.license.manage' },
+    },
+    DOCUMENTS: {
+      DASHBOARD: { READ: 'taskflow.documents.dashboard.read' },
+      PROPOSAL: { LIST: 'taskflow.documents.proposal.list', MANAGE: 'taskflow.documents.proposal.manage' },
+      SOW: { LIST: 'taskflow.documents.sow.list', MANAGE: 'taskflow.documents.sow.manage' },
+      POLICY: { LIST: 'taskflow.documents.policy.list', MANAGE: 'taskflow.documents.policy.manage' },
+      TEMPLATE: { LIST: 'taskflow.documents.template.list', MANAGE: 'taskflow.documents.template.manage' },
+    },
+    CALENDAR: {
+      DASHBOARD: { READ: 'taskflow.calendar.dashboard.read' },
+      MEETING: { LIST: 'taskflow.calendar.meeting.list', MANAGE: 'taskflow.calendar.meeting.manage' },
+      DEMO: { LIST: 'taskflow.calendar.demo.list', MANAGE: 'taskflow.calendar.demo.manage' },
+      REVIEW: { LIST: 'taskflow.calendar.review.list', MANAGE: 'taskflow.calendar.review.manage' },
     },
     PROJECT: {
       /** See all projects (legacy projects:listAll) */
@@ -130,6 +220,87 @@ export const TASK_FLOW_PERMISSIONS = {
       ORG_MANAGE: 'taskflow.customer_portal.org.manage',
       ORG_VIEW: 'taskflow.customer_portal.org.view',
       REQUEST_APPROVE: 'taskflow.customer_portal.request.approve',
+    },
+    CRM: {
+      ACCOUNT: {
+        CREATE: 'taskflow.crm.account.create',
+        READ: 'taskflow.crm.account.read',
+        UPDATE: 'taskflow.crm.account.update',
+        DELETE: 'taskflow.crm.account.delete',
+        LIST: 'taskflow.crm.account.list',
+      },
+      CONTACT: {
+        CREATE: 'taskflow.crm.contact.create',
+        READ: 'taskflow.crm.contact.read',
+        UPDATE: 'taskflow.crm.contact.update',
+        DELETE: 'taskflow.crm.contact.delete',
+        LIST: 'taskflow.crm.contact.list',
+      },
+      LEAD: {
+        CREATE: 'taskflow.crm.lead.create',
+        READ: 'taskflow.crm.lead.read',
+        UPDATE: 'taskflow.crm.lead.update',
+        DELETE: 'taskflow.crm.lead.delete',
+        LIST: 'taskflow.crm.lead.list',
+      },
+      DEAL: {
+        CREATE: 'taskflow.crm.deal.create',
+        READ: 'taskflow.crm.deal.read',
+        UPDATE: 'taskflow.crm.deal.update',
+        DELETE: 'taskflow.crm.deal.delete',
+        LIST: 'taskflow.crm.deal.list',
+      },
+      QUOTE: {
+        CREATE: 'taskflow.crm.quote.create',
+        READ: 'taskflow.crm.quote.read',
+        UPDATE: 'taskflow.crm.quote.update',
+        DELETE: 'taskflow.crm.quote.delete',
+        LIST: 'taskflow.crm.quote.list',
+      },
+      ACTIVITY: {
+        CREATE: 'taskflow.crm.activity.create',
+        READ: 'taskflow.crm.activity.read',
+        UPDATE: 'taskflow.crm.activity.update',
+        DELETE: 'taskflow.crm.activity.delete',
+        LIST: 'taskflow.crm.activity.list',
+      },
+      CONTRACT: {
+        CREATE: 'taskflow.crm.contract.create',
+        READ: 'taskflow.crm.contract.read',
+        UPDATE: 'taskflow.crm.contract.update',
+        DELETE: 'taskflow.crm.contract.delete',
+        LIST: 'taskflow.crm.contract.list',
+      },
+      REPORT: { READ: 'taskflow.crm.report.read' },
+      SETTINGS: { MANAGE: 'taskflow.crm.settings.manage' },
+    },
+    MAIL: {
+      MAILBOX: {
+        MANAGE: 'taskflow.mail.mailbox.manage',
+        READ: 'taskflow.mail.mailbox.read',
+        SEND: 'taskflow.mail.mailbox.send',
+      },
+      MESSAGE: {
+        READ: 'taskflow.mail.message.read',
+        DELETE: 'taskflow.mail.message.delete',
+      },
+    },
+    SERVICE: {
+      TICKET: {
+        CREATE: 'taskflow.service.ticket.create',
+        READ: 'taskflow.service.ticket.read',
+        UPDATE: 'taskflow.service.ticket.update',
+        DELETE: 'taskflow.service.ticket.delete',
+        LIST: 'taskflow.service.ticket.list',
+      },
+      KB: {
+        CREATE: 'taskflow.service.kb.create',
+        READ: 'taskflow.service.kb.read',
+        UPDATE: 'taskflow.service.kb.update',
+        DELETE: 'taskflow.service.kb.delete',
+        LIST: 'taskflow.service.kb.list',
+      },
+      SLA: { MANAGE: 'taskflow.service.sla.manage' },
     },
   },
 } as const;

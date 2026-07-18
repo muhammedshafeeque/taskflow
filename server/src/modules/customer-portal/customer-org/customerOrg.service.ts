@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { CustomerOrg } from './customerOrg.model';
+import { syncCrmAccountFromCustomerOrg } from '../../crm/crmBridge.service';
 import { CustomerRole } from '../customer-role/customerRole.model';
 import { CustomerUser } from '../customer-user/customerUser.model';
 import { CustomerRequest } from '../customer-request/customerRequest.model';
@@ -114,6 +115,10 @@ export async function createOrg(
     )
   ).catch((err) => console.error('Failed to send org admin invite email:', err));
 
+  await syncCrmAccountFromCustomerOrg(String(org._id), taskflowOrganizationId, createdBy).catch((err) =>
+    console.error('Failed to sync CRM account from customer org:', err)
+  );
+
   return {
     org: org.toObject(),
     adminRole: adminRole.toObject(),
@@ -195,6 +200,9 @@ export async function updateOrg(id: string, input: UpdateOrgInput, taskflowOrgan
 
   const updated = await CustomerOrg.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
   if (!updated) throw new ApiError(404, 'Organisation not found');
+  await syncCrmAccountFromCustomerOrg(id, taskflowOrganizationId).catch((err) =>
+    console.error('Failed to sync CRM account from customer org:', err)
+  );
   return updated;
 }
 

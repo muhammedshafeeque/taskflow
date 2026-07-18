@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { authApi } from '../lib/api';
+import { APP_NAME } from '../brand';
+import AtriumLogo from '../components/AtriumLogo';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -42,9 +44,10 @@ export default function ForgotPassword() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--auth-page-bg)' }}>
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-[color:var(--text-primary)] tracking-tight">TaskFlow</h1>
-          <p className="text-[color:var(--text-muted)] mt-1">Reset your password</p>
+        <div className="text-center mb-8 flex flex-col items-center gap-3">
+          <AtriumLogo variant="mark" className="h-12 w-12" useSvg={false} />
+          <h1 className="text-3xl font-bold text-[color:var(--text-primary)] tracking-tight">{APP_NAME}</h1>
+          <p className="text-[color:var(--text-muted)] -mt-1">Reset your password</p>
         </div>
         <form
           onSubmit={handleSubmit}

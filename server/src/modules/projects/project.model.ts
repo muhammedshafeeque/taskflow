@@ -131,6 +131,8 @@ export interface IProject extends Document {
   taskflowOrganizationId?: mongoose.Types.ObjectId;
   /** Optional link to a customer portal org (client) */
   orgId?: mongoose.Types.ObjectId;
+  /** Optional link to CRM account */
+  crmAccountId?: mongoose.Types.ObjectId;
   nextIssueNumber: number;
   statuses: IProjectStatus[];
   issueTypes: IProjectIssueType[];
@@ -281,6 +283,7 @@ const projectSchema = new Schema<IProject>(
     archived: { type: Boolean, default: false },
     taskflowOrganizationId: { type: Schema.Types.ObjectId, ref: 'Organization', default: null, index: true },
     orgId: { type: Schema.Types.ObjectId, ref: 'CustomerOrg', default: null },
+    crmAccountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount', default: null, index: true },
     nextIssueNumber: { type: Number, default: 1 },
     statuses: { type: [projectStatusSchema], default: undefined },
     issueTypes: { type: [projectIssueTypeSchema], default: undefined },
