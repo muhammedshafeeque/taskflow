@@ -2,9 +2,9 @@ import { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { usersApi, rolesApi, permissionsApi, type User, type Role, type UpdateUserBody, type PermissionItem } from '../lib/api';
+import { usersApi, rolesApi, type User, type Role, type UpdateUserBody } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/dateFormat';
-import { EditIcon } from '../components/icons/NavigationIcons';
+import { EditIcon, RolesIcon } from '../components/icons/NavigationIcons';
 import { userHasPermission } from '../utils/permissions';
 import { TASK_FLOW_PERMISSIONS } from '@shared/constants/permissions';
 
@@ -50,7 +50,6 @@ export default function Users() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('');
   const [editUser, setEditUser] = useState<User | null>(null);
-  const [editTab, setEditTab] = useState<'details' | 'permissions'>('details');
   const [editForm, setEditForm] = useState<{ name: string; roleId: string; enabled: boolean }>({
     name: '',
     roleId: '',
@@ -58,12 +57,6 @@ export default function Users() {
   });
   const [editError, setEditError] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
-  // Permission overrides state
-  const [allPermissions, setAllPermissions] = useState<PermissionItem[]>([]);
-  const [permGranted, setPermGranted] = useState<string[]>([]);
-  const [permRevoked, setPermRevoked] = useState<string[]>([]);
-  const [permSaving, setPermSaving] = useState(false);
-  const [permError, setPermError] = useState('');
   const [license] = useState<any | null>(null);
 
   const tfPerms = currentUser?.permissions ?? [];
@@ -95,9 +88,8 @@ export default function Users() {
 
   useEffect(() => {
     if (!token) return;
-    Promise.all([rolesApi.list(token), permissionsApi.list(token)]).then(([rRes, pRes]) => {
+    rolesApi.list(token).then((rRes) => {
       if (rRes.success && rRes.data) setRoles(Array.isArray(rRes.data) ? rRes.data : []);
-      if (pRes.success && pRes.data) setAllPermissions(Array.isArray(pRes.data) ? pRes.data : []);
     });
   }, [token, workspaceKey]);
 
@@ -161,16 +153,12 @@ export default function Users() {
 
   function openEditModal(u: User) {
     setEditUser(u);
-    setEditTab('details');
     setEditForm({
       name: u.name,
       roleId: getRoleId(u) ?? '',
       enabled: u.enabled !== false,
     });
     setEditError('');
-    setPermGranted(u.permissionOverrides?.granted ?? []);
-    setPermRevoked(u.permissionOverrides?.revoked ?? []);
-    setPermError('');
   }
 
   async function handleEditSubmit(e: React.FormEvent) {
@@ -197,68 +185,6 @@ export default function Users() {
       loadUsers();
     } else {
       setEditError((res as { message?: string }).message ?? 'Update failed');
-    }
-  }
-
-  async function handleSavePermissions() {
-    if (!token || !editUser) return;
-    setPermSaving(true);
-    setPermError('');
-    const res = await usersApi.updatePermissions(editUser._id, { granted: permGranted, revoked: permRevoked }, token);
-    setPermSaving(false);
-    if (res.success && res.data) {
-      setUsers((prev) => prev.map((u) => (u._id === editUser._id ? { ...u, permissionOverrides: (res.data as User).permissionOverrides } : u)));
-      if (currentUser?.id === editUser._id) await refreshUser();
-      setEditUser(null);
-    } else {
-      setPermError((res as { message?: string }).message ?? 'Failed to save permissions');
-    }
-  }
-
-  // Compute effective permission checkboxes for a user being edited
-  function getEffectiveChecked(code: string): boolean {
-    if (permRevoked.includes(code)) return false;
-    if (permGranted.includes(code)) return true;
-    const rolePerms = editUser?.roleId && typeof editUser.roleId === 'object' && 'permissions' in editUser.roleId
-      ? (editUser.roleId as { permissions?: string[] }).permissions ?? []
-      : [];
-    return rolePerms.includes(code);
-  }
-
-  function getPermSource(code: string): 'role' | 'granted' | 'revoked' | 'none' {
-    const rolePerms = editUser?.roleId && typeof editUser.roleId === 'object' && 'permissions' in editUser.roleId
-      ? (editUser.roleId as { permissions?: string[] }).permissions ?? []
-      : [];
-    const inRole = rolePerms.includes(code);
-    if (permRevoked.includes(code)) return 'revoked';
-    if (permGranted.includes(code)) return 'granted';
-    if (inRole) return 'role';
-    return 'none';
-  }
-
-  function togglePermission(code: string) {
-    const rolePerms = editUser?.roleId && typeof editUser.roleId === 'object' && 'permissions' in editUser.roleId
-      ? (editUser.roleId as { permissions?: string[] }).permissions ?? []
-      : [];
-    const inRole = rolePerms.includes(code);
-    const currentlyChecked = getEffectiveChecked(code);
-
-    if (currentlyChecked) {
-      // Uncheck: if in role → revoke; if granted → remove from granted
-      if (inRole) {
-        setPermGranted((g) => g.filter((p) => p !== code));
-        setPermRevoked((r) => [...r.filter((p) => p !== code), code]);
-      } else {
-        setPermGranted((g) => g.filter((p) => p !== code));
-      }
-    } else {
-      // Check: if in role but revoked → remove from revoked; else → grant
-      if (inRole && permRevoked.includes(code)) {
-        setPermRevoked((r) => r.filter((p) => p !== code));
-      } else {
-        setPermRevoked((r) => r.filter((p) => p !== code));
-        setPermGranted((g) => [...g.filter((p) => p !== code), code]);
-      }
     }
   }
 
@@ -436,15 +362,25 @@ export default function Users() {
                         View profile
                       </Link>
                     ) : canEditUsers ? (
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(u)}
-                        disabled={editSubmitting}
-                        className="p-1.5 rounded-lg text-[color:var(--text-muted)] hover:text-[color:var(--accent)] hover:bg-[color:var(--bg-page)] transition-colors disabled:opacity-50"
-                        title="Edit"
-                      >
-                        <EditIcon className="w-4 h-4" />
-                      </button>
+                      <div className="inline-flex items-center gap-1 justify-end">
+                        <Link
+                          to={`/users/${u._id}/permissions`}
+                          className="p-1.5 rounded-lg text-[color:var(--text-muted)] hover:text-[color:var(--accent)] hover:bg-[color:var(--bg-page)] transition-colors"
+                          title="Manage permissions"
+                          aria-label="Manage permissions"
+                        >
+                          <RolesIcon className="w-4 h-4" />
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(u)}
+                          disabled={editSubmitting}
+                          className="p-1.5 rounded-lg text-[color:var(--text-muted)] hover:text-[color:var(--accent)] hover:bg-[color:var(--bg-page)] transition-colors disabled:opacity-50"
+                          title="Edit"
+                        >
+                          <EditIcon className="w-4 h-4" />
+                        </button>
+                      </div>
                     ) : (
                       <span className="text-xs text-[color:var(--text-muted)]">—</span>
                     )}
@@ -563,190 +499,94 @@ export default function Users() {
       {editUser && createPortal(
         <div
           className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
-          onClick={() => !editSubmitting && !permSaving && setEditUser(null)}
+          onClick={() => !editSubmitting && setEditUser(null)}
         >
           <div
             className="bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] rounded-2xl shadow-xl w-full max-w-lg flex flex-col max-h-[90vh] animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
             <div className="px-6 pt-6 pb-0 shrink-0">
               <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Edit user</h2>
               <p className="text-sm text-[color:var(--text-muted)] mt-0.5">{editUser.email}</p>
-
-              {/* Tabs */}
-              <div className="flex gap-0 mt-4 border-b border-[color:var(--border-subtle)]">
-                {(['details', 'permissions'] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setEditTab(tab)}
-                    className={`px-4 py-2 text-sm font-medium capitalize border-b-2 -mb-px transition ${
-                      editTab === tab
-                        ? 'border-[color:var(--accent)] text-[color:var(--accent)]'
-                        : 'border-transparent text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
             </div>
 
-            {/* Body */}
             <div className="flex-1 overflow-y-auto px-6 py-5">
-              {editTab === 'details' && (
-                <form id="edit-details-form" onSubmit={handleEditSubmit} className="space-y-4">
-                  {editError && (
-                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-                      {editError}
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-sm font-medium text-[color:var(--text-primary)] mb-1.5">Name</label>
-                    <input
-                      type="text"
-                      value={editForm.name}
-                      onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                      required
-                      className="w-full px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
-                      placeholder="Full name"
-                    />
+              <form id="edit-details-form" onSubmit={handleEditSubmit} className="space-y-4">
+                {editError && (
+                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                    {editError}
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[color:var(--text-primary)] mb-1.5">Role</label>
-                    <select
-                      value={editForm.roleId}
-                      onChange={(e) => setEditForm((f) => ({ ...f, roleId: e.target.value }))}
-                      required
-                      className="w-full px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
-                    >
-                      <option value="">— Select —</option>
-                      {roles.map((r) => (
-                        <option key={r._id} value={r._id}>{r.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  {editUser._id !== currentUser?.id && (
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        id="edit-enabled"
-                        checked={editForm.enabled}
-                        onChange={(e) => setEditForm((f) => ({ ...f, enabled: e.target.checked }))}
-                        className="w-4 h-4 rounded border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-[color:var(--accent)] focus:ring-[color:var(--accent)]/40"
-                      />
-                      <label htmlFor="edit-enabled" className="text-sm text-[color:var(--text-primary)]">
-                        User enabled (disabled users cannot log in)
-                      </label>
-                    </div>
-                  )}
-                </form>
-              )}
-
-              {editTab === 'permissions' && (
-                <div className="space-y-3">
-                  <p className="text-xs text-[color:var(--text-muted)]">
-                    Override individual permissions for this user. Changes apply on top of their role.
-                  </p>
-                  <div className="flex gap-4 text-xs text-[color:var(--text-muted)] mb-1">
-                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[color:var(--border-subtle)]" />From role</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" />Extra grant</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500" />Revoked</span>
-                  </div>
-                  {permError && (
-                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-                      {permError}
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    {allPermissions.map((perm) => {
-                      const checked = getEffectiveChecked(perm.code);
-                      const source = getPermSource(perm.code);
-                      return (
-                        <label
-                          key={perm.code}
-                          className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[color:var(--bg-page)] cursor-pointer transition group"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => togglePermission(perm.code)}
-                            className="w-4 h-4 shrink-0 rounded border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-[color:var(--accent)] focus:ring-[color:var(--accent)]/40"
-                          />
-                          <span className="flex-1 min-w-0">
-                            <span className="text-sm text-[color:var(--text-primary)]">{perm.label}</span>
-                            <span className="ml-2 text-xs text-[color:var(--text-muted)] font-mono">{perm.code}</span>
-                          </span>
-                          {source === 'granted' && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 shrink-0">+ extra</span>
-                          )}
-                          {source === 'revoked' && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 shrink-0">revoked</span>
-                          )}
-                          {source === 'role' && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[color:var(--bg-page)] text-[color:var(--text-muted)] shrink-0">role</span>
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-[color:var(--text-primary)] mb-1.5">Name</label>
+                  <input
+                    type="text"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                    required
+                    className="w-full px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
+                    placeholder="Full name"
+                  />
                 </div>
-              )}
+                <div>
+                  <label className="block text-sm font-medium text-[color:var(--text-primary)] mb-1.5">Role</label>
+                  <select
+                    value={editForm.roleId}
+                    onChange={(e) => setEditForm((f) => ({ ...f, roleId: e.target.value }))}
+                    required
+                    className="w-full px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
+                  >
+                    <option value="">— Select —</option>
+                    {roles.map((r) => (
+                      <option key={r._id} value={r._id}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {editUser._id !== currentUser?.id && (
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="edit-enabled"
+                      checked={editForm.enabled}
+                      onChange={(e) => setEditForm((f) => ({ ...f, enabled: e.target.checked }))}
+                      className="w-4 h-4 rounded border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-[color:var(--accent)] focus:ring-[color:var(--accent)]/40"
+                    />
+                    <label htmlFor="edit-enabled" className="text-sm text-[color:var(--text-primary)]">
+                      User enabled (disabled users cannot log in)
+                    </label>
+                  </div>
+                )}
+                <p className="text-xs text-[color:var(--text-muted)]">
+                  To override role permissions,{' '}
+                  <Link
+                    to={`/users/${editUser._id}/permissions`}
+                    className="text-[color:var(--accent)] hover:underline"
+                    onClick={() => setEditUser(null)}
+                  >
+                    open the permissions page
+                  </Link>
+                  .
+                </p>
+              </form>
             </div>
 
-            {/* Footer */}
             <div className="px-6 pb-6 pt-4 border-t border-[color:var(--border-subtle)] shrink-0 flex gap-3">
-              {editTab === 'details' ? (
-                <>
-                  <button
-                    type="submit"
-                    form="edit-details-form"
-                    disabled={editSubmitting}
-                    className="btn-primary px-4 py-2 rounded-lg text-sm disabled:opacity-50"
-                  >
-                    {editSubmitting ? 'Saving…' : 'Save'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => !editSubmitting && setEditUser(null)}
-                    disabled={editSubmitting}
-                    className="px-4 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)] disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleSavePermissions}
-                    disabled={permSaving}
-                    className="btn-primary px-4 py-2 rounded-lg text-sm disabled:opacity-50"
-                  >
-                    {permSaving ? 'Saving…' : 'Save permissions'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPermGranted(editUser.permissionOverrides?.granted ?? []);
-                      setPermRevoked(editUser.permissionOverrides?.revoked ?? []);
-                    }}
-                    disabled={permSaving}
-                    className="px-4 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)] disabled:opacity-50"
-                  >
-                    Reset
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditUser(null)}
-                    disabled={permSaving}
-                    className="px-4 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)] disabled:opacity-50"
-                  >
-                    Close
-                  </button>
-                </>
-              )}
+              <button
+                type="submit"
+                form="edit-details-form"
+                disabled={editSubmitting}
+                className="btn-primary px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+              >
+                {editSubmitting ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={() => !editSubmitting && setEditUser(null)}
+                disabled={editSubmitting}
+                className="px-4 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)] disabled:opacity-50"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>,

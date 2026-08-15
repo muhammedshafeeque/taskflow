@@ -27,9 +27,21 @@ const viewerPerms = [
   TASK_FLOW_PERMISSIONS.PROJECT.PROJECT.LIST,
 ];
 
-const orgManagerPerms = flattenPermissions(TASK_FLOW_PERMISSIONS.ORG as unknown as Record<string, unknown>);
+const orgManagerPerms = [
+  ...flattenPermissions(TASK_FLOW_PERMISSIONS.ORG as unknown as Record<string, unknown>),
+  ...flattenPermissions(TASK_FLOW_PERMISSIONS.TASKFLOW.CORE as unknown as Record<string, unknown>),
+];
 
-const salesPerms = flattenPermissions(TASK_FLOW_PERMISSIONS.TASKFLOW.CRM as unknown as Record<string, unknown>);
+const coreReadPerms = [
+  TASK_FLOW_PERMISSIONS.TASKFLOW.CORE.COMPANY.READ,
+  TASK_FLOW_PERMISSIONS.TASKFLOW.CORE.CURRENCY.READ,
+  TASK_FLOW_PERMISSIONS.TASKFLOW.CORE.EXCHANGE_RATE.READ,
+];
+
+const salesPerms = [
+  ...flattenPermissions(TASK_FLOW_PERMISSIONS.TASKFLOW.CRM as unknown as Record<string, unknown>),
+  ...coreReadPerms,
+];
 
 const supportAgentPerms = [
   ...flattenPermissions(TASK_FLOW_PERMISSIONS.TASKFLOW.SERVICE as unknown as Record<string, unknown>),

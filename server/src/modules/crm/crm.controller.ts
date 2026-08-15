@@ -210,14 +210,29 @@ export async function listQuotes(req: Request & { user?: AuthPayload }, res: Res
   res.json({ success: true, data });
 }
 
+export async function getQuote(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await quotesService.getQuote(req.params.id, ws(req));
+  res.json({ success: true, data });
+}
+
 export async function createQuote(req: Request & { user?: AuthPayload }, res: Response) {
   const data = await quotesService.createQuote(ws(req), req.body, uid(req));
   res.status(201).json({ success: true, data });
 }
 
 export async function sendQuote(req: Request & { user?: AuthPayload }, res: Response) {
-  const body = req.body as { toEmail?: string };
-  const data = await quotesService.sendQuote(req.params.id, ws(req), String(body.toEmail));
+  const body = req.body as {
+    toEmail?: string;
+    pdfBase64?: string;
+    pdfFilename?: string;
+    message?: string;
+  };
+  const data = await quotesService.sendQuote(req.params.id, ws(req), String(body.toEmail), {
+    pdfBase64: body.pdfBase64,
+    pdfFilename: body.pdfFilename,
+    message: body.message,
+  });
   res.json({ success: true, data });
 }
 

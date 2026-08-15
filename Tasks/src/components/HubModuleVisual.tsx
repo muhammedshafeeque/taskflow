@@ -19,7 +19,8 @@ type HubVisualId =
   | 'resources'
   | 'procurement'
   | 'documents'
-  | 'calendar';
+  | 'calendar'
+  | 'core';
 
 export function HubModuleVisual({ id }: { id: string }) {
   switch (id as HubVisualId) {
@@ -55,6 +56,8 @@ export function HubModuleVisual({ id }: { id: string }) {
       return <DocumentsVisual />;
     case 'calendar':
       return <CalendarVisual />;
+    case 'core':
+      return <CoreVisual />;
     default:
       return <PmBoardVisual />;
   }
@@ -63,7 +66,7 @@ export function HubModuleVisual({ id }: { id: string }) {
 function Frame({ children, label }: { children: React.ReactNode; label: string }) {
   return (
     <div
-      className="hub-visual relative flex h-full min-h-[4.5rem] w-full items-center justify-center overflow-hidden rounded-lg bg-[color:var(--bg-elevated)]/50 ring-1 ring-white/10 transition group-hover:ring-[color:var(--accent)]/35"
+      className="hub-visual relative flex h-full min-h-[4.5rem] w-full items-center justify-center overflow-hidden bg-transparent"
       aria-hidden
       data-visual={label}
     >
@@ -475,6 +478,28 @@ function CalendarVisual() {
           />
         ))}
         <circle cx="118" cy="30" r="3" className="fill-sky-200 hub-anim-pulse" />
+      </svg>
+    </Frame>
+  );
+}
+
+function CoreVisual() {
+  return (
+    <Frame label="core">
+      <svg viewBox="0 0 160 100" className="h-[85%] w-[90%]" fill="none">
+        <circle cx="80" cy="50" r="28" className="stroke-teal-400/50" strokeWidth="2" />
+        <circle cx="80" cy="50" r="16" className="stroke-teal-300/70 hub-anim-pulse" strokeWidth="2" />
+        <text x="68" y="55" className="fill-teal-200 text-[12px] font-semibold">
+          $
+        </text>
+        <path
+          d="M28 72h28M104 28h28"
+          className="stroke-teal-400/40 hub-anim-blink"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <circle cx="28" cy="72" r="4" className="fill-teal-300/50" />
+        <circle cx="132" cy="28" r="4" className="fill-cyan-300/60 hub-anim-pulse" />
       </svg>
     </Frame>
   );

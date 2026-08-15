@@ -201,7 +201,7 @@ export default function CrmAccountDetail() {
             ))}
             {quotes.map((q) => (
               <li key={q._id}>
-                <Link to="/crm/quotes" className="text-[color:var(--accent)] hover:underline">{q.title}</Link>
+                <Link to={`/crm/quotes/${q._id}`} className="text-[color:var(--accent)] hover:underline">{q.title}</Link>
                 {' '}— {q.status} · {q.subtotal} {q.currency}
               </li>
             ))}

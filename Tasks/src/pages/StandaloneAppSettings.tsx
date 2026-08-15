@@ -5,10 +5,9 @@ import Inbox from './Inbox';
 import { taskflowAppSettingsHref } from '../lib/appSettingsHref';
 import { SunIcon, MoonIcon, InboxIcon, LogOutIcon, DashboardIcon, SettingsIcon } from '../components/icons/NavigationIcons';
 import { APP_VERSION } from '../appVersion';
-import { APP_NAME } from '../brand';
+import { useAppDisplayName } from '../hooks/useAppDisplayName';
 import AtriumLogo from '../components/AtriumLogo';
 import { organizationsApi, projectsApi, inboxApi, type TaskflowOrganizationSummary } from '../lib/api';
-import { canAccessTaskflowWorkspaceSettings } from '../utils/taskflowWorkspaceSettingsAccess';
 
 type TabId = 'home' | 'inbox' | 'shortcuts';
 
@@ -28,6 +27,7 @@ function canSeeCustomerOrgs(perms: string[]) {
 export default function StandaloneAppSettings() {
   const navigate = useNavigate();
   const { user, token, logout } = useAuth();
+  const displayName = useAppDisplayName();
   const [tab, setTab] = useState<TabId>('home');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window === 'undefined') return 'dark';
@@ -59,7 +59,6 @@ export default function StandaloneAppSettings() {
   }, []);
 
   const perms = user?.permissions ?? [];
-  const workspaceSettingsAllowed = canAccessTaskflowWorkspaceSettings(user);
   const shortcutLinks = useMemo(() => {
     const items: { label: string; path: string }[] = [{ label: 'Dashboard', path: '/' }];
     if (hasPerm(perms, 'auth.user.list') || hasPerm(perms, 'auth.user.create') || hasPerm(perms, 'users:list') || hasPerm(perms, 'users:invite')) {
@@ -71,12 +70,9 @@ export default function StandaloneAppSettings() {
     if (canSeeCustomerOrgs(perms)) {
       items.push({ label: 'Customer organisations', path: '/admin/customer-orgs' });
     }
-    if (workspaceSettingsAllowed) {
-      items.push({ label: 'Organization', path: '/settings/workspace' });
-    }
     items.push({ label: 'Profile', path: '/profile' });
     return items;
-  }, [perms, workspaceSettingsAllowed]);
+  }, [perms]);
 
   const orgs: TaskflowOrganizationSummary[] = user?.organizations ?? [];
   const activeOrgId = user?.activeOrganizationId ?? orgs[0]?.id;
@@ -139,7 +135,7 @@ export default function StandaloneAppSettings() {
             <AtriumLogo variant="mark" className="h-7 w-7" useSvg={false} />
           </span>
           <div className="min-w-0">
-            <h1 className="text-sm font-semibold tracking-tight">{APP_NAME} — settings</h1>
+            <h1 className="text-sm font-semibold tracking-tight">{displayName} — settings</h1>
             <p className="text-[11px] text-[color:var(--text-muted)] mt-0.5 truncate">
               Organization settings and inbox. You can close this tab when you are done.
             </p>
@@ -237,7 +233,7 @@ export default function StandaloneAppSettings() {
               <LogOutIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
               Sign out
             </button>
-            <p className="px-1 pt-2 text-[10px] text-[color:var(--text-muted)]/60" title={`${APP_NAME} v${APP_VERSION}`}>
+            <p className="px-1 pt-2 text-[10px] text-[color:var(--text-muted)]/60" title={`${displayName} v${APP_VERSION}`}>
               v{APP_VERSION}
             </p>
           </div>
@@ -310,7 +306,7 @@ export default function StandaloneAppSettings() {
             <section className="space-y-4 w-full min-w-0">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">Open in Project Manager</h2>
               <p className="text-xs text-[color:var(--text-muted)]">
-                Opens the standard {APP_NAME} layout in a new browser tab (same account).
+                Opens the standard {displayName} layout in a new browser tab (same account).
               </p>
               <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {shortcutLinks.map((item) => (

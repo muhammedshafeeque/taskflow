@@ -179,6 +179,23 @@ export const TASK_FLOW_PERMISSIONS = {
       TIME_TO_INVOICE: { READ: 'taskflow.billing.time_to_invoice.read', MANAGE: 'taskflow.billing.time_to_invoice.manage' },
       TAX: { READ: 'taskflow.billing.tax.read', MANAGE: 'taskflow.billing.tax.manage' },
     },
+    CORE: {
+      COMPANY: {
+        READ: 'taskflow.core.company.read',
+        UPDATE: 'taskflow.core.company.update',
+      },
+      CURRENCY: {
+        READ: 'taskflow.core.currency.read',
+        MANAGE: 'taskflow.core.currency.manage',
+      },
+      EXCHANGE_RATE: {
+        READ: 'taskflow.core.exchange_rate.read',
+        MANAGE: 'taskflow.core.exchange_rate.manage',
+      },
+      MODULES: {
+        MANAGE: 'taskflow.core.modules.manage',
+      },
+    },
     ASSETS: {
       DASHBOARD: { READ: 'taskflow.assets.dashboard.read' },
       INVENTORY: { LIST: 'taskflow.assets.inventory.list', MANAGE: 'taskflow.assets.inventory.manage' },

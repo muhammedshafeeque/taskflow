@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { canAny } from '../utils/moduleAccess';
-import { canAccessTaskflowWorkspaceSettings } from '../utils/taskflowWorkspaceSettingsAccess';
 import {
   DashboardIcon,
   InboxIcon,
@@ -12,6 +11,7 @@ import {
   AppHubSettingsIcon,
   TimesheetIcon,
   PackageIcon,
+  BoardsIcon,
 } from './icons/NavigationIcons';
 
 export interface NavItem {
@@ -26,7 +26,6 @@ type NavUser = {
   permissions?: string[];
   role?: string;
   userType?: string;
-  organizations?: { id: string }[];
 } | null;
 
 /** Super admins see all matching nav entries; others need at least one matching permission. */
@@ -101,7 +100,7 @@ export function buildPmNav(user: NavUser): NavItem[] {
   return nav;
 }
 
-/** Auth — identity, access & organization */
+/** Auth — users & roles */
 export function buildAuthNav(user: NavUser): NavItem[] {
   const nav: NavItem[] = [];
   if (allow(user, 'auth.user.list', 'auth.user.create', 'users:list', 'users:invite')) {
@@ -109,13 +108,6 @@ export function buildAuthNav(user: NavUser): NavItem[] {
   }
   if (allow(user, 'auth.role.manage_all', 'roles:manage')) {
     nav.push({ to: '/roles', label: 'Roles', icon: <RolesIcon /> });
-  }
-  if (
-    user?.userType === 'taskflow' &&
-    (user.organizations?.length ?? 0) > 0 &&
-    canAccessTaskflowWorkspaceSettings(user)
-  ) {
-    nav.push({ to: '/settings/workspace', label: 'Organization', icon: <AppHubSettingsIcon /> });
   }
   return nav;
 }
@@ -337,6 +329,38 @@ export function buildBillingNav(user: NavUser): NavItem[] {
   }
   if (allow(user, 'taskflow.billing.tax.read', 'taskflow.billing.tax.manage', 'taskflow.billing.dashboard.read')) {
     nav.push({ to: '/billing/tax', label: 'Tax & GST', icon: <IssuesIcon /> });
+  }
+  return nav;
+}
+
+/** Core — company profile, currencies, ROE, modules */
+export function buildCoreNav(user: NavUser): NavItem[] {
+  const nav: NavItem[] = [];
+  if (
+    !allow(
+      user,
+      'taskflow.core.company.read',
+      'taskflow.core.company.update',
+      'taskflow.core.currency.read',
+      'taskflow.core.currency.manage',
+      'taskflow.core.exchange_rate.read',
+      'taskflow.core.exchange_rate.manage',
+      'taskflow.core.modules.manage'
+    )
+  ) {
+    return nav;
+  }
+  if (allow(user, 'taskflow.core.company.read', 'taskflow.core.company.update')) {
+    nav.push({ to: '/core/company', label: 'Company', icon: <SettingsIcon />, end: true });
+  }
+  if (allow(user, 'taskflow.core.currency.read', 'taskflow.core.currency.manage')) {
+    nav.push({ to: '/core/currencies', label: 'Currencies', icon: <PackageIcon /> });
+  }
+  if (allow(user, 'taskflow.core.exchange_rate.read', 'taskflow.core.exchange_rate.manage')) {
+    nav.push({ to: '/core/exchange-rates', label: 'Exchange rates', icon: <TimesheetIcon /> });
+  }
+  if (allow(user, 'taskflow.core.modules.manage')) {
+    nav.push({ to: '/core/modules', label: 'Modules', icon: <BoardsIcon /> });
   }
   return nav;
 }

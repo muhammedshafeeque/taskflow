@@ -17,6 +17,8 @@ describe('permissionCatalog', () => {
   it('assigns known groups', () => {
     expect(permissionGroup('taskflow.crm.account.list')).toBe('CRM');
     expect(permissionGroup('taskflow.hr.employee.list')).toBe('HRMS');
+    expect(permissionGroup('taskflow.core.company.read')).toBe('Core');
+    expect(permissionGroup('taskflow.core.modules.manage')).toBe('Core');
     expect(permissionGroup('auth.user.list')).toBe('Auth');
     expect(permissionGroup('project.project.list')).toBe('Project Manager');
     expect(permissionGroup('issue.issue.create')).toBe('Project (member)');

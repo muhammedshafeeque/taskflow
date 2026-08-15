@@ -109,6 +109,7 @@ export interface TaskflowOrganizationSummary {
   slug: string;
   role: string;
   status?: string;
+  logoUrl?: string;
 }
 
 export interface AuthUser {
@@ -2113,17 +2114,39 @@ export interface CrmPipeline {
   stages: Array<{ _id: string; name: string; order: number; probability: number; isWon?: boolean; isLost?: boolean }>;
 }
 
+export type CrmQuoteBillingType = 'fixed' | 'hourly' | 'milestone';
+
+export interface CrmQuoteLine {
+  description: string;
+  category?: string;
+  quantity: number;
+  unitPrice: number;
+  billingType?: CrmQuoteBillingType;
+  taxRate?: number;
+  discountPercent?: number;
+  amount?: number;
+}
+
 export interface CrmQuote {
   _id: string;
   title: string;
-  dealId: string;
-  accountId?: string;
+  dealId: string | { _id: string; title?: string; status?: string; value?: number; currency?: string };
+  accountId?: string | { _id: string; name?: string; type?: string; industry?: string; website?: string };
   status: string;
+  version?: number;
   subtotal: number;
+  discountPercent?: number;
+  discountAmount?: number;
+  taxTotal?: number;
+  total?: number;
   currency: string;
-  lineItems?: Array<{ description: string; quantity: number; unitPrice: number; billingType?: string }>;
+  taxCode?: string;
+  lineItems?: CrmQuoteLine[];
   notes?: string;
   validUntil?: string;
+  createdBy?: string | { _id: string; name?: string; email?: string };
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CrmActivity {
@@ -2282,11 +2305,30 @@ export const crmApi = {
     const q = p.toString();
     return api.get<CrmQuote[]>(`/crm/quotes${q ? `?${q}` : ''}`, token);
   },
-  createQuote: (data: { dealId: string; title?: string; lineItems?: unknown[]; currency?: string; notes?: string }, token: string) =>
-    api.post('/crm/quotes', data, token),
+  getQuote: (id: string, token: string) => api.get<CrmQuote>(`/crm/quotes/${id}`, token),
+  createQuote: (
+    data: {
+      dealId: string;
+      title?: string;
+      lineItems?: unknown[];
+      currency?: string;
+      notes?: string;
+      validUntil?: string;
+      discountPercent?: number;
+      taxCode?: string;
+    },
+    token: string
+  ) => api.post('/crm/quotes', data, token),
   updateQuote: (id: string, data: Record<string, unknown>, token: string) => api.patch(`/crm/quotes/${id}`, data, token),
   deleteQuote: (id: string, token: string) => api.delete(`/crm/quotes/${id}`, token),
-  sendQuote: (id: string, toEmail: string, token: string) => api.post(`/crm/quotes/${id}/send`, { toEmail }, token),
+  sendQuote: (
+    id: string,
+    body: { toEmail: string; pdfBase64?: string; pdfFilename?: string; message?: string } | string,
+    token: string
+  ) => {
+    const payload = typeof body === 'string' ? { toEmail: body } : body;
+    return api.post(`/crm/quotes/${id}/send`, payload, token);
+  },
   listContracts: (token: string, opts?: { accountId?: string; kind?: string; status?: string; renewingWithinDays?: number }) => {
     const p = new URLSearchParams();
     if (opts?.accountId) p.set('accountId', opts.accountId);
@@ -2443,6 +2485,115 @@ export const billingApi = {
   timeToInvoice: (token: string) => api.get('/billing/time-to-invoice', token),
   createFromTime: (data: Record<string, unknown>, token: string) =>
     api.post<BillingInvoice>('/billing/time-to-invoice', data, token),
+};
+
+// ── Core (company, currencies, ROE) ─────────────────────────────────────────
+export interface CoreCompanySettings {
+  _id?: string;
+  companyName: string;
+  legalName?: string;
+  logoUrl?: string;
+  address?: string;
+  city?: string;
+  country?: string;
+  taxId?: string;
+  website?: string;
+  baseCurrencyCode: string;
+  timezone?: string;
+  notes?: string;
+}
+
+export interface CoreCurrency {
+  _id: string;
+  code: string;
+  name: string;
+  symbol: string;
+  decimalDigits: number;
+  countries: string[];
+  isActive: boolean;
+}
+
+export interface CoreExchangeRateRow {
+  _id?: string;
+  currencyCode: string;
+  name?: string;
+  symbol?: string;
+  rateToUsd: number | null;
+  effectiveFrom: string | null;
+  notes?: string;
+  isImplied?: boolean;
+}
+
+export interface CoreExchangeRateRecord {
+  _id: string;
+  currencyCode: string;
+  name: string;
+  symbol: string;
+  countries: string[];
+  rateToUsd: number;
+  effectiveFrom: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface CoreExchangeRateList {
+  items: CoreExchangeRateRecord[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export const coreApi = {
+  getCompany: (token: string) => api.get<CoreCompanySettings>('/core/company', token),
+  updateCompany: (data: Partial<CoreCompanySettings>, token: string) =>
+    api.patch<CoreCompanySettings>('/core/company', data, token),
+  listCurrencies: (token: string, activeOnly = true) =>
+    api.get<CoreCurrency[]>(`/core/currencies?activeOnly=${activeOnly ? 'true' : 'false'}`, token),
+  setCurrencyActive: (code: string, isActive: boolean, token: string) =>
+    api.patch<CoreCurrency>(`/core/currencies/${encodeURIComponent(code)}`, { isActive }, token),
+  listExchangeRates: (token: string, opts?: {
+    from?: string;
+    to?: string;
+    code?: string;
+    name?: string;
+    country?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const p = new URLSearchParams();
+    if (opts?.from) p.set('from', opts.from);
+    if (opts?.to) p.set('to', opts.to);
+    if (opts?.code) p.set('code', opts.code);
+    if (opts?.name) p.set('name', opts.name);
+    if (opts?.country) p.set('country', opts.country);
+    if (opts?.page != null) p.set('page', String(opts.page));
+    if (opts?.limit != null) p.set('limit', String(opts.limit));
+    const q = p.toString();
+    return api.get<CoreExchangeRateList>(`/core/exchange-rates${q ? `?${q}` : ''}`, token);
+  },
+  setExchangeRate: (
+    code: string,
+    data: { rateToUsd: number; effectiveFrom?: string; notes?: string },
+    token: string
+  ) => api.put(`/core/exchange-rates/${encodeURIComponent(code)}`, data, token),
+  deleteExchangeRate: (id: string, token: string) =>
+    api.delete(`/core/exchange-rates/record/${encodeURIComponent(id)}`, token),
+  syncExchangeRates: (token: string, data?: { effectiveFrom?: string }) =>
+    api.post<{
+      ok: boolean;
+      source: string;
+      provider?: string;
+      effectiveFrom: string;
+      timeLastUpdateUtc?: string;
+      upserted: number;
+      skipped: number;
+    }>('/core/exchange-rates/sync', data ?? {}, token),
+  getExchangeRateHistory: (code: string, token: string) =>
+    api.get(`/core/exchange-rates/${encodeURIComponent(code)}/history`, token),
+  getModules: (token: string) => api.get<Record<string, boolean>>('/core/modules', token),
+  updateModules: (data: Record<string, boolean>, token: string) =>
+    api.patch<Record<string, boolean>>('/core/modules', data, token),
 };
 
 // ── HRMS ────────────────────────────────────────────────────────────────────

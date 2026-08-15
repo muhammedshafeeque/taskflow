@@ -5,6 +5,7 @@ import { useNotifications } from '../../contexts/NotificationsContext';
 import { SunIcon, MoonIcon, BellIcon, LogOutIcon } from '../icons/NavigationIcons';
 import { APP_VERSION } from '../../appVersion';
 import { APP_NAME } from '../../brand';
+import { useAppDisplayName } from '../../hooks/useAppDisplayName';
 import AtriumLogo from '../AtriumLogo';
 import ConfirmModal from '../ConfirmModal';
 import NotificationToast from '../NotificationToast';
@@ -13,6 +14,7 @@ import { toAppPath } from '../../lib/navigationUrl';
 
 export default function HomeLayout() {
   const { user, logout } = useAuth();
+  const displayName = useAppDisplayName();
   const navigate = useNavigate();
   const {
     latestInboxMessage,
@@ -50,99 +52,135 @@ export default function HomeLayout() {
     navigate('/login');
   }
 
+  const initials = (user?.name?.trim().charAt(0) || user?.email?.charAt(0) || '?').toUpperCase();
+
   return (
-    <div className="min-h-screen flex flex-col bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
-      <header className="shrink-0 flex items-center gap-3 px-4 sm:px-6 lg:px-8 xl:px-10 py-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)]">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
-            <AtriumLogo variant="mark" className="h-7 w-7" useSvg={false} />
-          </span>
-          <span className="font-semibold text-[color:var(--text-primary)] hidden sm:inline tracking-tight">{APP_NAME}</span>
-        </div>
-        <div className="ml-auto flex items-center gap-2 sm:gap-3">
-          <div className="relative">
+    <div className="flex h-dvh max-h-dvh flex-col overflow-hidden bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
+      <header className="hub-topbar z-30 shrink-0 border-b border-[color:var(--border-subtle)]/80 bg-[color:var(--bg-page)]/95 backdrop-blur-md">
+        <div className="flex h-12 w-full items-center gap-3 px-4 sm:px-6 lg:px-8">
+          <Link
+            to="/"
+            className="flex min-w-0 items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/40"
+            title={`${APP_NAME} home`}
+            aria-label={`${APP_NAME} home`}
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white shadow-sm">
+              <AtriumLogo variant="mark" className="h-6 w-6" useSvg={false} />
+            </span>
+            <span className="truncate text-[15px] font-semibold tracking-tight text-[color:var(--text-primary)]">
+              {APP_NAME}
+            </span>
+          </Link>
+
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setNotifOpen((o) => !o)}
+                aria-label="Notifications"
+                className="hub-icon-btn relative"
+              >
+                <BellIcon className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-sm bg-[color:var(--color-blocked)]" />
+                )}
+              </button>
+              {notifOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setNotifOpen(false)} />
+                  <div className="absolute right-0 z-20 mt-2 w-80 overflow-hidden rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-lg">
+                    <div className="flex justify-between border-b border-[color:var(--border-subtle)] px-4 py-3">
+                      <span className="text-xs font-semibold">Notifications</span>
+                      <button
+                        type="button"
+                        onClick={() => markAllRead()}
+                        className="text-[11px] text-[color:var(--accent)]"
+                      >
+                        Mark all read
+                      </button>
+                    </div>
+                    <div className="max-h-72 overflow-auto">
+                      {notifications.length === 0 ? (
+                        <p className="px-4 py-6 text-xs text-[color:var(--text-muted)]">No notifications yet.</p>
+                      ) : (
+                        <ul className="divide-y divide-[color:var(--border-subtle)]">
+                          {notifications.slice(0, 15).map((n) => (
+                            <li key={n._id}>
+                              <Link
+                                to={toAppPath(n.link || n.url || '') || '/inbox'}
+                                onClick={() => {
+                                  if (!n.isRead && !n.readAt) markRead(n._id);
+                                  setNotifOpen(false);
+                                }}
+                                className="block px-4 py-3 text-xs hover:bg-[color:var(--bg-surface)]"
+                              >
+                                <div className="font-medium">{n.title}</div>
+                                {n.body && (
+                                  <div className="mt-0.5 line-clamp-2 text-[color:var(--text-muted)]">{n.body}</div>
+                                )}
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="border-t border-[color:var(--border-subtle)] px-4 py-2">
+                      <Link
+                        to="/inbox"
+                        className="text-[11px] text-[color:var(--accent)]"
+                        onClick={() => setNotifOpen(false)}
+                      >
+                        Open inbox →
+                      </Link>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
             <button
               type="button"
-              onClick={() => setNotifOpen((o) => !o)}
-              aria-label="Notifications"
-              className="relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--border-subtle)] text-[color:var(--text-muted)] hover:bg-[color:var(--bg-elevated)]"
+              aria-label="Toggle theme"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="hub-icon-btn"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             >
-              <BellIcon className="w-3.5 h-3.5" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-2.5 h-2.5 rounded-full bg-[color:var(--color-blocked)] ring-2 ring-[color:var(--bg-surface)]" />
-              )}
+              {theme === 'dark' ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
             </button>
-            {notifOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setNotifOpen(false)} />
-                <div className="absolute right-0 z-20 mt-2 w-80 rounded-lg bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] shadow-xl overflow-hidden">
-                  <div className="px-4 py-3 border-b border-[color:var(--border-subtle)] flex justify-between">
-                    <span className="text-xs font-semibold">Notifications</span>
-                    <button type="button" onClick={() => markAllRead()} className="text-[11px] text-[color:var(--accent)]">
-                      Mark all read
-                    </button>
-                  </div>
-                  <div className="max-h-72 overflow-auto">
-                    {notifications.length === 0 ? (
-                      <p className="px-4 py-6 text-xs text-[color:var(--text-muted)]">No notifications yet.</p>
-                    ) : (
-                      <ul className="divide-y divide-[color:var(--border-subtle)]">
-                        {notifications.slice(0, 15).map((n) => (
-                          <li key={n._id}>
-                            <Link
-                              to={toAppPath(n.link || n.url || '') || '/inbox'}
-                              onClick={() => {
-                                if (!n.isRead && !n.readAt) markRead(n._id);
-                                setNotifOpen(false);
-                              }}
-                              className="block px-4 py-3 hover:bg-[color:var(--bg-surface)] text-xs"
-                            >
-                              <div className="font-medium">{n.title}</div>
-                              {n.body && <div className="text-[color:var(--text-muted)] mt-0.5 line-clamp-2">{n.body}</div>}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div className="px-4 py-2 border-t border-[color:var(--border-subtle)]">
-                    <Link to="/inbox" className="text-[11px] text-[color:var(--accent)]" onClick={() => setNotifOpen(false)}>
-                      Open inbox →
-                    </Link>
-                  </div>
-                </div>
-              </>
-            )}
+
+            <Link
+              to="/profile"
+              className="hidden items-center gap-2 rounded-md px-1.5 py-1 text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-elevated)] md:inline-flex"
+              title="Profile"
+            >
+              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[color:var(--bg-elevated)] text-[11px] font-semibold">
+                {initials}
+              </span>
+              <span className="max-w-[8rem] truncate text-[12px] font-medium">{user?.name}</span>
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => setLogoutConfirmOpen(true)}
+              className="hub-icon-btn"
+              title="Sign out"
+              aria-label="Sign out"
+            >
+              <LogOutIcon className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            aria-label="Toggle theme"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--border-subtle)] text-[color:var(--text-muted)]"
-          >
-            {theme === 'dark' ? <SunIcon className="w-3.5 h-3.5" /> : <MoonIcon className="w-3.5 h-3.5" />}
-          </button>
-          <Link to="/profile" className="text-xs font-medium text-[color:var(--text-primary)] hidden md:inline truncate max-w-[8rem]">
-            {user?.name}
-          </Link>
-          <button
-            type="button"
-            onClick={() => setLogoutConfirmOpen(true)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--border-subtle)] text-[color:var(--text-muted)]"
-            title="Sign out"
-          >
-            <LogOutIcon className="w-3.5 h-3.5" />
-          </button>
         </div>
       </header>
-      <main className="flex min-h-0 w-full flex-1 flex-col overflow-auto">
+
+      <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
         <Outlet />
       </main>
-      <footer className="shrink-0 px-4 py-2 text-center text-[10px] text-[color:var(--text-muted)] border-t border-[color:var(--border-subtle)]">
-        {APP_NAME} v{APP_VERSION}
+
+      <footer className="sr-only">
+        {displayName} · v{APP_VERSION}
       </footer>
 
-      <div className="fixed top-4 right-4 z-50 pointer-events-none">
+      <div className="pointer-events-none fixed top-4 right-4 z-50">
         <div className="pointer-events-auto">
           {latestPushNotification && (
             <NotificationToast
@@ -154,7 +192,7 @@ export default function HomeLayout() {
           )}
         </div>
       </div>
-      <div className="fixed bottom-4 left-4 z-50 pointer-events-none">
+      <div className="pointer-events-none fixed bottom-4 left-4 z-50">
         <div className="pointer-events-auto">
           {appToast && (
             <SuccessToast
@@ -168,7 +206,7 @@ export default function HomeLayout() {
         </div>
       </div>
       {latestInboxMessage && (
-        <div className="fixed top-16 right-4 z-50 pointer-events-auto">
+        <div className="pointer-events-auto fixed top-16 right-4 z-50">
           <NotificationToast
             title={(latestInboxMessage.title as string) ?? 'New message'}
             body={(latestInboxMessage.body as string) ?? ''}

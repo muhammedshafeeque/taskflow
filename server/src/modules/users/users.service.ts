@@ -122,7 +122,10 @@ export async function findAll(
 }
 
 export async function findById(id: string): Promise<unknown | null> {
-  const user = await User.findById(id).select('-password').lean();
+  const user = await User.findById(id)
+    .select('-password')
+    .populate('roleId', 'name permissions')
+    .lean();
   return user ?? null;
 }
 

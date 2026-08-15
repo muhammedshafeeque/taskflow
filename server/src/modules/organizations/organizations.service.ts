@@ -11,6 +11,7 @@ export type OrganizationSummary = {
   slug: string;
   role: string;
   status?: string;
+  logoUrl?: string;
 };
 
 function slugify(name: string): string {
@@ -27,12 +28,18 @@ function slugify(name: string): string {
 export async function listOrganizationsForUser(userId: string): Promise<OrganizationSummary[]> {
   const uid = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
   const rows = await OrganizationMember.find({ user: uid, status: 'active' })
-    .populate('organization', 'name slug status')
+    .populate('organization', 'name slug status logoUrl')
     .sort({ createdAt: 1 })
     .lean();
   const out: OrganizationSummary[] = [];
   for (const m of rows) {
-    const o = m.organization as { _id?: unknown; name?: string; slug?: string; status?: string } | null;
+    const o = m.organization as {
+      _id?: unknown;
+      name?: string;
+      slug?: string;
+      status?: string;
+      logoUrl?: string;
+    } | null;
     if (!o?._id) continue;
     out.push({
       id: String(o._id),
@@ -40,6 +47,7 @@ export async function listOrganizationsForUser(userId: string): Promise<Organiza
       slug: String(o.slug ?? ''),
       role: m.role,
       status: o.status,
+      logoUrl: o.logoUrl || undefined,
     });
   }
   return out;

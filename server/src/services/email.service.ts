@@ -1,6 +1,13 @@
 import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 
+export type EmailAttachment = {
+  filename: string;
+  content: string;
+  contentType?: string;
+  encoding?: 'base64' | 'utf8';
+};
+
 // ── SMTP transport ────────────────────────────────────────────────────────────
 
 let transporter: nodemailer.Transporter | null = null;
@@ -20,10 +27,25 @@ function getTransporter(): nodemailer.Transporter | null {
   return transporter;
 }
 
-async function sendViaSMTP(to: string, subject: string, html: string): Promise<void> {
+async function sendViaSMTP(
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: EmailAttachment[]
+): Promise<void> {
   const transport = getTransporter();
   if (!transport) return;
-  await transport.sendMail({ from: env.mailFrom, to, subject, html });
+  await transport.sendMail({
+    from: env.mailFrom,
+    to,
+    subject,
+    html,
+    attachments: attachments?.map((a) => ({
+      filename: a.filename,
+      content: Buffer.from(a.content, a.encoding === 'base64' ? 'base64' : 'utf8'),
+      contentType: a.contentType,
+    })),
+  });
 }
 
 // ── Azure Graph API transport ─────────────────────────────────────────────────
@@ -64,7 +86,12 @@ async function getGraphAccessToken(): Promise<string> {
   return graphTokenCache.accessToken;
 }
 
-async function sendViaGraph(to: string, subject: string, html: string): Promise<void> {
+async function sendViaGraph(
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: EmailAttachment[]
+): Promise<void> {
   const accessToken = await getGraphAccessToken();
   const fromEmail = env.azureGraphFromEmail;
 
@@ -73,6 +100,12 @@ async function sendViaGraph(to: string, subject: string, html: string): Promise<
       subject,
       body: { contentType: 'HTML', content: html },
       toRecipients: [{ emailAddress: { address: to } }],
+      attachments: attachments?.map((a) => ({
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: a.filename,
+        contentType: a.contentType || 'application/octet-stream',
+        contentBytes: a.content,
+      })),
     },
     saveToSentItems: false,
   };
@@ -96,7 +129,12 @@ async function sendViaGraph(to: string, subject: string, html: string): Promise<
   }
 }
 
-async function sendViaSendgrid(to: string, subject: string, html: string): Promise<void> {
+async function sendViaSendgrid(
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: EmailAttachment[]
+): Promise<void> {
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
@@ -108,6 +146,12 @@ async function sendViaSendgrid(to: string, subject: string, html: string): Promi
       personalizations: [{ to: [{ email: to }] }],
       subject,
       content: [{ type: 'text/html', value: html }],
+      attachments: attachments?.map((a) => ({
+        content: a.content,
+        filename: a.filename,
+        type: a.contentType || 'application/octet-stream',
+        disposition: 'attachment',
+      })),
     }),
   });
   if (!response.ok) {
@@ -118,7 +162,12 @@ async function sendViaSendgrid(to: string, subject: string, html: string): Promi
 
 // ── Unified dispatcher ────────────────────────────────────────────────────────
 
-async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: EmailAttachment[]
+): Promise<void> {
   const { isSmtpEnabled, isAzureGraphEnabled, isSendgridEnabled } = env;
 
   if ((isSmtpEnabled ? 1 : 0) + (isAzureGraphEnabled ? 1 : 0) + (isSendgridEnabled ? 1 : 0) > 1) {
@@ -132,9 +181,9 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     return;
   }
 
-  if (isSmtpEnabled) return sendViaSMTP(to, subject, html);
-  if (isAzureGraphEnabled) return sendViaGraph(to, subject, html);
-  return sendViaSendgrid(to, subject, html);
+  if (isSmtpEnabled) return sendViaSMTP(to, subject, html, attachments);
+  if (isAzureGraphEnabled) return sendViaGraph(to, subject, html, attachments);
+  return sendViaSendgrid(to, subject, html, attachments);
 }
 
 export interface InviteEmailParams {
@@ -845,6 +894,11 @@ export function renderTicketClosedEmail(
   `.trim();
 }
 
-export async function sendCustomerEmail(to: string, subject: string, html: string): Promise<void> {
-  await sendEmail(to, subject, html);
+export async function sendCustomerEmail(
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: EmailAttachment[]
+): Promise<void> {
+  await sendEmail(to, subject, html, attachments);
 }

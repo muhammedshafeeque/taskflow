@@ -9,8 +9,8 @@ import ConfirmModal from './ConfirmModal';
 import CommandPalette from './CommandPalette';
 import { projectsApi, issuesApi, type Project, type Issue, getIssueKey } from '../lib/api';
 import { APP_VERSION } from '../appVersion';
-import { APP_NAME } from '../brand';
-import AtriumLogo from './AtriumLogo';
+import { useAppDisplayName } from '../hooks/useAppDisplayName';
+import { BrandMark } from './BrandMark';
 import { userHasPermission } from '../utils/permissions';
 import { PROJECT_PERMISSIONS } from '@shared/constants/permissions';
 import type { NavItem } from './moduleNavigation';
@@ -116,6 +116,7 @@ export default function Layout({
   showSidebar = true,
 }: LayoutProps) {
   const { user, logout, token } = useAuth();
+  const displayName = useAppDisplayName();
   const {
     latestInboxMessage,
     latestPushNotification,
@@ -268,7 +269,7 @@ export default function Layout({
               title="Home"
               aria-label="Go to Home"
             >
-              <AtriumLogo variant="mark" className="h-7 w-7" useSvg={false} />
+              <BrandMark className="h-7 w-7" imgClassName="h-full w-full object-contain p-0.5" />
             </Link>
           ) : (
             <Link
@@ -277,11 +278,13 @@ export default function Layout({
               title="Go to Home"
               aria-label="Go to Home"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
-                <AtriumLogo variant="mark" className="h-7 w-7" useSvg={false} />
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white shadow-sm">
+                <BrandMark className="h-7 w-7" imgClassName="h-full w-full object-contain p-0.5" />
               </span>
               <div className="min-w-0 text-left">
-                <h1 className="text-base font-bold tracking-tight text-[color:var(--sidebar-text-active)]">{APP_NAME}</h1>
+                <h1 className="text-base font-bold tracking-tight text-[color:var(--sidebar-text-active)] truncate" title={displayName}>
+                  {displayName}
+                </h1>
                 <p className="text-[11px] text-[color:var(--sidebar-text)] mt-0.5 truncate" title={projectId ? (project?.name ?? '…') : (moduleTitle ?? '')}>
                   {projectId
                     ? projectLoading
@@ -367,7 +370,7 @@ export default function Layout({
                 <LogOutIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 Sign out
               </button>
-              <p className="px-1 pt-1 text-[10px] text-[color:var(--sidebar-text)]/50" title={`${APP_NAME} v${APP_VERSION}`}>
+              <p className="px-1 pt-1 text-[10px] text-[color:var(--sidebar-text)]/50" title={`${displayName} v${APP_VERSION}`}>
                 v{APP_VERSION}
               </p>
             </>
@@ -389,7 +392,7 @@ export default function Layout({
               >
                 <LogOutIcon className="h-4 w-4" aria-hidden />
               </button>
-              <span className="text-[9px] text-[color:var(--sidebar-text)]/50" title={`${APP_NAME} v${APP_VERSION}`}>
+              <span className="text-[9px] text-[color:var(--sidebar-text)]/50" title={`${displayName} v${APP_VERSION}`}>
                 v{APP_VERSION}
               </span>
             </>

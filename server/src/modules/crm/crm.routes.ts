@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware';
-import { requirePermission } from '../../middleware/requirePermission';
+import { requirePermission, requireAnyPermission } from '../../middleware/requirePermission';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as crm from './crm.controller';
@@ -49,6 +49,7 @@ router.patch('/pipelines/:id', requirePermission(P.SETTINGS.MANAGE), asyncHandle
 
 router.get('/quotes', requirePermission(P.QUOTE.LIST), asyncHandler(crm.listQuotes));
 router.post('/quotes', requirePermission(P.QUOTE.CREATE), asyncHandler(crm.createQuote));
+router.get('/quotes/:id', requireAnyPermission([P.QUOTE.READ, P.QUOTE.LIST]), asyncHandler(crm.getQuote));
 router.patch('/quotes/:id', requirePermission(P.QUOTE.UPDATE), asyncHandler(crm.updateQuote));
 router.delete('/quotes/:id', requirePermission(P.QUOTE.DELETE), asyncHandler(crm.deleteQuote));
 router.post('/quotes/:id/send', requirePermission(P.QUOTE.UPDATE), asyncHandler(crm.sendQuote));

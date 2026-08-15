@@ -56,6 +56,7 @@ const LEGACY_LABELS: Record<string, string> = {
   'testManagement:edit': 'Edit test management',
   'taskflow.platform.executive.read': 'View executive dashboard',
   'taskflow.platform.audit.read': 'View audit logs',
+  'taskflow.core.modules.manage': 'Enable / disable platform modules',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -108,6 +109,7 @@ export function permissionGroup(code: string): string {
   if (code.startsWith('taskflow.accounts.')) return 'Accounts';
   if (code.startsWith('taskflow.contracts.')) return 'Contracts';
   if (code.startsWith('taskflow.billing.')) return 'Billing';
+  if (code.startsWith('taskflow.core.')) return 'Core';
   if (code.startsWith('taskflow.assets.')) return 'Assets';
   if (code.startsWith('taskflow.resources.')) return 'Resources';
   if (code.startsWith('taskflow.procurement.')) return 'Procurement';

@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { PlatformModulesProvider } from './contexts/PlatformModulesContext';
 import { usePushRegistration } from './hooks/usePushRegistration';
+import { AppDisplayTitle } from './hooks/useAppDisplayName';
 import { NotificationsProvider } from './contexts/NotificationsContext';
 import { TaskflowAuthGuard } from './components/ProtectedRoute';
 import HomeLayout from './components/layouts/HomeLayout';
@@ -22,6 +24,7 @@ import {
   ProcurementModuleLayout,
   DocumentsModuleLayout,
   CalendarModuleLayout,
+  CoreModuleLayout,
 } from './components/layouts/ModuleLayouts';
 import PortalRoute from './components/PortalRoute';
 import GuestRoute from './components/GuestRoute';
@@ -70,8 +73,10 @@ import ProjectAdoSync from './pages/ProjectAdoSync';
 import IssueLinkGraph from './pages/IssueLinkGraph';
 import Versions from './pages/Versions';
 import Timesheet from './pages/Timesheet';
-import Users from './pages/Users';
 import Roles from './pages/Roles';
+import RolePermissions from './pages/RolePermissions';
+import UserPermissions from './pages/UserPermissions';
+import Users from './pages/Users';
 // Customer Portal pages
 import PortalDashboard from './pages/portal/PortalDashboard';
 import RequestList from './pages/portal/RequestList';
@@ -87,7 +92,6 @@ import CustomerOrgs from './pages/admin/CustomerOrgs';
 import CustomerOrgDetail from './pages/admin/CustomerOrgDetail';
 import CustomerRequestApprovals from './pages/admin/CustomerRequestApprovals';
 import StandaloneAppSettings from './pages/StandaloneAppSettings';
-import TaskflowWorkspaceSettings from './pages/TaskflowWorkspaceSettings';
 import KnowledgeBase from './pages/service/KnowledgeBase';
 import CrmDashboard from './pages/crm/CrmDashboard';
 import CrmAccounts from './pages/crm/CrmAccounts';
@@ -96,6 +100,8 @@ import CrmContacts from './pages/crm/CrmContacts';
 import CrmDeals from './pages/crm/CrmDeals';
 import CrmLeads from './pages/crm/CrmLeads';
 import CrmQuotes from './pages/crm/CrmQuotes';
+import CrmQuoteDetail from './pages/crm/CrmQuoteDetail';
+import CrmQuoteForm from './pages/crm/CrmQuoteForm';
 import CrmActivities from './pages/crm/CrmActivities';
 import CrmContracts from './pages/crm/CrmContracts';
 import CrmSettings from './pages/crm/CrmSettings';
@@ -128,6 +134,10 @@ import {
   BillingInvoices,
   BillingTax,
 } from './pages/billing/BillingSections';
+import CoreCompany from './pages/core/CoreCompany';
+import CoreCurrencies from './pages/core/CoreCurrencies';
+import CoreExchangeRates from './pages/core/CoreExchangeRates';
+import CoreModules from './pages/core/CoreModules';
 import AssetsDashboard from './pages/assets/AssetsDashboard';
 import {
   AssetsInventory,
@@ -249,8 +259,9 @@ function AppRoutes() {
         {/* Auth module — users, roles & organization */}
         <Route element={<AuthModuleLayout />}>
           <Route path="/users" element={<Users />} />
+          <Route path="/users/:userId/permissions" element={<UserPermissions />} />
           <Route path="/roles" element={<Roles />} />
-          <Route path="/settings/workspace" element={<TaskflowWorkspaceSettings />} />
+          <Route path="/roles/:roleId/permissions" element={<RolePermissions />} />
         </Route>
 
         {/* CRM module */}
@@ -262,6 +273,9 @@ function AppRoutes() {
         <Route path="/crm/deals" element={<CrmDeals />} />
         <Route path="/crm/leads" element={<CrmLeads />} />
         <Route path="/crm/quotes" element={<CrmQuotes />} />
+        <Route path="/crm/quotes/new" element={<CrmQuoteForm />} />
+        <Route path="/crm/quotes/:id/edit" element={<CrmQuoteForm />} />
+        <Route path="/crm/quotes/:id" element={<CrmQuoteDetail />} />
         <Route path="/crm/activities" element={<CrmActivities />} />
         <Route path="/crm/contracts" element={<CrmContracts />} />
         <Route path="/crm/settings" element={<CrmSettings />} />
@@ -316,6 +330,15 @@ function AppRoutes() {
           <Route path="/billing/time-to-invoice" element={<BillingTimeToInvoice />} />
           <Route path="/billing/invoices" element={<BillingInvoices />} />
           <Route path="/billing/tax" element={<BillingTax />} />
+        </Route>
+
+        {/* Core */}
+        <Route element={<CoreModuleLayout />}>
+          <Route path="/core" element={<Navigate to="/core/company" replace />} />
+          <Route path="/core/company" element={<CoreCompany />} />
+          <Route path="/core/currencies" element={<CoreCurrencies />} />
+          <Route path="/core/exchange-rates" element={<CoreExchangeRates />} />
+          <Route path="/core/modules" element={<CoreModules />} />
         </Route>
 
         {/* Assets / CMDB */}
@@ -404,7 +427,9 @@ export default function App() {
     <BrowserRouter>
       <ThemeInit>
         <AuthProvider>
-          <AppWithNotifications />
+          <PlatformModulesProvider>
+            <AppWithNotifications />
+          </PlatformModulesProvider>
         </AuthProvider>
       </ThemeInit>
     </BrowserRouter>
@@ -416,6 +441,7 @@ function AppWithNotifications() {
   usePushRegistration(token);
   return (
     <NotificationsProvider token={token}>
+      <AppDisplayTitle />
       <AppRoutes />
     </NotificationsProvider>
   );

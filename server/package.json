@@ -10,6 +10,7 @@
     "create-super-admin": "ts-node -r dotenv/config src/scripts/create-super-admin.ts",
     "accept-invitations": "ts-node -r tsconfig-paths/register -r dotenv/config src/scripts/accept-invitations.ts",
     "seed-taskflow-roles": "ts-node -r tsconfig-paths/register -r dotenv/config src/scripts/seed-taskflow-roles.ts",
+    "seed-currencies": "ts-node -r tsconfig-paths/register -r dotenv/config src/scripts/seed-currencies.ts",
     "seed-org-customer-roles": "ts-node -r tsconfig-paths/register -r dotenv/config src/scripts/seed-org-customer-roles.ts",
     "migrate-permissions-to-dot": "ts-node -r tsconfig-paths/register -r dotenv/config src/scripts/migrate-permissions-to-dot.ts",
     "import-ado": "ts-node -r dotenv/config src/scripts/import-azure-devops.ts",
