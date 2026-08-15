@@ -393,7 +393,11 @@ export default function CrmQuotes() {
   }
 
   const hasFilters = Boolean(
-    applied.titleQuery || applied.titleId || applied.dealId || applied.accountId || applied.status
+    applied.titleQuery ||
+      applied.titleId ||
+      applied.dealId ||
+      applied.accountId ||
+      applied.status
   );
 
   async function send(id: string) {

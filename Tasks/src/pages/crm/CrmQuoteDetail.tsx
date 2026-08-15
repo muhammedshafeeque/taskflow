@@ -20,8 +20,8 @@ function refLabel(
 ): string {
   if (!ref) return '—';
   if (typeof ref === 'string') return ref;
-  if (kind === 'account') return ref.name || '—';
-  return ref.title || '—';
+  if (kind === 'account') return ('name' in ref && ref.name) || '—';
+  return ('title' in ref && ref.title) || '—';
 }
 
 function statusClass(status: string): string {
