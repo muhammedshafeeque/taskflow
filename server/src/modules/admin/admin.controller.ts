@@ -105,6 +105,13 @@ export async function getIntegrationsConfig(req: Request & { user?: AuthPayload 
       'SendGrid API based email delivery.'
     ),
     makeIntegration(
+      'bytemail',
+      'ByteMail (Email)',
+      env.isBytemailEnabled,
+      ['BYTEMAIL_API_KEY', 'BYTEMAIL_API_URL (optional)', 'BYTEMAIL_FROM_EMAIL (optional)'],
+      'ByteMail HTTP API (X-API-Key) for outbound mail — alternative to SMTP/Graph/SendGrid.'
+    ),
+    makeIntegration(
       'firebase-push',
       'Firebase push notification',
       env.isFirebasePushEnabled,
@@ -267,6 +274,7 @@ export async function getIntegrationsConfig(req: Request & { user?: AuthPayload 
         'IS_SMTP_ENABLED',
         'IS_AZURE_GRAPH_ENABLED',
         'IS_SENDGRID_ENABLED',
+        'IS_BYTEMAIL_ENABLED',
         'IS_FIREBASE_PUSH_ENABLED',
         'IS_SLACK_ENABLED',
         'IS_TEAMS_ENABLED',

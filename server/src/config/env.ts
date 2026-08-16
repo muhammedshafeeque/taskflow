@@ -34,6 +34,12 @@ export const env = {
   isSendgridEnabled: bool(process.env.IS_SENDGRID_ENABLED),
   sendgridApiKey: cleanEnvValue(process.env.SENDGRID_API_KEY),
   sendgridFromEmail: cleanEnvValue(process.env.SENDGRID_FROM_EMAIL),
+  isBytemailEnabled: bool(process.env.IS_BYTEMAIL_ENABLED),
+  bytemailApiKey: cleanEnvValue(process.env.BYTEMAIL_API_KEY),
+  bytemailApiUrl:
+    cleanEnvValue(process.env.BYTEMAIL_API_URL) ||
+    'https://bytemail.repod.online/api/v1/mail/send',
+  bytemailFromEmail: cleanEnvValue(process.env.BYTEMAIL_FROM_EMAIL),
   vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? '',
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? '',
   isFirebasePushEnabled: bool(process.env.IS_FIREBASE_PUSH_ENABLED),
@@ -205,6 +211,9 @@ export function validateRuntimeConfig(): void {
   assertRequiredWhenEnabled(env.isSendgridEnabled, 'SendGrid mail', [
     ['SENDGRID_API_KEY', env.sendgridApiKey],
     ['SENDGRID_FROM_EMAIL', env.sendgridFromEmail],
+  ]);
+  assertRequiredWhenEnabled(env.isBytemailEnabled, 'ByteMail', [
+    ['BYTEMAIL_API_KEY', env.bytemailApiKey],
   ]);
   assertRequiredWhenEnabled(env.isFirebasePushEnabled, 'Firebase push', [
     ['FIREBASE_PROJECT_ID', env.firebaseProjectId],

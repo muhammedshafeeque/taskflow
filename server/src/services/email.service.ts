@@ -160,6 +160,67 @@ async function sendViaSendgrid(
   }
 }
 
+// ── ByteMail API transport ────────────────────────────────────────────────────
+
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+async function sendViaBytemail(
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: EmailAttachment[]
+): Promise<void> {
+  if (!env.bytemailApiKey) {
+    console.warn('[email] ByteMail enabled but BYTEMAIL_API_KEY is missing. Email skipped.');
+    return;
+  }
+
+  const body: Record<string, unknown> = {
+    to,
+    subject,
+    html,
+    text: htmlToPlainText(html),
+  };
+  if (env.bytemailFromEmail) body.from = env.bytemailFromEmail;
+  else if (env.mailFrom) body.from = env.mailFrom;
+
+  if (attachments?.length) {
+    body.attachments = attachments.map((a) => ({
+      filename: a.filename,
+      content: a.encoding === 'base64' ? a.content : Buffer.from(a.content, 'utf8').toString('base64'),
+      contentType: a.contentType || 'application/octet-stream',
+    }));
+  }
+
+  const response = await fetch(env.bytemailApiUrl, {
+    method: 'POST',
+    headers: {
+      'X-API-Key': env.bytemailApiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`[email] ByteMail send failed [${response.status}]: ${errorText}`);
+  }
+}
+
 // ── Unified dispatcher ────────────────────────────────────────────────────────
 
 async function sendEmail(
@@ -168,22 +229,31 @@ async function sendEmail(
   html: string,
   attachments?: EmailAttachment[]
 ): Promise<void> {
-  const { isSmtpEnabled, isAzureGraphEnabled, isSendgridEnabled } = env;
+  const { isSmtpEnabled, isAzureGraphEnabled, isSendgridEnabled, isBytemailEnabled } = env;
 
-  if ((isSmtpEnabled ? 1 : 0) + (isAzureGraphEnabled ? 1 : 0) + (isSendgridEnabled ? 1 : 0) > 1) {
+  const enabledCount =
+    (isSmtpEnabled ? 1 : 0) +
+    (isAzureGraphEnabled ? 1 : 0) +
+    (isSendgridEnabled ? 1 : 0) +
+    (isBytemailEnabled ? 1 : 0);
+
+  if (enabledCount > 1) {
     console.warn(
-      '[email] Multiple transports enabled (SMTP/AzureGraph/SendGrid) — priority: SMTP > Azure Graph > SendGrid.'
+      '[email] Multiple transports enabled — priority: SMTP > Azure Graph > SendGrid > ByteMail.'
     );
   }
 
-  if (!isSmtpEnabled && !isAzureGraphEnabled && !isSendgridEnabled) {
-    console.warn('[email] No transport enabled (IS_SMTP_ENABLED, IS_AZURE_GRAPH_ENABLED, IS_SENDGRID_ENABLED). Email skipped.');
+  if (enabledCount === 0) {
+    console.warn(
+      '[email] No transport enabled (IS_SMTP_ENABLED, IS_AZURE_GRAPH_ENABLED, IS_SENDGRID_ENABLED, IS_BYTEMAIL_ENABLED). Email skipped.'
+    );
     return;
   }
 
   if (isSmtpEnabled) return sendViaSMTP(to, subject, html, attachments);
   if (isAzureGraphEnabled) return sendViaGraph(to, subject, html, attachments);
-  return sendViaSendgrid(to, subject, html, attachments);
+  if (isSendgridEnabled) return sendViaSendgrid(to, subject, html, attachments);
+  return sendViaBytemail(to, subject, html, attachments);
 }
 
 export interface InviteEmailParams {

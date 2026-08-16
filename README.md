@@ -271,8 +271,9 @@ Copy from [`server/.env.example`](server/.env.example). Important groups:
 | `IS_SMTP_ENABLED` | Nodemailer SMTP (`SMTP_*` / legacy `EMAIL_*`) |
 | `IS_AZURE_GRAPH_ENABLED` | Microsoft Graph send mail (`AZURE_GRAPH_*`) |
 | `IS_SENDGRID_ENABLED` | SendGrid API |
+| `IS_BYTEMAIL_ENABLED` | ByteMail HTTP API (`BYTEMAIL_API_KEY`, optional `BYTEMAIL_API_URL` / `BYTEMAIL_FROM_EMAIL`) |
 
-If none are enabled, outbound mail is skipped. SMTP wins if both SMTP and Graph are on.
+If none are enabled, outbound mail is skipped. Priority when several are on: **SMTP → Azure Graph → SendGrid → ByteMail**.
 
 Poste.io-style IMAP/SMTP for CRM mail: `POSTE_IMAP_*`, `POSTE_SMTP_*`, `MAIL_SYNC_INTERVAL_MS`.
 
