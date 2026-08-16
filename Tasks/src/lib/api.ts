@@ -496,11 +496,11 @@ export const notificationsApi = {
   markAllRead: (token: string) =>
     api.patch<{ updated: number }>(`/notifications/read-all`, {}, token),
   getPreferences: (token: string) =>
-    api.get<{
+    request<{
       availableMethods: NotificationMethodAvailability;
       events: NotificationEventDescriptor[];
       matrix: NotificationPreferenceRow[];
-    }>(`/notifications/preferences`, token),
+    }>('/notifications/preferences', { method: 'GET', token, cache: 'no-store' }),
   updatePreferences: (
     matrix: Array<{ eventKey: string; methods: Partial<Record<NotificationMethod, boolean>> }>,
     token: string

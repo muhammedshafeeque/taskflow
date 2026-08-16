@@ -14,6 +14,10 @@ import {
   getOrCreateUserPreferences,
   isChannelEnabledForUser,
 } from './notificationPreference.service';
+import {
+  buildNotificationEmailHtml,
+  buildNotificationEmailSubject,
+} from './notificationEmailTemplates';
 import { User } from '../auth/user.model';
 
 export type NotifyUserParams = {
@@ -74,8 +78,15 @@ export async function notifyUser(params: NotifyUserParams): Promise<void> {
     const to = (user as { email?: string } | null)?.email;
     if (to) {
       const emailHtml =
-        html ?? `<div><h3>${title}</h3><p>${body}</p>${link ? `<p><a href="${link}">Open</a></p>` : ''}</div>`;
-      sendCustomerEmail(to, title, emailHtml).catch((err) => console.error('Email send failed:', err));
+        html ??
+        buildNotificationEmailHtml(eventKey, {
+          title,
+          body,
+          link,
+          metadata,
+        });
+      const subject = html ? title : buildNotificationEmailSubject(eventKey, title);
+      sendCustomerEmail(to, subject, emailHtml).catch((err) => console.error('Email send failed:', err));
     }
   }
 

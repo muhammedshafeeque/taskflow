@@ -36,10 +36,15 @@ const EMAIL_ON_BY_DEFAULT_EVENTS: NotificationEventKey[] = [
   'task_unassigned',
   'task_status_changed',
   'task_mentioned',
+  'task_overdue',
   'watch_comment',
   'watch_status',
   'watch_field',
   'project_invitation',
+  'approval_requested',
+  'qa_test_failed',
+  'crm_quote_accepted',
+  'timesheet_rejected',
 ];
 
 function defaultPreferences(): Record<NotificationEventKey, NotificationMethodState> {
@@ -71,7 +76,8 @@ export function getAvailableMethods(): AvailableMethods {
         env.azureGraphClientId &&
         env.azureGraphClientSecret &&
         env.azureGraphFromEmail) ||
-      env.isSendgridEnabled
+      (env.isSendgridEnabled && env.sendgridApiKey) ||
+      (env.isBytemailEnabled && env.bytemailApiKey)
   );
   const smsEnabled = Boolean(
     env.isSmsEnabled &&
@@ -96,7 +102,10 @@ export function getAvailableMethods(): AvailableMethods {
   return {
     in_app: { enabled: true },
     push: { enabled: pushEnabled, reason: pushEnabled ? undefined : 'VAPID keys not configured' },
-    email: { enabled: emailEnabled, reason: emailEnabled ? undefined : 'SMTP/Azure mail not configured' },
+    email: {
+      enabled: emailEnabled,
+      reason: emailEnabled ? undefined : 'Email transport not configured (SMTP / Graph / SendGrid / ByteMail)',
+    },
     sms: { enabled: smsEnabled, reason: smsEnabled ? undefined : 'SMS provider not configured' },
     whatsapp: {
       enabled: whatsappEnabled,

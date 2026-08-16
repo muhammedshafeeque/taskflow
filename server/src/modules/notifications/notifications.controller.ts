@@ -47,6 +47,9 @@ export async function getNotificationPreferences(req: Request, res: Response): P
   const userId = req.user?.id;
   if (!userId) throw new ApiError(401, 'Unauthorized');
   const data = await preferenceService.getPreferencesResponse(userId);
+  // Channel availability depends on server .env — never serve a stale 304/ETag body.
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
   res.status(200).json({ success: true, data });
 }
 
