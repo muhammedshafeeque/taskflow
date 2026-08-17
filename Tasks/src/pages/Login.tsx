@@ -34,6 +34,25 @@ export default function Login() {
   const oauthState = query.get('state');
   const oauthError = query.get('error');
   const oauthErrorDescription = query.get('error_description');
+  const returnUrlRaw = query.get('returnUrl');
+  const safeReturnUrl =
+    returnUrlRaw && returnUrlRaw.startsWith('/') && !returnUrlRaw.startsWith('//') ? returnUrlRaw : null;
+
+  useEffect(() => {
+    if (safeReturnUrl) {
+      sessionStorage.setItem('atrium_ide_return_url', safeReturnUrl);
+    }
+  }, [safeReturnUrl]);
+
+  function resolveNextPath(u: unknown): Promise<string> | string {
+    const storedReturn = sessionStorage.getItem('atrium_ide_return_url');
+    if (storedReturn && storedReturn.startsWith('/') && !storedReturn.startsWith('//')) {
+      sessionStorage.removeItem('atrium_ide_return_url');
+      return storedReturn;
+    }
+    if (safeReturnUrl) return safeReturnUrl;
+    return u ? resolvePostAuthRoute(u as Parameters<typeof resolvePostAuthRoute>[0], switchWorkspace) : '/';
+  }
 
   useEffect(() => {
     authApi.publicConfig().then((res) => {
@@ -67,11 +86,10 @@ export default function Login() {
         setError(result.error ?? 'Microsoft sign-in failed');
         return;
       }
-      // Clean URL (remove ?code=...).
       window.history.replaceState({}, document.title, '/login');
       const stored = localStorage.getItem('pm_user');
       const u = stored ? JSON.parse(stored) : null;
-      const next = u ? await resolvePostAuthRoute(u, switchWorkspace) : '/';
+      const next = await resolveNextPath(u);
       navigate(next);
     }
     run();
@@ -106,7 +124,7 @@ export default function Login() {
     if (result.ok) {
       const stored = localStorage.getItem('pm_user');
       const u = stored ? JSON.parse(stored) : null;
-      const next = u ? await resolvePostAuthRoute(u, switchWorkspace) : '/';
+      const next = await resolveNextPath(u);
       navigate(next);
       return;
     }

@@ -179,6 +179,9 @@ export const authApi = {
 
   resetPassword: (token: string, newPassword: string) =>
     api.post<AuthData>('/auth/reset-password', { token, newPassword }),
+
+  ideApprove: (sid: string, token: string) =>
+    api.post<{ code: string; redirectUri: string; state: string }>('/auth/ide/approve', { sid }, token),
 };
 
 export interface TaskflowOrganizationDetail {

@@ -28,11 +28,12 @@ Atrium is a multi-tenant business platform: one login, one workspace, many modul
 8. [Scripts](#scripts)
 9. [Project structure](#project-structure)
 10. [API overview](#api-overview)
-11. [Permissions & module access](#permissions--module-access)
-12. [Production](#production)
-13. [Testing & quality](#testing--quality)
-14. [Contributing](#contributing)
-15. [License](#license)
+11. [IDE extension (Atrium Workbench)](#ide-extension-atrium-workbench)
+12. [Permissions & module access](#permissions--module-access)
+13. [Production](#production)
+14. [Testing & quality](#testing--quality)
+15. [Contributing](#contributing)
+16. [License](#license)
 
 ---
 
@@ -346,6 +347,8 @@ taskflow/                         # repository root
 ├── CONTRIBUTING.md
 ├── CONTRIBUTORS.md
 ├── LICENSE
+├── extensions/
+│   └── atrium-workbench/         # VS Code / Cursor extension
 ├── server/                       # API
 │   ├── package.json
 │   ├── .env.example
@@ -404,6 +407,28 @@ Examples (non-exhaustive):
 | Customer portal | `/api/customer/...` |
 
 Module-gated routes return errors when the module is disabled for the platform.
+
+---
+
+## IDE extension (Atrium Workbench)
+
+Browse and update Atrium issues from **VS Code** or **Cursor**, then hand them to an AI agent.
+
+| | |
+|---|---|
+| Package | [`extensions/atrium-workbench/`](extensions/atrium-workbench/) |
+| Auth | Configure API URL → **Sign in with browser** (uses web login / SSO) or email |
+| IDE auth API | `POST /api/auth/ide/start`, `/approve`, `/exchange` |
+| Web bridge | `/auth/ide` |
+
+```bash
+cd extensions/atrium-workbench
+npm install
+npm run package
+# Install atrium-workbench-0.1.1.vsix via Extensions → Install from VSIX
+```
+
+See [extensions/atrium-workbench/README.md](extensions/atrium-workbench/README.md) for commands, **Do** (Cursor / Claude / copy prompt), and branch-by-ticket-id flow.
 
 ---
 

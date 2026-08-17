@@ -73,8 +73,31 @@ export const microsoftSsoAuthorizeUrlQuerySchema = z.object({
   }),
 });
 
+export const ideAuthStartSchema = z.object({
+  body: z.object({
+    redirectUri: z.string().min(1),
+    state: z.string().min(8),
+  }),
+});
+
+export const ideAuthApproveSchema = z.object({
+  body: z.object({
+    sid: z.string().min(1),
+  }),
+});
+
+export const ideAuthExchangeSchema = z.object({
+  body: z.object({
+    code: z.string().min(1),
+    state: z.string().min(8),
+  }),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>['body'];
 export type LoginInput = z.infer<typeof loginSchema>['body'];
 export type RefreshInput = z.infer<typeof refreshSchema>['body'];
 export type MicrosoftSsoInput = z.infer<typeof microsoftSsoSchema>['body'];
 export type MicrosoftSsoAuthorizeUrlQuery = z.infer<typeof microsoftSsoAuthorizeUrlQuerySchema>['query'];
+export type IdeAuthStartInput = z.infer<typeof ideAuthStartSchema>['body'];
+export type IdeAuthApproveInput = z.infer<typeof ideAuthApproveSchema>['body'];
+export type IdeAuthExchangeInput = z.infer<typeof ideAuthExchangeSchema>['body'];

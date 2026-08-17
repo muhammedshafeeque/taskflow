@@ -14,6 +14,12 @@ import { mergeTaskflowPermissionFloor } from './permissionMerge';
 import { CustomerUser } from '../customer-portal/customer-user/customerUser.model';
 import { CustomerOrg } from '../customer-portal/customer-org/customerOrg.model';
 import * as organizationsService from '../organizations/organizations.service';
+import {
+  approveIdeSession,
+  createIdeSession,
+  exchangeIdeCode,
+  isAllowedIdeRedirectUri,
+} from './ideAuth.session';
 
 const SALT_ROUNDS = 10;
 
@@ -713,5 +719,61 @@ export function getPublicAuthConfig() {
       google: Boolean(env.googleClientId && env.googleClientSecret),
       microsoft: Boolean(env.azureAdClientId && env.azureAdClientSecret),
     },
+  };
+}
+
+export function ideAuthStart(input: { redirectUri: string; state: string }): { authorizeUrl: string; sid: string } {
+  if (!isAllowedIdeRedirectUri(input.redirectUri)) {
+    throw new ApiError(400, 'Invalid redirect URI for IDE login');
+  }
+  let session;
+  try {
+    session = createIdeSession(input);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '';
+    if (msg === 'INVALID_REDIRECT_URI') throw new ApiError(400, 'Invalid redirect URI for IDE login');
+    if (msg === 'INVALID_STATE') throw new ApiError(400, 'Invalid state');
+    throw e;
+  }
+  const authorizeUrl = `${env.frontendUrl.replace(/\/$/, '')}/auth/ide?sid=${encodeURIComponent(session.sid)}`;
+  return { authorizeUrl, sid: session.sid };
+}
+
+export function ideAuthApprove(sid: string, userId: string): { code: string; redirectUri: string; state: string } {
+  try {
+    return approveIdeSession(sid, userId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '';
+    if (msg === 'SESSION_NOT_FOUND') throw new ApiError(404, 'IDE login session not found or expired');
+    throw e;
+  }
+}
+
+export async function ideAuthExchange(input: {
+  code: string;
+  state: string;
+}): Promise<{ user: AuthUser | Record<string, unknown>; tokens: AuthTokens }> {
+  let userId: string;
+  try {
+    ({ userId } = exchangeIdeCode(input.code, input.state));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '';
+    if (msg === 'STATE_MISMATCH') throw new ApiError(400, 'State mismatch');
+    if (msg === 'CODE_USED') throw new ApiError(400, 'Code already used');
+    if (msg === 'EXPIRED') throw new ApiError(400, 'IDE login code expired');
+    throw new ApiError(400, 'Invalid IDE login code');
+  }
+
+  const user = await User.findById(userId).lean();
+  if (!user) throw new ApiError(401, 'User not found');
+  const u = user as { enabled?: boolean };
+  if (u.enabled === false) throw new ApiError(401, 'Account is disabled');
+
+  const { activeOrganizationId, organizations } = await buildTaskflowSession(user._id.toString());
+  const tokens = signTokens(user._id.toString(), 'taskflow', { activeOrganizationId });
+  const authUser = await toAuthUser(user as unknown as IUser & { roleId?: unknown; mustChangePassword?: boolean });
+  return {
+    user: { ...authUser, userType: 'taskflow', activeOrganizationId, organizations },
+    tokens,
   };
 }

@@ -22,6 +22,12 @@ export default function OAuthCallback() {
         return;
       }
       updateUser(res.data.user);
+      const storedReturn = sessionStorage.getItem('atrium_ide_return_url');
+      if (storedReturn && storedReturn.startsWith('/') && !storedReturn.startsWith('//')) {
+        sessionStorage.removeItem('atrium_ide_return_url');
+        navigate(storedReturn);
+        return;
+      }
       const next = await resolvePostAuthRoute(res.data.user, switchWorkspace);
       navigate(next);
     });

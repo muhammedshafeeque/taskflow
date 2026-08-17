@@ -13,6 +13,9 @@ import {
   publicConfigHandler,
   debugPermissionsHandler,
   setPasswordHandler,
+  ideAuthStartHandler,
+  ideAuthApproveHandler,
+  ideAuthExchangeHandler,
 } from './auth.controller';
 import { oauthRoutes } from './oauth.routes';
 
@@ -34,5 +37,9 @@ router.post('/reset-password', resetPasswordHandler);
 /** @deprecated Prefer Passport browser flow at `/auth/oauth/microsoft` (redirect + JWT). Kept for clients still using auth-code exchange. */
 router.post('/sso/microsoft', microsoftSsoHandler);
 router.get('/sso/microsoft/url', microsoftSsoAuthorizeUrlHandler);
+
+router.post('/ide/start', ideAuthStartHandler);
+router.post('/ide/approve', ideAuthApproveHandler);
+router.post('/ide/exchange', ideAuthExchangeHandler);
 
 export const authRoutes = router;

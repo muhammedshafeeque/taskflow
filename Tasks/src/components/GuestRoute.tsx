@@ -16,10 +16,17 @@ export default function GuestRoute({ children, allowOAuthCallback = false }: Gue
 
   const oauthCode = allowOAuthCallback ? new URLSearchParams(location.search).get('code') : null;
   const skipRedirect = Boolean(oauthCode);
+  const returnUrlRaw = new URLSearchParams(location.search).get('returnUrl');
+  const safeReturnUrl =
+    returnUrlRaw && returnUrlRaw.startsWith('/') && !returnUrlRaw.startsWith('//') ? returnUrlRaw : null;
 
   useEffect(() => {
     if (loading || !token || skipRedirect) {
       setRedirectTo(null);
+      return;
+    }
+    if (safeReturnUrl) {
+      setRedirectTo(safeReturnUrl);
       return;
     }
     let cancelled = false;
@@ -30,7 +37,7 @@ export default function GuestRoute({ children, allowOAuthCallback = false }: Gue
     return () => {
       cancelled = true;
     };
-  }, [loading, token, user, switchWorkspace, skipRedirect]);
+  }, [loading, token, user, switchWorkspace, skipRedirect, safeReturnUrl]);
 
   if (loading || (token && !skipRedirect && redirectTo === null)) {
     return (

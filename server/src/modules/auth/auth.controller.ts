@@ -16,6 +16,9 @@ import {
   updateProfileSchema,
   microsoftSsoSchema,
   microsoftSsoAuthorizeUrlQuerySchema,
+  ideAuthStartSchema,
+  ideAuthApproveSchema,
+  ideAuthExchangeSchema,
 } from './auth.validation';
 import * as authService from './auth.service';
 import { resolveEffectiveGlobalPermissions } from './effectivePermissions';
@@ -178,6 +181,36 @@ export async function publicConfig(_req: Request, res: Response): Promise<void> 
   });
 }
 
+export async function ideAuthStart(req: Request, res: Response): Promise<void> {
+  const result = authService.ideAuthStart(req.body);
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function ideAuthApprove(req: Request, res: Response): Promise<void> {
+  const userId = req.user?.id;
+  if (!userId) throw new ApiError(401, 'Unauthorized');
+  if (req.customerUser) {
+    throw new ApiError(403, 'IDE login is only available for Atrium workspace users');
+  }
+  const result = authService.ideAuthApprove(req.body.sid, userId);
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function ideAuthExchange(req: Request, res: Response): Promise<void> {
+  const result = await authService.ideAuthExchange(req.body);
+  const u = result.user as { id?: string; email?: string };
+  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress;
+  logAudit({
+    userId: u.id ?? '',
+    action: 'login_ide',
+    resourceType: 'auth',
+    meta: { email: u.email ?? '' },
+    ip,
+  });
+  analyticsService.logEvent(u.id ?? '', 'login_ide', 'auth').catch(() => {});
+  res.status(200).json({ success: true, data: result });
+}
+
 export const registerHandler = [
   validate(registerSchema.shape.body, 'body'),
   asyncHandler(register),
@@ -243,4 +276,20 @@ export const microsoftSsoAuthorizeUrlHandler = [
 
 export const publicConfigHandler = [
   asyncHandler(publicConfig),
+];
+
+export const ideAuthStartHandler = [
+  validate(ideAuthStartSchema.shape.body, 'body'),
+  asyncHandler(ideAuthStart),
+];
+
+export const ideAuthApproveHandler = [
+  authMiddleware,
+  validate(ideAuthApproveSchema.shape.body, 'body'),
+  asyncHandler(ideAuthApprove),
+];
+
+export const ideAuthExchangeHandler = [
+  validate(ideAuthExchangeSchema.shape.body, 'body'),
+  asyncHandler(ideAuthExchange),
 ];

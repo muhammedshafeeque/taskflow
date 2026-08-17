@@ -1,0 +1,170 @@
+{
+  "name": "atrium-workbench",
+  "displayName": "Atrium Workbench",
+  "description": "Browse and update Atrium issues in the IDE, then Do them with Cursor or Claude.",
+  "version": "0.1.1",
+  "publisher": "atrium",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Atrium Workbench",
+      "properties": {
+        "atrium.apiBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Atrium API origin (e.g. https://atrium.example.com). Requests go to {apiBaseUrl}/api/..."
+        },
+        "atrium.organizationId": {
+          "type": "string",
+          "default": "",
+          "description": "Active organization id (optional; set after sign-in)."
+        },
+        "atrium.webBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Atrium web app URL for Open in Browser. Defaults to apiBaseUrl."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "atrium.getStarted",
+        "title": "Atrium: Get Started",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "atrium.configureUrl",
+        "title": "Atrium: Configure Server URL"
+      },
+      {
+        "command": "atrium.signIn",
+        "title": "Atrium: Sign In with Browser"
+      },
+      {
+        "command": "atrium.signInEmail",
+        "title": "Atrium: Sign In with Email"
+      },
+      {
+        "command": "atrium.signOut",
+        "title": "Atrium: Sign Out"
+      },
+      {
+        "command": "atrium.refreshIssues",
+        "title": "Atrium: Refresh Issues",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "atrium.doIssue",
+        "title": "Atrium: Do Issue"
+      },
+      {
+        "command": "atrium.openIssue",
+        "title": "Atrium: Open Issue"
+      },
+      {
+        "command": "atrium.openInBrowser",
+        "title": "Atrium: Open in Browser"
+      },
+      {
+        "command": "atrium.selectOrganization",
+        "title": "Atrium: Select Organization"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "atrium",
+          "title": "Atrium",
+          "icon": "media/atrium.svg"
+        }
+      ]
+    },
+    "views": {
+      "atrium": [
+        {
+          "id": "atrium.issues",
+          "name": "My Issues"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "atrium.issues",
+        "contents": "Connect your self-hosted Atrium server, then browse issues and Do them with AI.\n[Get Started](command:atrium.getStarted)",
+        "when": "!atrium.signedIn"
+      },
+      {
+        "view": "atrium.issues",
+        "contents": "No issues assigned to you yet.\nAssign yourself an issue in Atrium, then refresh.\n[Refresh](command:atrium.refreshIssues)",
+        "when": "atrium.signedIn"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "atrium.getStarted",
+          "when": "view == atrium.issues && !atrium.signedIn",
+          "group": "navigation@1"
+        },
+        {
+          "command": "atrium.refreshIssues",
+          "when": "view == atrium.issues",
+          "group": "navigation@2"
+        },
+        {
+          "command": "atrium.signOut",
+          "when": "view == atrium.issues && atrium.signedIn",
+          "group": "overflow"
+        },
+        {
+          "command": "atrium.selectOrganization",
+          "when": "view == atrium.issues && atrium.signedIn",
+          "group": "overflow"
+        },
+        {
+          "command": "atrium.configureUrl",
+          "when": "view == atrium.issues",
+          "group": "overflow"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "atrium.openIssue",
+          "when": "view == atrium.issues && viewItem == atriumIssue",
+          "group": "inline"
+        },
+        {
+          "command": "atrium.doIssue",
+          "when": "view == atrium.issues && viewItem == atriumIssueOpen",
+          "group": "inline"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "^5.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/atrium/atrium-workbench"
+  },
+  "license": "MIT"
+}
