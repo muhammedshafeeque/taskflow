@@ -75,6 +75,7 @@ export class SessionStore {
     await this.secrets.delete(ACCESS_KEY);
     await this.secrets.delete(REFRESH_KEY);
     await this.context.globalState.update(USER_KEY, undefined);
+    await this.setOrganizationId('');
   }
 
   async isSignedIn(): Promise<boolean> {

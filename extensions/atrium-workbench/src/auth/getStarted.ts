@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { AtriumClient } from '../api/client';
 import { signInWithEmail } from './emailLogin';
-import { configureApiUrl, ensureApiUrl, startBrowserSignIn } from './ideLogin';
+import { configureApiUrl, startBrowserSignIn } from './ideLogin';
 import type { SessionStore } from './session';
 
 /**
@@ -63,14 +63,4 @@ export async function runGetStarted(
   }
 
   return signInWithEmail(session, client);
-}
-
-export async function ensureReadyForUse(
-  session: SessionStore,
-  client: AtriumClient,
-  context: vscode.ExtensionContext
-): Promise<boolean> {
-  if (!(await ensureApiUrl(session))) return false;
-  if (await session.isSignedIn()) return true;
-  return runGetStarted(session, client, context);
 }

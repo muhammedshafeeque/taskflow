@@ -8,6 +8,7 @@ import { APP_NAME } from '../../brand';
 import { useAppDisplayName } from '../../hooks/useAppDisplayName';
 import AtriumLogo from '../AtriumLogo';
 import ConfirmModal from '../ConfirmModal';
+import IdeExtensionHeaderControl from '../IdeExtensionHeaderControl';
 import NotificationToast from '../NotificationToast';
 import SuccessToast from '../SuccessToast';
 import { toAppPath } from '../../lib/navigationUrl';
@@ -73,6 +74,7 @@ export default function HomeLayout() {
           </Link>
 
           <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+            <IdeExtensionHeaderControl variant="hub" />
             <div className="relative">
               <button
                 type="button"

@@ -292,13 +292,18 @@ export default function CrmContacts() {
             One people directory — leads, portal users, HRMS, and staff.
           </p>
         </div>
-        <div className="flex flex-wrap gap-1.5 text-[11px]">
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
           <span className="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-2 py-1 text-[color:var(--text-muted)]">
             {rows.length} total
           </span>
           <span className="rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-emerald-600 dark:text-emerald-400">
             {portalCount} portal
           </span>
+          {canCreate && (
+            <button type="button" onClick={openCreate} className="btn-primary h-8 px-3 rounded-md text-[12px]">
+              Add contact
+            </button>
+          )}
         </div>
       </div>
 
@@ -385,36 +390,6 @@ export default function CrmContacts() {
           </div>
         </form>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 border-b border-[color:var(--border-subtle)]">
-          <p className="text-[12px] text-[color:var(--text-muted)]">
-            {loading ? 'Loading…' : filtered.length === 0 ? 'No matches' : `Showing ${from}–${to} of ${filtered.length}`}
-          </p>
-          <div className="flex items-center gap-2">
-            {canCreate && (
-              <button type="button" onClick={openCreate} className="btn-primary h-8 px-3 rounded-md text-[12px]">
-                Add contact
-              </button>
-            )}
-            <label className="flex items-center gap-1.5 text-[12px] text-[color:var(--text-muted)]">
-              <span>Rows</span>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setPage(1);
-                }}
-                className="h-7 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-1.5 text-[12px]"
-              >
-                {PAGE_SIZE_OPTIONS.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </div>
-
         <table className="w-full text-sm">
           <thead className="bg-[color:var(--bg-page)]/50 text-[color:var(--text-muted)]">
             <tr>
@@ -472,19 +447,49 @@ export default function CrmContacts() {
             )}
           </tbody>
         </table>
-        {totalPages > 1 && (
-          <div className="flex justify-end gap-2 px-4 py-3 border-t border-[color:var(--border-subtle)]">
-            <button type="button" className="text-xs px-2 py-1 border rounded-md" disabled={safePage <= 1} onClick={() => setPage((p) => p - 1)}>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-page)]/30">
+          <p className="text-[12px] text-[color:var(--text-muted)]">
+            {loading ? 'Loading…' : filtered.length === 0 ? 'No matches' : `Showing ${from}–${to} of ${filtered.length}`}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1.5 text-[12px] text-[color:var(--text-muted)]">
+              <span>Rows</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                className="h-7 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-1.5 text-[12px]"
+              >
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="h-7 px-2.5 rounded-md text-[12px] border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] disabled:opacity-40"
+              disabled={safePage <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
               Prev
             </button>
-            <span className="text-[12px] text-[color:var(--text-muted)] py-1">
+            <span className="text-[12px] text-[color:var(--text-muted)]">
               {safePage} / {totalPages}
             </span>
-            <button type="button" className="text-xs px-2 py-1 border rounded-md" disabled={safePage >= totalPages} onClick={() => setPage((p) => p + 1)}>
+            <button
+              type="button"
+              className="h-7 px-2.5 rounded-md text-[12px] border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] disabled:opacity-40"
+              disabled={safePage >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
               Next
             </button>
           </div>
-        )}
+        </div>
       </div>
 
       {modal && (

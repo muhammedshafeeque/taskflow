@@ -1,10 +1,14 @@
 import * as vscode from 'vscode';
 import type { SessionStore } from './auth/session';
+import type { FolderProjectBinding } from './workspace/folderProject';
 
 export class StatusBarController {
   private readonly item: vscode.StatusBarItem;
 
-  constructor(private readonly session: SessionStore) {
+  constructor(
+    private readonly session: SessionStore,
+    private readonly getBoundProject?: () => FolderProjectBinding | undefined
+  ) {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     this.item.command = 'atrium.signIn';
     this.item.show();
@@ -29,8 +33,14 @@ export class StatusBarController {
       return;
     }
     const user = await this.session.getUser();
-    this.item.text = `$(check) Atrium · ${user?.email || 'signed in'}`;
-    this.item.tooltip = url;
-    this.item.command = 'atrium.refreshIssues';
+    const project = this.getBoundProject?.();
+    const projectHint = project?.projectKey || project?.projectName;
+    this.item.text = projectHint
+      ? `$(check) Atrium · ${projectHint}`
+      : `$(check) Atrium · ${user?.email || 'signed in'}`;
+    this.item.tooltip = projectHint
+      ? `${project?.projectName || projectHint} · ${user?.email || ''} · ${url}`
+      : url;
+    this.item.command = projectHint ? 'atrium.setProject' : 'atrium.refreshIssues';
   }
 }

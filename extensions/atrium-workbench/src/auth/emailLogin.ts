@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { AtriumClient } from '../api/client';
-import { ensureApiUrl, pickOrganization } from './ideLogin';
+import { selectAndSwitchOrganization } from '../api/organizations';
+import { ensureApiUrl } from './ideLogin';
 import type { SessionStore, AtriumUser, AuthTokens } from './session';
 
 export async function signInWithEmail(session: SessionStore, client: AtriumClient): Promise<boolean> {
@@ -33,7 +34,7 @@ export async function signInWithEmail(session: SessionStore, client: AtriumClien
       return false;
     }
     await session.setSession(data.user, data.tokens);
-    await pickOrganization(session, data.user);
+    await selectAndSwitchOrganization(session, client, data.user);
     vscode.window.showInformationMessage(`Signed in as ${data.user.email}`);
     return true;
   } catch (e) {

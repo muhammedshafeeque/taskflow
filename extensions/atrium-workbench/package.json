@@ -2,7 +2,7 @@
   "name": "atrium-workbench",
   "displayName": "Atrium Workbench",
   "description": "Browse and update Atrium issues in the IDE, then Do them with Cursor or Claude.",
-  "version": "0.1.1",
+  "version": "0.1.9",
   "publisher": "atrium",
   "engines": {
     "vscode": "^1.85.0"
@@ -77,6 +77,10 @@
       {
         "command": "atrium.selectOrganization",
         "title": "Atrium: Select Organization"
+      },
+      {
+        "command": "atrium.setProject",
+        "title": "Atrium: Set Project for Folder"
       }
     ],
     "viewsContainers": {
@@ -99,13 +103,13 @@
     "viewsWelcome": [
       {
         "view": "atrium.issues",
-        "contents": "Connect your self-hosted Atrium server, then browse issues and Do them with AI.\n[Get Started](command:atrium.getStarted)",
-        "when": "!atrium.signedIn"
+        "contents": "Set your self-hosted Atrium server URL to get started.\n[Get Started](command:atrium.getStarted)\n[Configure Server URL](command:atrium.configureUrl)",
+        "when": "!atrium.hasUrl"
       },
       {
         "view": "atrium.issues",
-        "contents": "No issues assigned to you yet.\nAssign yourself an issue in Atrium, then refresh.\n[Refresh](command:atrium.refreshIssues)",
-        "when": "atrium.signedIn"
+        "contents": "Sign in to browse issues and Do them with AI.\n[Get Started](command:atrium.getStarted)\n[Sign in with Browser](command:atrium.signIn)\n[Sign in with Email](command:atrium.signInEmail)",
+        "when": "atrium.hasUrl && !atrium.signedIn"
       }
     ],
     "menus": {
@@ -117,7 +121,7 @@
         },
         {
           "command": "atrium.refreshIssues",
-          "when": "view == atrium.issues",
+          "when": "view == atrium.issues && atrium.signedIn",
           "group": "navigation@2"
         },
         {
@@ -131,6 +135,11 @@
           "group": "overflow"
         },
         {
+          "command": "atrium.setProject",
+          "when": "view == atrium.issues && atrium.signedIn",
+          "group": "overflow"
+        },
+        {
           "command": "atrium.configureUrl",
           "when": "view == atrium.issues",
           "group": "overflow"
@@ -139,13 +148,18 @@
       "view/item/context": [
         {
           "command": "atrium.openIssue",
-          "when": "view == atrium.issues && viewItem == atriumIssue",
-          "group": "inline"
+          "when": "view == atrium.issues && viewItem =~ /atriumIssue/",
+          "group": "inline@1"
         },
         {
           "command": "atrium.doIssue",
           "when": "view == atrium.issues && viewItem == atriumIssueOpen",
-          "group": "inline"
+          "group": "inline@2"
+        },
+        {
+          "command": "atrium.openInBrowser",
+          "when": "view == atrium.issues && viewItem =~ /atriumIssue/",
+          "group": "1_browser"
         }
       ]
     }
@@ -154,7 +168,7 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "vsce package --no-dependencies"
+    "package": "vsce package --no-dependencies && node -e \"const fs=require('fs');const p=require('./package.json');const src='atrium-workbench-'+p.version+'.vsix';const dest='../../Tasks/public/downloads/atrium-workbench.vsix';fs.mkdirSync('../../Tasks/public/downloads',{recursive:true});fs.copyFileSync(src,dest);console.log('Copied',src,'→',dest);\""
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

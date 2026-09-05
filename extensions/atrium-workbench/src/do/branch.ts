@@ -2,20 +2,18 @@ import * as vscode from 'vscode';
 
 export type BranchChoice = 'created' | 'current' | 'cancel';
 
-export async function promptCreateBranch(defaultName: string): Promise<{ choice: BranchChoice; branchName: string }> {
-  const branchName =
-    (
-      await vscode.window.showInputBox({
-        title: 'Create branch for this issue?',
-        prompt: 'Branch name (default = ticket id). Leave as-is or edit.',
-        value: defaultName,
-        ignoreFocusOut: true,
-      })
-    )?.trim() || defaultName;
-
+/** Single QuickPick: create ticket branch, stay, or cancel. */
+export async function promptCreateBranch(
+  defaultName: string
+): Promise<{ choice: BranchChoice; branchName: string }> {
+  const branchName = defaultName;
   const pick = await vscode.window.showQuickPick(
     [
-      { label: 'Create & continue', description: `git checkout -b ${branchName}`, id: 'created' as const },
+      {
+        label: `Create branch ${branchName}`,
+        description: 'git checkout -b (recommended)',
+        id: 'created' as const,
+      },
       { label: 'Stay on current branch', id: 'current' as const },
       { label: 'Cancel', id: 'cancel' as const },
     ],
@@ -51,7 +49,6 @@ export async function ensureBranch(branchName: string): Promise<string | undefin
     }
     return branchName;
   } catch (e) {
-    // Fallback: terminal commands
     const term = vscode.window.createTerminal('Atrium Git');
     term.show(true);
     term.sendText(`git checkout -B ${JSON.stringify(branchName).slice(1, -1)}`);

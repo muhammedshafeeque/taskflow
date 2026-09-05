@@ -18,6 +18,14 @@ export class AtriumApiError extends Error {
 export class AtriumClient {
   constructor(private readonly session: SessionStore) {}
 
+  getApiBaseUrl(): string {
+    return this.session.getApiBaseUrl();
+  }
+
+  getAccessToken(): Promise<string | undefined> {
+    return this.session.getAccessToken();
+  }
+
   apiRoot(): string {
     const base = this.session.getApiBaseUrl();
     if (!base) throw new AtriumApiError('Configure Atrium server URL first', 0);
@@ -101,5 +109,30 @@ export class AtriumClient {
 
   patch<T>(path: string, body?: unknown) {
     return this.request<T>('PATCH', path, body);
+  }
+
+  /** Download a media/upload URL (absolute or /api/uploads/...) as bytes. */
+  async fetchBinary(absoluteOrApiUrl: string, opts?: { retry?: boolean }): Promise<Buffer> {
+    const retry = opts?.retry !== false;
+    const base = this.getApiBaseUrl();
+    let url = absoluteOrApiUrl;
+    if (url.startsWith('/')) url = `${base}${url}`;
+
+    const token = await this.getAccessToken();
+    const headers: Record<string, string> = { Accept: '*/*' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const org = this.session.getOrganizationId();
+    if (org) headers['X-Organization-Id'] = org;
+
+    const res = await fetch(url, { method: 'GET', headers });
+    if (res.status === 401 && retry) {
+      const refreshed = await this.tryRefresh();
+      if (refreshed) return this.fetchBinary(absoluteOrApiUrl, { retry: false });
+    }
+    if (!res.ok) {
+      throw new AtriumApiError(`Download failed (${res.status})`, res.status);
+    }
+    const ab = await res.arrayBuffer();
+    return Buffer.from(ab);
   }
 }

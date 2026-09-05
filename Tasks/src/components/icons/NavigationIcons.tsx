@@ -223,6 +223,26 @@ export function PackageIcon(props: IconProps) {
   );
 }
 
+export function DownloadIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M12 3v12" />
+      <path d="m8 11 4 4 4-4" />
+      <path d="M5 19h14" />
+    </BaseIcon>
+  );
+}
+
+export function IdeExtensionIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M8 4h8v4H8z" />
+      <path d="M6 8h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8Z" />
+      <path d="M10 12h4M10 15h4" />
+    </BaseIcon>
+  );
+}
+
 export function EditIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>

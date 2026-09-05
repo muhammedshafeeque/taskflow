@@ -1,21 +1,26 @@
 import * as vscode from 'vscode';
 import { AtriumClient } from './api/client';
-import { listOrganizations, switchOrganization, type IssueRef } from './api/issues';
+import type { IssueRef } from './api/issues';
+import { selectAndSwitchOrganization } from './api/organizations';
 import { refreshAtriumContext } from './auth/contextKeys';
 import { signInWithEmail } from './auth/emailLogin';
 import { runGetStarted } from './auth/getStarted';
-import { configureApiUrl, pickOrganization, registerIdeUriHandler, startBrowserSignIn } from './auth/ideLogin';
+import { configureApiUrl, registerIdeUriHandler, startBrowserSignIn } from './auth/ideLogin';
 import { SessionStore } from './auth/session';
 import { runDoIssue } from './do/runners';
 import { StatusBarController } from './statusBar';
 import { IssuePanel } from './views/issuePanel';
 import { IssueTreeItem, IssuesTreeProvider } from './views/issuesTree';
+import { clearFolderProjectCancel, pickAndSaveFolderProject } from './workspace/folderProject';
 
 export function activate(context: vscode.ExtensionContext): void {
   const session = new SessionStore(context.secrets, context);
   const client = new AtriumClient(session);
-  const tree = new IssuesTreeProvider(session, client);
-  const status = new StatusBarController(session);
+  let tree!: IssuesTreeProvider;
+  const status = new StatusBarController(session, () => tree.getBoundProject());
+  tree = new IssuesTreeProvider(session, client, () => {
+    void status.refresh();
+  });
 
   async function afterAuthChange(): Promise<void> {
     await refreshAtriumContext(session);
@@ -104,23 +109,22 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       try {
-        const data = await listOrganizations(client);
-        const orgs = data.organizations || [];
-        const user = await session.getUser();
-        await pickOrganization(session, {
-          id: user?.id || '',
-          email: user?.email || '',
-          name: user?.name || '',
-          organizations: orgs,
-        });
-        const orgId = session.getOrganizationId();
-        if (orgId) {
-          const switched = await switchOrganization(client, orgId);
-          if (switched.tokens && user) {
-            await session.setSession({ ...user, activeOrganizationId: orgId }, switched.tokens);
-          }
-        }
+        await selectAndSwitchOrganization(session, client);
         await afterAuthChange();
+      } catch (e) {
+        vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
+      }
+    }),
+    vscode.commands.registerCommand('atrium.setProject', async () => {
+      if (!(await session.isSignedIn())) {
+        await vscode.commands.executeCommand('atrium.getStarted');
+        return;
+      }
+      try {
+        clearFolderProjectCancel();
+        await pickAndSaveFolderProject(client, { force: true });
+        tree.refresh();
+        await status.refresh();
       } catch (e) {
         vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
       }

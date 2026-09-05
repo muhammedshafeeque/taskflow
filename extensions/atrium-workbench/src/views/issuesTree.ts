@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import type { AtriumClient } from '../api/client';
 import { getIssue, getProject, listMyIssues, type IssueRef } from '../api/issues';
 import type { SessionStore } from '../auth/session';
-import { getClosedStatusNames, isClosedStatus } from '../util/status';
+import { isClosedStatus } from '../util/status';
+import { ensureFolderProject, type FolderProjectBinding } from '../workspace/folderProject';
 
 export type AtriumTreeNode = IssueTreeItem | ActionTreeItem;
 
@@ -41,14 +42,21 @@ export class IssuesTreeProvider implements vscode.TreeDataProvider<AtriumTreeNod
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<AtriumTreeNode | undefined | null | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   private cache: IssueTreeItem[] = [];
+  private boundProject: FolderProjectBinding | undefined;
+  private promptingProject = false;
 
   constructor(
     private readonly session: SessionStore,
-    private readonly client: AtriumClient
+    private readonly client: AtriumClient,
+    private readonly onBindingChanged?: () => void
   ) {}
 
   refresh(): void {
     this._onDidChangeTreeData.fire();
+  }
+
+  getBoundProject(): FolderProjectBinding | undefined {
+    return this.boundProject;
   }
 
   getTreeItem(element: AtriumTreeNode): vscode.TreeItem {
@@ -56,35 +64,57 @@ export class IssuesTreeProvider implements vscode.TreeDataProvider<AtriumTreeNod
   }
 
   async getChildren(): Promise<AtriumTreeNode[]> {
+    // Empty tree so package.json viewsWelcome can show for no-URL / signed-out.
     if (!this.session.getApiBaseUrl()) {
-      return [
-        new ActionTreeItem('Get Started', 'atrium.getStarted', 'Set URL & sign in', 'rocket'),
-        new ActionTreeItem('Set server URL only', 'atrium.configureUrl', undefined, 'globe'),
-      ];
+      this.boundProject = undefined;
+      this.onBindingChanged?.();
+      return [];
     }
 
     if (!(await this.session.isSignedIn())) {
-      return [
-        new ActionTreeItem('Get Started — Sign in', 'atrium.getStarted', this.session.getApiBaseUrl(), 'rocket'),
-        new ActionTreeItem('Sign in with Browser', 'atrium.signIn', undefined, 'link-external'),
-        new ActionTreeItem('Sign in with Email', 'atrium.signInEmail', undefined, 'mail'),
-        new ActionTreeItem('Change server URL', 'atrium.configureUrl', undefined, 'globe'),
-      ];
+      this.boundProject = undefined;
+      this.onBindingChanged?.();
+      return [];
     }
 
     try {
       const user = await this.session.getUser();
       if (!user?.id) {
-        return [new ActionTreeItem('Get Started — Sign in', 'atrium.getStarted', undefined, 'rocket')];
+        this.boundProject = undefined;
+        this.onBindingChanged?.();
+        return [];
       }
 
-      const page = await listMyIssues(this.client, user.id);
+      let binding: FolderProjectBinding | undefined;
+      if (!this.promptingProject) {
+        this.promptingProject = true;
+        try {
+          binding = await ensureFolderProject(this.client);
+        } finally {
+          this.promptingProject = false;
+        }
+      }
+      this.boundProject = binding;
+      this.onBindingChanged?.();
+
+      if (!binding) {
+        return [
+          new ActionTreeItem(
+            'Set Project for this Folder',
+            'atrium.setProject',
+            'Choose which Atrium project belongs to this workspace',
+            'folder'
+          ),
+        ];
+      }
+
+      const page = await listMyIssues(this.client, user.id, { projectId: binding.projectId });
       const items: IssueTreeItem[] = [];
       const projectStatusCache = new Map<string, Array<{ name: string; isClosed?: boolean }>>();
 
       for (const issue of page.data) {
         let statuses = issue.project?.statuses;
-        const projectId = issue.project?._id;
+        const projectId = issue.project?._id || binding.projectId;
         if ((!statuses || statuses.length === 0) && projectId) {
           if (!projectStatusCache.has(projectId)) {
             try {
@@ -104,11 +134,12 @@ export class IssuesTreeProvider implements vscode.TreeDataProvider<AtriumTreeNod
       this.cache = items;
 
       if (items.length === 0) {
+        const label = binding.projectKey || binding.projectName || 'this project';
         return [
           new ActionTreeItem(
-            'No issues assigned to you',
+            `No issues in ${label}`,
             'atrium.refreshIssues',
-            'Assign yourself an issue in Atrium, then refresh',
+            'Assign yourself an issue in this project, then refresh',
             'info'
           ),
         ];
@@ -143,8 +174,4 @@ export async function loadIssueWithStatuses(client: AtriumClient, issueOrId: Iss
     }
   }
   return { issue, statuses };
-}
-
-export function closedNamesForExclude(statuses: Array<{ name: string; isClosed?: boolean }>): string[] {
-  return getClosedStatusNames(statuses);
 }

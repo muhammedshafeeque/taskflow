@@ -38,14 +38,22 @@ export interface ProjectDetail {
   statuses?: Array<{ name: string; isClosed?: boolean; order?: number }>;
 }
 
-export function listMyIssues(client: AtriumClient, userId: string, statusExclude?: string[]) {
+export function listMyIssues(
+  client: AtriumClient,
+  userId: string,
+  opts?: { projectId?: string }
+) {
   const params = new URLSearchParams({
     assignee: userId,
     page: '1',
     limit: '50',
   });
-  if (statusExclude?.length) params.set('statusExclude', statusExclude.join(','));
+  if (opts?.projectId) params.set('project', opts.projectId);
   return client.get<Paginated<IssueRef>>(`/issues?${params.toString()}`);
+}
+
+export function listProjects(client: AtriumClient) {
+  return client.get<Paginated<ProjectDetail>>('/projects?page=1&limit=100');
 }
 
 export function getIssue(client: AtriumClient, id: string) {
@@ -66,6 +74,18 @@ export function addComment(client: AtriumClient, issueId: string, body: string) 
 
 export function getProject(client: AtriumClient, projectId: string) {
   return client.get<ProjectDetail>(`/projects/${projectId}`);
+}
+
+export interface IssueAttachment {
+  _id: string;
+  url: string;
+  originalName?: string;
+  mimeType?: string;
+  size?: number;
+}
+
+export function listAttachments(client: AtriumClient, issueId: string) {
+  return client.get<IssueAttachment[]>(`/issues/${issueId}/attachments`);
 }
 
 export function listOrganizations(client: AtriumClient) {

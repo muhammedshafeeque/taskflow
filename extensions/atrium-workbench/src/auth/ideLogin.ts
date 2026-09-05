@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { AtriumClient } from '../api/client';
+import { selectAndSwitchOrganization } from '../api/organizations';
 import type { SessionStore, AtriumUser, AuthTokens } from './session';
 
 export async function configureApiUrl(session: SessionStore): Promise<boolean> {
@@ -31,19 +32,6 @@ export async function configureApiUrl(session: SessionStore): Promise<boolean> {
 export async function ensureApiUrl(session: SessionStore): Promise<boolean> {
   if (session.getApiBaseUrl()) return true;
   return configureApiUrl(session);
-}
-
-export async function pickOrganization(session: SessionStore, user: AtriumUser): Promise<void> {
-  const orgs = user.organizations ?? [];
-  if (orgs.length <= 1) {
-    if (orgs[0]?.id) await session.setOrganizationId(orgs[0].id);
-    return;
-  }
-  const picked = await vscode.window.showQuickPick(
-    orgs.map((o) => ({ label: o.name, description: o.slug || o.id, id: o.id })),
-    { title: 'Select Atrium organization', ignoreFocusOut: true }
-  );
-  if (picked) await session.setOrganizationId(picked.id);
 }
 
 export async function startBrowserSignIn(
@@ -99,7 +87,7 @@ export function registerIdeUriHandler(
             { auth: false }
           );
           await session.setSession(data.user, data.tokens);
-          await pickOrganization(session, data.user);
+          await selectAndSwitchOrganization(session, client, data.user);
           await context.globalState.update('atrium.pendingIdeState', undefined);
           vscode.window.showInformationMessage(`Signed in to Atrium as ${data.user.email}`);
           onSignedIn();

@@ -7,6 +7,7 @@ import NotificationToast from './NotificationToast';
 import SuccessToast from './SuccessToast';
 import ConfirmModal from './ConfirmModal';
 import CommandPalette from './CommandPalette';
+import IdeExtensionHeaderControl from './IdeExtensionHeaderControl';
 import { projectsApi, issuesApi, type Project, type Issue, getIssueKey } from '../lib/api';
 import { APP_VERSION } from '../appVersion';
 import { useAppDisplayName } from '../hooks/useAppDisplayName';
@@ -445,6 +446,7 @@ export default function Layout({
             )}
           </div>
           <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+          <IdeExtensionHeaderControl variant="app" />
           <button
             type="button"
             onClick={() => window.dispatchEvent(new CustomEvent('atrium:open-command-palette'))}
