@@ -6,6 +6,7 @@ import { ChatsPage } from './pages/ChatsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { GroupsPage } from './pages/GroupsPage'
 import { LeadsPage } from './pages/LeadsPage'
+import { RequestsPage } from './pages/RequestsPage'
 import { SupportPage } from './pages/SupportPage'
 import { UnlockPage } from './pages/UnlockPage'
 
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/chats/:chatId" element={<ChatDetailPage />} />
           <Route path="/groups" element={<GroupsPage />} />
           <Route path="/support" element={<SupportPage />} />
+          <Route path="/requests" element={<RequestsPage />} />
           <Route path="/leads" element={<LeadsPage />} />
           <Route path="/atrium" element={<AtriumPage />} />
         </Route>

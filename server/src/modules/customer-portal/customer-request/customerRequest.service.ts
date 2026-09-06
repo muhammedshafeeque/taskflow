@@ -44,7 +44,7 @@ async function customerOrgIdsInTaskflowWorkspace(
   return CustomerOrg.find({ taskflowOrganizationId }).distinct('_id');
 }
 
-async function assertCustomerRequestInTaskflowWorkspace(
+export async function assertCustomerRequestInTaskflowWorkspace(
   requestId: string,
   taskflowOrganizationId: string | null | undefined
 ): Promise<void> {

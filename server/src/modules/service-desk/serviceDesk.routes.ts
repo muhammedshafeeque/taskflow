@@ -5,6 +5,7 @@ import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as sd from './serviceDesk.controller';
 import * as ingest from './serviceIngest.controller';
+import * as requestIngest from '../customer-portal/customer-request/customerRequestIngest.controller';
 
 const T = TASK_FLOW_PERMISSIONS.TASKFLOW.SERVICE;
 const router = Router();
@@ -16,6 +17,25 @@ router.get('/ingest/project-context', asyncHandler(ingest.ingestProjectContext))
 router.get('/ingest/tickets', asyncHandler(ingest.ingestListTickets));
 router.post('/ingest/tickets', asyncHandler(ingest.ingestCreateTicket));
 router.patch('/ingest/tickets/:id', asyncHandler(ingest.ingestPatchTicket));
+
+router.get('/ingest/requests', asyncHandler(requestIngest.ingestListRequests));
+router.get('/ingest/requests/:id', asyncHandler(requestIngest.ingestGetRequest));
+router.post(
+  '/ingest/requests/:id/approve',
+  asyncHandler(requestIngest.ingestApproveRequest)
+);
+router.post(
+  '/ingest/requests/:id/reject',
+  asyncHandler(requestIngest.ingestRejectRequest)
+);
+router.get(
+  '/ingest/service-tickets',
+  asyncHandler(requestIngest.ingestListServiceTickets)
+);
+router.patch(
+  '/ingest/service-tickets/:id',
+  asyncHandler(requestIngest.ingestUpdateServiceTicket)
+);
 
 router.use(authMiddleware);
 

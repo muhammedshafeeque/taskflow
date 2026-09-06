@@ -23,6 +23,14 @@ import {
   streamSupportEvents,
 } from './supportAdmin';
 import {
+  approveCustomerRequest,
+  getCustomerRequest,
+  listCustomerRequests,
+  listServiceTickets,
+  rejectCustomerRequest,
+  updateServiceTicket,
+} from './serviceRequests';
+import {
   voiceCommand,
   voiceSpeak,
   voiceTranscribe,
@@ -205,6 +213,94 @@ adminRouter.get('/support/events', async (req, res, next) => {
     await streamSupportEvents(req, res);
   } catch (err) {
     next(err);
+  }
+});
+
+adminRouter.get('/service-requests', async (req, res) => {
+  try {
+    const data = await listCustomerRequests({
+      status: req.query.status ? String(req.query.status) : undefined,
+      pendingOnly: String(req.query.pendingOnly || '') === '1',
+      page: req.query.page ? Number(req.query.page) : 1,
+      limit: req.query.limit ? Number(req.query.limit) : 50,
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(502).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to list requests',
+    });
+  }
+});
+
+adminRouter.get('/service-requests/:id', async (req, res) => {
+  try {
+    const data = await getCustomerRequest(req.params.id);
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(502).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to load request',
+    });
+  }
+});
+
+adminRouter.post('/service-requests/:id/approve', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = await approveCustomerRequest(req.params.id, {
+      workClassification: body.workClassification,
+      note: body.note,
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(502).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Approve failed',
+    });
+  }
+});
+
+adminRouter.post('/service-requests/:id/reject', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = await rejectCustomerRequest(req.params.id, {
+      reason: body.reason,
+      note: body.note,
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(502).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Reject failed',
+    });
+  }
+});
+
+adminRouter.get('/service-tickets', async (req, res) => {
+  try {
+    const data = await listServiceTickets({
+      status: req.query.status ? String(req.query.status) : undefined,
+      queue: req.query.queue ? String(req.query.queue) : undefined,
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(502).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to list tickets',
+    });
+  }
+});
+
+adminRouter.patch('/service-tickets/:id', async (req, res) => {
+  try {
+    const data = await updateServiceTicket(req.params.id, req.body || {});
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(502).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Ticket update failed',
+    });
   }
 });
 

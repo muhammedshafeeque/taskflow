@@ -26,6 +26,7 @@ export function AppShell() {
           <NavLink to="/chats">Chats</NavLink>
           <NavLink to="/groups">Groups</NavLink>
           <NavLink to="/support">Support</NavLink>
+          <NavLink to="/requests">Requests</NavLink>
           <NavLink to="/leads">Leads</NavLink>
           <NavLink to="/atrium">Atrium</NavLink>
         </nav>
