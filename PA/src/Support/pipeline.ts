@@ -253,7 +253,7 @@ export async function runSupportPipeline(input: {
       });
       const displayKey =
         linked.key ||
-        input.taskflow.tickets.find(
+        taskflow.tickets.find(
           (t) =>
             t.id === qa.duplicateTicketId ||
             t.key === qa.duplicateTicketId ||
