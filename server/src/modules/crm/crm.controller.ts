@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import type { AuthPayload } from '../../types/express';
 import { ApiError } from '../../utils/ApiError';
+import { Project } from '../projects/project.model';
 import * as accountsService from './accounts/accounts.service';
 import * as contactsService from './contacts/contacts.service';
 import * as activitiesService from './activities/activities.service';
@@ -21,6 +23,34 @@ function uid(req: Request & { user?: AuthPayload }) {
   const id = req.user?.id;
   if (!id) throw new ApiError(401, 'Unauthorized');
   return id;
+}
+
+/** Shared secret for WhatsApp PA → Taskflow (no JWT). Header: x-pa-ingest-secret */
+function assertPaIngestSecret(req: Request) {
+  const configured = String(process.env.PA_INGEST_SECRET ?? '').trim();
+  if (!configured) {
+    throw new ApiError(503, 'PA ingest is not configured (PA_INGEST_SECRET)');
+  }
+  const provided = String(req.headers['x-pa-ingest-secret'] ?? '').trim();
+  if (!provided || provided !== configured) {
+    throw new ApiError(401, 'Invalid ingest secret');
+  }
+}
+
+function resolvePaOrganizationId(req: Request, body?: Record<string, unknown>) {
+  const organizationId = String(
+    body?.organizationId ??
+      req.headers['x-organization-id'] ??
+      process.env.PA_DEFAULT_ORG_ID ??
+      ''
+  ).trim();
+  if (!organizationId) {
+    throw new ApiError(400, 'organizationId is required');
+  }
+  if (!mongoose.Types.ObjectId.isValid(organizationId)) {
+    throw new ApiError(400, 'Invalid organizationId');
+  }
+  return organizationId;
 }
 
 export async function getDashboard(req: Request & { user?: AuthPayload }, res: Response) {
@@ -198,6 +228,62 @@ export async function getLead(req: Request & { user?: AuthPayload }, res: Respon
 export async function createLead(req: Request & { user?: AuthPayload }, res: Response) {
   const data = await leadsService.createLead(ws(req), req.body, uid(req));
   res.status(201).json({ success: true, data });
+}
+
+/**
+ * PA / WhatsApp bot ingest — shared secret, no user JWT.
+ * Header: x-pa-ingest-secret
+ * Body: lead fields + organizationId (or rely on PA_DEFAULT_ORG_ID)
+ */
+export async function ingestWhatsappLead(req: Request, res: Response) {
+  assertPaIngestSecret(req);
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const organizationId = resolvePaOrganizationId(req, body);
+
+  const { organizationId: _omit, ...leadInput } = body;
+  const data = await leadsService.createLead(organizationId, leadInput);
+  res.status(201).json({ success: true, data });
+}
+
+/**
+ * PA bot updates an existing CRM lead with new WhatsApp details (shared secret).
+ */
+export async function ingestWhatsappLeadUpdate(req: Request, res: Response) {
+  assertPaIngestSecret(req);
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const organizationId = resolvePaOrganizationId(req, body);
+
+  const { organizationId: _omit, ...leadInput } = body;
+  const data = await leadsService.updateLead(req.params.id, organizationId, leadInput);
+  res.json({ success: true, data });
+}
+
+/**
+ * PA Control Center — list workspace projects via ingest secret (no JWT).
+ * Header: x-pa-ingest-secret; optional x-organization-id (else PA_DEFAULT_ORG_ID).
+ */
+export async function ingestListProjects(req: Request, res: Response) {
+  assertPaIngestSecret(req);
+  const organizationId = resolvePaOrganizationId(req);
+
+  const rows = await Project.find({
+    taskflowOrganizationId: organizationId,
+    archived: { $ne: true },
+  })
+    .select('_id name key')
+    .sort({ name: 1 })
+    .limit(200)
+    .lean();
+
+  const data = rows.map((p) => ({
+    _id: String(p._id),
+    id: String(p._id),
+    name: p.name,
+    key: p.key,
+  }));
+  res.json({ success: true, data });
 }
 
 export async function updateLead(req: Request & { user?: AuthPayload }, res: Response) {

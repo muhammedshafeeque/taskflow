@@ -9,6 +9,14 @@ import * as crm from './crm.controller';
 const P = TASK_FLOW_PERMISSIONS.TASKFLOW.CRM;
 const router = Router();
 
+/** WhatsApp PA bot — shared secret, before JWT auth. */
+router.post('/ingest/whatsapp-lead', asyncHandler(crm.ingestWhatsappLead));
+router.patch(
+  '/ingest/whatsapp-lead/:id',
+  asyncHandler(crm.ingestWhatsappLeadUpdate)
+);
+router.get('/ingest/projects', asyncHandler(crm.ingestListProjects));
+
 router.use(authMiddleware);
 router.use(requireTaskflowUser);
 

@@ -21,6 +21,11 @@ export default defineConfig({
     },
   },
   server: {
+    headers: {
+      // Allow PA Control Center to embed Atrium
+      'Content-Security-Policy':
+        "frame-ancestors 'self' http://localhost:5174 http://127.0.0.1:5174",
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:5001',

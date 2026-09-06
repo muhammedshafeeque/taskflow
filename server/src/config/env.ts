@@ -185,6 +185,11 @@ export const env = {
   ).replace(/\/+$/, ''),
   monitorKey: cleanEnvValue(process.env.MONITOR_KEY),
   monitorRelease: cleanEnvValue(process.env.MONITOR_RELEASE) || '1.0.1',
+
+  /** Shared secret for WhatsApp PA → CRM lead ingest (no JWT). */
+  paIngestSecret: cleanEnvValue(process.env.PA_INGEST_SECRET),
+  /** Default Taskflow org for PA-ingested leads. */
+  paDefaultOrgId: cleanEnvValue(process.env.PA_DEFAULT_ORG_ID),
 };
 
 function assertRequiredWhenEnabled(enabled: boolean, integration: string, required: Array<[string, string | undefined]>) {

@@ -4,11 +4,18 @@ import { requirePermission } from '../../middleware/requirePermission';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as sd from './serviceDesk.controller';
+import * as ingest from './serviceIngest.controller';
 
 const T = TASK_FLOW_PERMISSIONS.TASKFLOW.SERVICE;
 const router = Router();
 
 router.get('/kb/portal', asyncHandler(sd.listKbPortal));
+
+/** WhatsApp PA bot — shared secret, before JWT auth. */
+router.get('/ingest/project-context', asyncHandler(ingest.ingestProjectContext));
+router.get('/ingest/tickets', asyncHandler(ingest.ingestListTickets));
+router.post('/ingest/tickets', asyncHandler(ingest.ingestCreateTicket));
+router.patch('/ingest/tickets/:id', asyncHandler(ingest.ingestPatchTicket));
 
 router.use(authMiddleware);
 

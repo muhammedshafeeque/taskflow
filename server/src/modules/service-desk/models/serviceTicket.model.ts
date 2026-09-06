@@ -32,6 +32,13 @@ export interface IServiceTicket extends Document {
   customerRequestId?: mongoose.Types.ObjectId;
   linkedIssueId?: mongoose.Types.ObjectId;
   workClassification?: 'billable_change' | 'fix';
+  /** Origin channel — e.g. whatsapp_pa for Ivorix PA bot */
+  source?: string;
+  whatsappGroupId?: string;
+  whatsappMessageId?: string;
+  supportConversationId?: string;
+  aiAnalysis?: Record<string, unknown>;
+  qaAnalysis?: Record<string, unknown>;
   csatScore?: number;
   csatComment?: string;
   comments: IServiceTicketComment[];
@@ -73,6 +80,12 @@ const serviceTicketSchema = new Schema<IServiceTicket>(
     customerRequestId: { type: Schema.Types.ObjectId, ref: 'CustomerRequest' },
     linkedIssueId: { type: Schema.Types.ObjectId, ref: 'Issue' },
     workClassification: { type: String, enum: ['billable_change', 'fix'] },
+    source: { type: String, default: undefined, index: true },
+    whatsappGroupId: { type: String, default: undefined, index: true },
+    whatsappMessageId: { type: String, default: undefined },
+    supportConversationId: { type: String, default: undefined, index: true },
+    aiAnalysis: { type: Schema.Types.Mixed },
+    qaAnalysis: { type: Schema.Types.Mixed },
     csatScore: { type: Number, min: 1, max: 5 },
     csatComment: { type: String },
     comments: { type: [ticketCommentSchema], default: [] },

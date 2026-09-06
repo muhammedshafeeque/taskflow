@@ -1,0 +1,196 @@
+diff --git a/node_modules/whatsapp-web.js/src/structures/Message.js b/node_modules/whatsapp-web.js/src/structures/Message.js
+index dd977e8..b2ea9b4 100644
+--- a/node_modules/whatsapp-web.js/src/structures/Message.js
++++ b/node_modules/whatsapp-web.js/src/structures/Message.js
+@@ -35,6 +35,9 @@ class Message extends Base {
+          * @type {object}
+          */
+         this.id = data.id;
++        if (this.id && typeof this.id === 'object' && this.id._serialized == null && this.id.$1) {
++            this.id = Object.assign({}, this.id, { _serialized: this.id.$1 });
++        }
+ 
+         /**
+          * ACK status for the message
+@@ -74,7 +77,7 @@ class Message extends Base {
+          */
+         this.from =
+             typeof data.from === 'object' && data.from !== null
+-                ? data.from._serialized
++                ? data.from._serialized || data.from.$1
+                 : data.from;
+ 
+         /**
+@@ -86,7 +89,7 @@ class Message extends Base {
+          */
+         this.to =
+             typeof data.to === 'object' && data.to !== null
+-                ? data.to._serialized
++                ? data.to._serialized || data.to.$1
+                 : data.to;
+ 
+         /**
+@@ -95,7 +98,7 @@ class Message extends Base {
+          */
+         this.author =
+             typeof data.author === 'object' && data.author !== null
+-                ? data.author._serialized
++                ? data.author._serialized || data.author.$1
+                 : data.author;
+ 
+         /**
+@@ -209,14 +212,12 @@ class Message extends Base {
+                       groupId: data.inviteGrp,
+                       groupName: data.inviteGrpName,
+                       fromId:
+-                          typeof data.from === 'object' &&
+-                          '_serialized' in data.from
+-                              ? data.from._serialized
++                          typeof data.from === 'object' && data.from !== null
++                              ? data.from._serialized || data.from.$1
+                               : data.from,
+                       toId:
+-                          typeof data.to === 'object' &&
+-                          '_serialized' in data.to
+-                              ? data.to._serialized
++                          typeof data.to === 'object' && data.to !== null
++                              ? data.to._serialized || data.to.$1
+                               : data.to,
+                   }
+                 : undefined;
+diff --git a/node_modules/whatsapp-web.js/src/util/Injected/Utils.js b/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
+index 540078a..95a6f9a 100644
+--- a/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
++++ b/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
+@@ -582,7 +582,7 @@ exports.LoadUtils = () => {
+ 
+         return window
+             .require('WAWebCollections')
+-            .Msg.get(newMsgKey._serialized);
++            .Msg.get(window.WWebJS.getMsgKeyId(newMsgKey));
+     };
+ 
+     window.WWebJS.editMessage = async (msg, content, options = {}) => {
+@@ -625,7 +625,9 @@ exports.LoadUtils = () => {
+         await window
+             .require('WAWebSendMessageEditAction')
+             .sendMessageEdit(msg, content, internalOptions);
+-        return window.require('WAWebCollections').Msg.get(msg.id._serialized);
++        return window
++            .require('WAWebCollections')
++            .Msg.get(window.WWebJS.getMsgKeyId(msg.id));
+     };
+ 
+     window.WWebJS.toStickerData = async (mediaInfo) => {
+@@ -830,10 +832,20 @@ exports.LoadUtils = () => {
+ 
+         if (typeof msg.id.remote === 'object') {
+             msg.id = Object.assign({}, msg.id, {
+-                remote: msg.id.remote._serialized,
++                remote: msg.id.remote._serialized || msg.id.remote.$1,
+             });
+         }
+ 
++        // WA Web renamed id._serialized -> id.$1; restore for Node-side consumers
++        if (typeof msg.id === 'object' && msg.id._serialized == null) {
++            const serializedId = window.WWebJS.getMsgKeyId(msg.id);
++            if (serializedId) {
++                msg.id = Object.assign({}, msg.id, {
++                    _serialized: serializedId,
++                });
++            }
++        }
++
+         delete msg.pendingAckUpdate;
+ 
+         return msg;
+@@ -917,12 +929,24 @@ exports.LoadUtils = () => {
+         };
+     };
+ 
++    /**
++     * Tolerate WhatsApp Web renaming message-key `_serialized` to `$1`.
++     */
++    window.WWebJS.getMsgKeyId = (key) =>
++        key?._serialized ?? key?.$1 ?? undefined;
++
+     window.WWebJS.getChats = async () => {
+         const chats = window.require('WAWebCollections').Chat.getModelsArray();
+-        const chatPromises = chats.map((chat) =>
+-            window.WWebJS.getChatModel(chat),
+-        );
+-        return await Promise.all(chatPromises);
++        const results = [];
++        for (const chat of chats) {
++            try {
++                const model = await window.WWebJS.getChatModel(chat);
++                if (model) results.push(model);
++            } catch {
++                // skip chats that fail serialization
++            }
++        }
++        return results;
+     };
+ 
+     window.WWebJS.getChannels = async () => {
+@@ -953,11 +977,16 @@ exports.LoadUtils = () => {
+             model.isGroup = true;
+             const chatWid = window
+                 .require('WAWebWidFactory')
+-                .createWid(chat.id._serialized);
++                .createWid(chat.id._serialized || chat.id.$1);
+             const groupMetadata =
+                 window.require('WAWebCollections').GroupMetadata ||
+                 window.require('WAWebCollections').WAWebGroupMetadataCollection;
+-            await groupMetadata.update(chatWid);
++            try {
++                await groupMetadata.update(chatWid);
++            } catch {
++                // LID-based chat IDs may not be found in IndexedDB — skip group metadata
++                model.groupMetadata = null;
++            }
+             const { toPn } = window.require('WAWebLidMigrationUtils');
+             const serializedMetadata = chat.groupMetadata.serialize();
+             for (const p of serializedMetadata.participants || []) {
+@@ -981,16 +1010,17 @@ exports.LoadUtils = () => {
+ 
+         model.lastMessage = null;
+         if (model.msgs && model.msgs.length) {
+-            const lastMessage = chat.lastReceivedKey
++            const lastReceivedKeyId = window.WWebJS.getMsgKeyId(
++                chat.lastReceivedKey,
++            );
++            const lastMessage = lastReceivedKeyId
+                 ? window
+                       .require('WAWebCollections')
+-                      .Msg.get(chat.lastReceivedKey._serialized) ||
++                      .Msg.get(lastReceivedKeyId) ||
+                   (
+                       await window
+                           .require('WAWebCollections')
+-                          .Msg.getMessagesById([
+-                              chat.lastReceivedKey._serialized,
+-                          ])
++                          .Msg.getMessagesById([lastReceivedKeyId])
+                   )?.messages?.[0]
+                 : null;
+             lastMessage &&
+diff --git a/node_modules/whatsapp-web.js/src/util/Puppeteer.js b/node_modules/whatsapp-web.js/src/util/Puppeteer.js
+index 54df700..eba12b8 100644
+--- a/node_modules/whatsapp-web.js/src/util/Puppeteer.js
++++ b/node_modules/whatsapp-web.js/src/util/Puppeteer.js
+@@ -17,7 +17,13 @@ async function exposeFunctionIfAbsent(page, name, fn) {
+     if (exist) {
+         return;
+     }
+-    await page.exposeFunction(name, fn);
++    try {
++        await page.exposeFunction(name, fn);
++    } catch (err) {
++        if (!/already exists/.test(err.message)) {
++            throw err;
++        }
++    }
+ }
+ 
+ module.exports = { exposeFunctionIfAbsent };

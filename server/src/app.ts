@@ -16,6 +16,9 @@ app.use(passport.initialize());
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
+    // SPA embeds Atrium; API itself is not framed. Keep defaults permissive for frameAncestors on API responses.
+    contentSecurityPolicy: false,
+    frameguard: false,
   })
 );
 const allowedOrigins = Array.from(

@@ -53,6 +53,21 @@ export async function createTicket(
     contactId: input.contactId,
     assigneeId: input.assigneeId,
   };
+  if (input.projectId && mongoose.Types.ObjectId.isValid(String(input.projectId))) {
+    ticketData.projectId = input.projectId;
+  }
+  if (input.workClassification) ticketData.workClassification = input.workClassification;
+  if (input.source) ticketData.source = input.source;
+  if (input.whatsappGroupId) ticketData.whatsappGroupId = input.whatsappGroupId;
+  if (input.whatsappMessageId) ticketData.whatsappMessageId = input.whatsappMessageId;
+  if (input.supportConversationId) {
+    ticketData.supportConversationId = input.supportConversationId;
+  }
+  if (input.aiAnalysis) ticketData.aiAnalysis = input.aiAnalysis;
+  if (input.qaAnalysis) ticketData.qaAnalysis = input.qaAnalysis;
+  if (input.linkedIssueId && mongoose.Types.ObjectId.isValid(String(input.linkedIssueId))) {
+    ticketData.linkedIssueId = input.linkedIssueId;
+  }
   if (userId && userId !== 'system' && mongoose.Types.ObjectId.isValid(userId)) {
     ticketData.createdBy = userId;
   }
