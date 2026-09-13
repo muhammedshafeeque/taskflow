@@ -19,6 +19,18 @@ const whatsappGroupSchema = new mongoose.Schema({
   mentionOnly: { type: Boolean, default: true },
   /** Assigned Atrium projects — makes this the official project support group. */
   atriumProjects: { type: [atriumProjectRefSchema], default: [] },
+  /** Linked TaskFlow customer portal org */
+  customerOrgId: { type: String },
+  customerOrgName: { type: String },
+  /** Capability gates for WhatsApp intents (default off). */
+  kbEnabled: { type: Boolean, default: false },
+  portalRequestsEnabled: { type: Boolean, default: false },
+  ticketStatusEnabled: { type: Boolean, default: false },
+  issueStatusEnabled: { type: Boolean, default: false },
+  billingEnabled: { type: Boolean, default: false },
+  hrmsEnabled: { type: Boolean, default: false },
+  assetsEnabled: { type: Boolean, default: false },
+  procurementEnabled: { type: Boolean, default: false },
   /** @deprecated legacy single-project fields — migrated on read */
   atriumProjectId: { type: String },
   atriumProjectName: { type: String },
@@ -32,17 +44,30 @@ export type AtriumProjectRef = {
   key?: string;
 };
 
+export type GroupCapabilityFlags = {
+  kbEnabled?: boolean;
+  portalRequestsEnabled?: boolean;
+  ticketStatusEnabled?: boolean;
+  issueStatusEnabled?: boolean;
+  billingEnabled?: boolean;
+  hrmsEnabled?: boolean;
+  assetsEnabled?: boolean;
+  procurementEnabled?: boolean;
+};
+
 export type WhatsappGroupDoc = {
   chatId: string;
   name?: string;
   autoReplyEnabled?: boolean;
   mentionOnly?: boolean;
   atriumProjects?: AtriumProjectRef[];
+  customerOrgId?: string;
+  customerOrgName?: string;
   atriumProjectId?: string;
   atriumProjectName?: string;
   atriumProjectKey?: string;
   updatedAt?: Date;
-};
+} & GroupCapabilityFlags;
 
 export const WhatsappGroup = mongoose.model('WhatsappGroup', whatsappGroupSchema);
 

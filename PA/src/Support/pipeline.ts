@@ -34,6 +34,7 @@ import type { ReplyLang } from '../Media/lang';
 import type { MediaSource } from '../Media/resolveMessageContent';
 import { sendReply } from '../Whatsap/sendReply';
 import { isOfficialSupportGroup } from './supportGroup';
+import { lookupKbForSupport, tryEcosystemReply } from './intentRouter';
 
 export { isOfficialSupportGroup } from './supportGroup';
 
@@ -104,6 +105,32 @@ export async function runSupportPipeline(input: {
   const conversation = await ensureConversation(groupId, groupName, projectIds);
   const whatsappMessageId = msg.id?._serialized || String(msg.id || '');
 
+  // Capability-gated intents (ticket status, billing, KB FAQ, etc.)
+  const eco = await tryEcosystemReply({
+    text,
+    group,
+    lang,
+    senderPhone: sender.phone,
+  });
+  if (eco.handled && eco.reply) {
+    await sendReply(msg, eco.reply, source, lang);
+    await appendTurn(groupId, text, eco.reply, {
+      lastType: 'support',
+      lastLang: lang,
+    });
+    emitSupportEvent({
+      type: 'SUPPORT_REPLY_SENT',
+      groupId,
+      groupName,
+      projectId: projectIds[0],
+      projectName: projects[0]?.name,
+      summary: eco.reply.slice(0, 120),
+      agent: 'SUPPORT_ENGINEER',
+      payload: { ecosystemIntent: eco.intent },
+    });
+    return;
+  }
+
   const userMsg = await SupportMessage.create({
     conversationId: conversation._id,
     groupId,
@@ -164,6 +191,42 @@ export async function runSupportPipeline(input: {
   if (isSpamAnalysis(analysis)) {
     console.log('Support pipeline skip spam', { groupId, agentCalls });
     return;
+  }
+
+  // KB before tickets for questions / support (not clear bugs)
+  if (
+    group.kbEnabled &&
+    !analysis.isIssue &&
+    (analysis.category === 'GENERAL_QUESTION' ||
+      analysis.category === 'SUPPORT_REQUEST' ||
+      analysis.category === 'GENERAL_CONVERSATION')
+  ) {
+    const kb = await lookupKbForSupport(text, true);
+    if (kb.hit && kb.reply) {
+      await sendReply(msg, kb.reply, source, lang);
+      await appendTurn(groupId, text, kb.reply, {
+        lastType: 'support',
+        lastLang: lang,
+      });
+      await SupportMessage.create({
+        conversationId: conversation._id,
+        groupId,
+        message: kb.reply,
+        messageType: 'assistant',
+        agentOutputs: { kbTitle: kb.title },
+      });
+      emitSupportEvent({
+        type: 'SUPPORT_REPLY_SENT',
+        groupId,
+        groupName,
+        projectId: projectIds[0],
+        projectName: projects[0]?.name,
+        summary: kb.reply.slice(0, 120),
+        agent: 'SUPPORT_ENGINEER',
+        payload: { kbTitle: kb.title, agentCalls },
+      });
+      return;
+    }
   }
 
   const seActivity = await AgentActivity.create({

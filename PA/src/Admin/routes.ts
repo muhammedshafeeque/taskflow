@@ -14,6 +14,7 @@ import { LocalWhatsappLead } from '../Leads/createAtriumLead';
 import { getWhatsAppStatus } from '../Whatsap';
 import { requireAdminSecret } from './auth';
 import {
+  listCustomerOrgsForAdmin,
   listWhatsAppGroups,
   patchWhatsAppGroup,
 } from './groupsAdmin';
@@ -178,13 +179,17 @@ adminRouter.get('/groups', async (_req, res, next) => {
 adminRouter.patch('/groups/:chatId', async (req, res, next) => {
   try {
     const chatId = decodeURIComponent(req.params.chatId);
-    const body = (req.body ?? {}) as {
-      name?: string;
-      autoReplyEnabled?: boolean;
-      mentionOnly?: boolean;
-      atriumProjects?: Array<{ id: string; name: string; key?: string }> | null;
-    };
-    const data = await patchWhatsAppGroup(chatId, body);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const data = await patchWhatsAppGroup(chatId, body as Parameters<typeof patchWhatsAppGroup>[1]);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.get('/customer-orgs', async (_req, res, next) => {
+  try {
+    const data = await listCustomerOrgsForAdmin();
     res.json({ success: true, data });
   } catch (err) {
     next(err);

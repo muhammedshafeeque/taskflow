@@ -20,7 +20,9 @@ export interface IHrmsEmployee extends Document {
   location?: string;
   annualCtc?: number;
   currency: string;
-  leaveBalanceDays: number;
+    leaveBalanceDays: number;
+  /** Digits-only WhatsApp phone for PA bot HR matching */
+  whatsappPhone?: string;
   notes?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -34,6 +36,7 @@ const hrmsEmployeeSchema = new Schema<IHrmsEmployee>(
     name: { type: String, required: true, trim: true },
     email: { type: String, trim: true, lowercase: true },
     phone: { type: String },
+    whatsappPhone: { type: String, trim: true, index: true },
     department: { type: String, index: true },
     designation: { type: String },
     managerId: { type: Schema.Types.ObjectId, ref: 'HrmsEmployee' },

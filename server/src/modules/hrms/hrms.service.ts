@@ -81,7 +81,7 @@ export async function updateEmployee(id: string, workspaceId: string | null | un
   const existing = await HrmsEmployee.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
   if (!existing) throw new ApiError(404, 'Employee not found');
   const fields = [
-    'name', 'email', 'phone', 'department', 'designation', 'managerId', 'employmentType',
+    'name', 'email', 'phone', 'whatsappPhone', 'department', 'designation', 'managerId', 'employmentType',
     'status', 'location', 'annualCtc', 'currency', 'leaveBalanceDays', 'notes', 'userId',
   ] as const;
   for (const key of fields) {

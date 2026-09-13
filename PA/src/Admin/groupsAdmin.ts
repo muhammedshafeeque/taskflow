@@ -5,6 +5,7 @@ import {
   type WhatsappGroupDoc,
 } from '../Models/WhatsappGroup';
 import { whatsapp } from '../Whatsap/client';
+import { listCustomerOrgs } from '../Support/context/ecosystemIngest';
 import { listTaskflowProjects } from './taskflowContext';
 
 export type GroupListItem = {
@@ -13,6 +14,16 @@ export type GroupListItem = {
   autoReplyEnabled: boolean;
   mentionOnly: boolean;
   atriumProjects: AtriumProjectRef[];
+  customerOrgId?: string;
+  customerOrgName?: string;
+  kbEnabled: boolean;
+  portalRequestsEnabled: boolean;
+  ticketStatusEnabled: boolean;
+  issueStatusEnabled: boolean;
+  billingEnabled: boolean;
+  hrmsEnabled: boolean;
+  assetsEnabled: boolean;
+  procurementEnabled: boolean;
   participantEstimate?: number;
   updatedAt?: string;
 };
@@ -37,6 +48,16 @@ function toListItem(
     autoReplyEnabled: Boolean(cfg?.autoReplyEnabled),
     mentionOnly: cfg?.mentionOnly !== false,
     atriumProjects: normalizeGroupProjects(cfg),
+    customerOrgId: cfg?.customerOrgId || undefined,
+    customerOrgName: cfg?.customerOrgName || undefined,
+    kbEnabled: Boolean(cfg?.kbEnabled),
+    portalRequestsEnabled: Boolean(cfg?.portalRequestsEnabled),
+    ticketStatusEnabled: Boolean(cfg?.ticketStatusEnabled),
+    issueStatusEnabled: Boolean(cfg?.issueStatusEnabled),
+    billingEnabled: Boolean(cfg?.billingEnabled),
+    hrmsEnabled: Boolean(cfg?.hrmsEnabled),
+    assetsEnabled: Boolean(cfg?.assetsEnabled),
+    procurementEnabled: Boolean(cfg?.procurementEnabled),
     participantEstimate,
     updatedAt: cfg?.updatedAt
       ? new Date(cfg.updatedAt).toISOString()
@@ -105,6 +126,17 @@ export async function listWhatsAppGroups(): Promise<GroupListItem[]> {
   return rows;
 }
 
+const FLAG_KEYS = [
+  'kbEnabled',
+  'portalRequestsEnabled',
+  'ticketStatusEnabled',
+  'issueStatusEnabled',
+  'billingEnabled',
+  'hrmsEnabled',
+  'assetsEnabled',
+  'procurementEnabled',
+] as const;
+
 export async function patchWhatsAppGroup(
   chatId: string,
   patch: {
@@ -112,6 +144,16 @@ export async function patchWhatsAppGroup(
     autoReplyEnabled?: boolean;
     mentionOnly?: boolean;
     atriumProjects?: AtriumProjectRef[] | null;
+    customerOrgId?: string | null;
+    customerOrgName?: string | null;
+    kbEnabled?: boolean;
+    portalRequestsEnabled?: boolean;
+    ticketStatusEnabled?: boolean;
+    issueStatusEnabled?: boolean;
+    billingEnabled?: boolean;
+    hrmsEnabled?: boolean;
+    assetsEnabled?: boolean;
+    procurementEnabled?: boolean;
   }
 ): Promise<GroupListItem> {
   const $set: Record<string, unknown> = { updatedAt: new Date() };
@@ -125,6 +167,24 @@ export async function patchWhatsAppGroup(
     $set.mentionOnly = patch.mentionOnly;
   }
 
+  if (patch.customerOrgId !== undefined) {
+    if (patch.customerOrgId === null || patch.customerOrgId === '') {
+      $unset.customerOrgId = 1;
+      $unset.customerOrgName = 1;
+    } else {
+      $set.customerOrgId = String(patch.customerOrgId).trim();
+      if (typeof patch.customerOrgName === 'string') {
+        $set.customerOrgName = patch.customerOrgName.trim();
+      }
+    }
+  } else if (typeof patch.customerOrgName === 'string') {
+    $set.customerOrgName = patch.customerOrgName.trim();
+  }
+
+  for (const key of FLAG_KEYS) {
+    if (typeof patch[key] === 'boolean') $set[key] = patch[key];
+  }
+
   if (patch.atriumProjects !== undefined) {
     const cleaned = Array.isArray(patch.atriumProjects)
       ? patch.atriumProjects
@@ -136,7 +196,6 @@ export async function patchWhatsAppGroup(
           }))
       : [];
     $set.atriumProjects = cleaned;
-    // Drop legacy single fields when saving multi
     $unset.atriumProjectId = 1;
     $unset.atriumProjectName = 1;
     $unset.atriumProjectKey = 1;
@@ -162,6 +221,17 @@ export async function getGroupConfig(
   chatId: string
 ): Promise<WhatsappGroupDoc | null> {
   return (await WhatsappGroup.findOne({ chatId }).lean()) as WhatsappGroupDoc | null;
+}
+
+export async function listCustomerOrgsForAdmin() {
+  try {
+    return await listCustomerOrgs();
+  } catch (err) {
+    return {
+      orgs: [] as Array<{ id: string; name: string; slug?: string; crmAccountId?: string }>,
+      reason: err instanceof Error ? err.message : 'Failed to load customer orgs',
+    };
+  }
 }
 
 export { listTaskflowProjects };

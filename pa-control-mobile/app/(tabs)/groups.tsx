@@ -3,6 +3,7 @@ import { FlatList, StyleSheet, Text, View } from 'react-native'
 import { useFocusEffect } from 'expo-router'
 import {
   type AtriumProject,
+  type CustomerOrgOption,
   type WhatsappGroupRow,
   paAdmin,
 } from '../../src/api/paAdmin'
@@ -24,6 +25,28 @@ import {
 
 type Draft = { selectedIds: string[] }
 
+const CAP_FLAGS: Array<{
+  key:
+    | 'kbEnabled'
+    | 'portalRequestsEnabled'
+    | 'ticketStatusEnabled'
+    | 'issueStatusEnabled'
+    | 'billingEnabled'
+    | 'hrmsEnabled'
+    | 'assetsEnabled'
+    | 'procurementEnabled'
+  label: string
+}> = [
+  { key: 'kbEnabled', label: 'KB' },
+  { key: 'portalRequestsEnabled', label: 'Portal' },
+  { key: 'ticketStatusEnabled', label: 'Tickets' },
+  { key: 'issueStatusEnabled', label: 'Issues' },
+  { key: 'billingEnabled', label: 'Billing' },
+  { key: 'hrmsEnabled', label: 'HR' },
+  { key: 'assetsEnabled', label: 'Assets' },
+  { key: 'procurementEnabled', label: 'POs' },
+]
+
 function projectsFromRow(row: WhatsappGroupRow) {
   return Array.isArray(row.atriumProjects) ? row.atriumProjects : []
 }
@@ -37,6 +60,7 @@ function idsEqual(a: string[], b: string[]) {
 export default function GroupsScreen() {
   const [rows, setRows] = useState<WhatsappGroupRow[]>([])
   const [projects, setProjects] = useState<AtriumProject[]>([])
+  const [customerOrgs, setCustomerOrgs] = useState<CustomerOrgOption[]>([])
   const [hint, setHint] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -48,12 +72,14 @@ export default function GroupsScreen() {
     setError('')
     setSuccess('')
     try {
-      const [groups, atrium] = await Promise.all([
+      const [groups, atrium, orgsRes] = await Promise.all([
         paAdmin.listGroups(),
         paAdmin.listAtriumProjects(),
+        paAdmin.listCustomerOrgs().catch(() => ({ orgs: [] as CustomerOrgOption[] })),
       ])
       setRows(groups)
       setProjects(atrium.projects || [])
+      setCustomerOrgs(orgsRes.orgs || [])
       setHint(
         atrium.available && (atrium.projects || []).length > 0
           ? ''
@@ -131,6 +157,44 @@ export default function GroupsScreen() {
     })
   }
 
+  async function toggleFlag(
+    row: WhatsappGroupRow,
+    key: (typeof CAP_FLAGS)[number]['key']
+  ) {
+    setBusyId(row.chatId)
+    setError('')
+    try {
+      const updated = await paAdmin.patchGroup(row.chatId, {
+        name: row.name,
+        [key]: !row[key],
+      })
+      applyGroupUpdate({ ...row, ...updated })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Update failed')
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  async function setCustomerOrg(row: WhatsappGroupRow, orgId: string) {
+    setBusyId(row.chatId)
+    setError('')
+    try {
+      const org = customerOrgs.find((o) => o.id === orgId)
+      const updated = await paAdmin.patchGroup(row.chatId, {
+        name: row.name,
+        customerOrgId: orgId || null,
+        customerOrgName: org?.name || null,
+      })
+      applyGroupUpdate({ ...row, ...updated })
+      setSuccess(`${row.name}: customer org updated`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Org update failed')
+    } finally {
+      setBusyId('')
+    }
+  }
+
   async function saveProjects(row: WhatsappGroupRow) {
     const selectedIds = drafts[row.chatId]?.selectedIds || []
     const atriumProjects = projects
@@ -206,6 +270,34 @@ export default function GroupsScreen() {
                 disabled={busyId === item.chatId}
                 onPress={() => void toggleAutoReply(item)}
               />
+              <SectionLabel>Customer org</SectionLabel>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                <Chip
+                  label="None"
+                  active={!item.customerOrgId}
+                  onPress={() => void setCustomerOrg(item, '')}
+                />
+                {customerOrgs.map((o) => (
+                  <Chip
+                    key={o.id}
+                    label={o.name}
+                    active={item.customerOrgId === o.id}
+                    onPress={() => void setCustomerOrg(item, o.id)}
+                  />
+                ))}
+              </View>
+              <SectionLabel>Capabilities</SectionLabel>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {CAP_FLAGS.map((f) => (
+                  <Chip
+                    key={f.key}
+                    label={f.label}
+                    active={Boolean(item[f.key])}
+                    disabled={busyId === item.chatId}
+                    onPress={() => void toggleFlag(item, f.key)}
+                  />
+                ))}
+              </View>
               <SectionLabel>Atrium projects</SectionLabel>
               {projects.length === 0 ? (
                 <Muted>No projects available</Muted>

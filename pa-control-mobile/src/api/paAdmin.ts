@@ -195,8 +195,25 @@ export type WhatsappGroupRow = {
   autoReplyEnabled: boolean
   mentionOnly: boolean
   atriumProjects: Array<{ id: string; name: string; key?: string }>
+  customerOrgId?: string
+  customerOrgName?: string
+  kbEnabled?: boolean
+  portalRequestsEnabled?: boolean
+  ticketStatusEnabled?: boolean
+  issueStatusEnabled?: boolean
+  billingEnabled?: boolean
+  hrmsEnabled?: boolean
+  assetsEnabled?: boolean
+  procurementEnabled?: boolean
   participantEstimate?: number
   updatedAt?: string
+}
+
+export type CustomerOrgOption = {
+  id: string
+  name: string
+  slug?: string
+  crmAccountId?: string
 }
 
 export type AtriumProject = {
@@ -276,16 +293,19 @@ export const paAdmin = {
   listGroups: () => request<WhatsappGroupRow[]>('/api/admin/groups'),
   patchGroup: (
     chatId: string,
-    body: {
-      name?: string
-      autoReplyEnabled?: boolean
-      mentionOnly?: boolean
+    body: Partial<WhatsappGroupRow> & {
       atriumProjects?: Array<{ id: string; name: string; key?: string }> | null
+      customerOrgId?: string | null
+      customerOrgName?: string | null
     }
   ) =>
     request<WhatsappGroupRow>(
       `/api/admin/groups/${encodeURIComponent(chatId)}`,
       { method: 'PATCH', body: JSON.stringify(body) }
+    ),
+  listCustomerOrgs: () =>
+    request<{ orgs: CustomerOrgOption[]; reason?: string }>(
+      '/api/admin/customer-orgs'
     ),
   listAtriumProjects: () =>
     request<AtriumProjectsResult>('/api/admin/atrium/projects'),

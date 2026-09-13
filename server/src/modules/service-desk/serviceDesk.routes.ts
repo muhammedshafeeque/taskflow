@@ -6,6 +6,7 @@ import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as sd from './serviceDesk.controller';
 import * as ingest from './serviceIngest.controller';
 import * as requestIngest from '../customer-portal/customer-request/customerRequestIngest.controller';
+import * as ecoIngest from './paEcosystemIngest.controller';
 
 const T = TASK_FLOW_PERMISSIONS.TASKFLOW.SERVICE;
 const router = Router();
@@ -19,6 +20,7 @@ router.post('/ingest/tickets', asyncHandler(ingest.ingestCreateTicket));
 router.patch('/ingest/tickets/:id', asyncHandler(ingest.ingestPatchTicket));
 
 router.get('/ingest/requests', asyncHandler(requestIngest.ingestListRequests));
+router.post('/ingest/requests', asyncHandler(ecoIngest.ingestCreateRequest));
 router.get('/ingest/requests/:id', asyncHandler(requestIngest.ingestGetRequest));
 router.post(
   '/ingest/requests/:id/approve',
@@ -30,12 +32,20 @@ router.post(
 );
 router.get(
   '/ingest/service-tickets',
-  asyncHandler(requestIngest.ingestListServiceTickets)
+  asyncHandler(ecoIngest.ingestListServiceTicketsFiltered)
 );
 router.patch(
   '/ingest/service-tickets/:id',
   asyncHandler(requestIngest.ingestUpdateServiceTicket)
 );
+
+router.get('/ingest/kb/search', asyncHandler(ecoIngest.ingestKbSearch));
+router.get('/ingest/customer-orgs', asyncHandler(ecoIngest.ingestListCustomerOrgs));
+router.get('/ingest/issues/by-key', asyncHandler(ecoIngest.ingestIssueByKey));
+router.get('/ingest/billing/summary', asyncHandler(ecoIngest.ingestBillingSummary));
+router.get('/ingest/hrms/me', asyncHandler(ecoIngest.ingestHrmsMe));
+router.get('/ingest/assets/search', asyncHandler(ecoIngest.ingestAssetsSearch));
+router.get('/ingest/procurement/pos', asyncHandler(ecoIngest.ingestProcurementPos));
 
 router.use(authMiddleware);
 
