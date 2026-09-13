@@ -1,11 +1,20 @@
 import mongoose from 'mongoose';
 
-export type AgentType = 'CHAT_ANALYZER' | 'SUPPORT_ENGINEER' | 'QA_LEAD';
+export type AgentType =
+  | 'CHAT_ANALYZER'
+  | 'SUPPORT_ENGINEER'
+  | 'QA_LEAD'
+  | 'REPLY_CRITIC';
 
 const agentActivitySchema = new mongoose.Schema({
   agentType: {
     type: String,
-    enum: ['CHAT_ANALYZER', 'SUPPORT_ENGINEER', 'QA_LEAD'],
+    enum: [
+      'CHAT_ANALYZER',
+      'SUPPORT_ENGINEER',
+      'QA_LEAD',
+      'REPLY_CRITIC',
+    ],
     required: true,
     index: true,
   },

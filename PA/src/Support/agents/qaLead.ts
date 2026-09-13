@@ -1,11 +1,15 @@
 import { getGroq } from '../../Config/groq';
+import {
+  strongChatModel,
+  type AgentCallLog,
+  pushAgentCall,
+} from '../../Ai/models';
 import type { AtriumProjectRef } from '../../Models/WhatsappGroup';
 import type { ConversationContextBundle } from '../context/conversationContext';
 import type { TaskflowProjectContext } from '../context/taskflowContext';
 import {
   QaDecisionSchema,
   extractJsonObject,
-  supportChatModel,
   type ChatAnalysis,
   type QaDecision,
 } from '../types';
@@ -17,14 +21,17 @@ export async function runQaLead(input: {
   projects: AtriumProjectRef[];
   conversation: ConversationContextBundle;
   taskflow: TaskflowProjectContext;
+  agentCalls?: AgentCallLog[];
 }): Promise<QaDecision> {
+  const agentCalls = input.agentCalls || [];
   const tickets = (input.taskflow.tickets || []).slice(0, 15);
   const primaryProjectId = input.projects[0]?.id;
 
   try {
+    const model = strongChatModel();
     const groq = getGroq();
     const completion = await groq.chat.completions.create({
-      model: supportChatModel(),
+      model,
       temperature: 0.15,
       max_tokens: 700,
       messages: [
@@ -39,7 +46,8 @@ Rules:
 - If similar open ticket exists, set isDuplicate true and duplicateTicketId to that ticket's **key** field (e.g. "SDFSDF-6"), never the long Mongo id.
 - If confirmed BUG/CHANGE_REQUEST/FEATURE_REQUEST: isIssue true and fill issue.
 - Otherwise isIssue false with recommendedResponse for Support Engineer to tell the customer.
-- Never invent ticket keys that are not in the openTickets list.`,
+- Never invent ticket keys that are not in the openTickets list.
+- Prefer tickets listed first — they are relevance-ranked.`,
         },
         {
           role: 'user',
@@ -63,6 +71,11 @@ Rules:
         },
       ],
     });
+    pushAgentCall(agentCalls, {
+      agent: 'QA_LEAD',
+      tier: 'strong',
+      model,
+    });
     const raw = completion.choices[0]?.message?.content || '';
     const parsed = extractJsonObject(raw);
     if (parsed) {
@@ -80,7 +93,6 @@ Rules:
         if (!match) {
           return { ...decision, isDuplicate: false, duplicateTicketId: undefined };
         }
-        // Prefer human-readable project issue key for customer replies.
         decision.duplicateTicketId = match.key || match.issueKey || match.id;
       }
       if (decision.isIssue && decision.issue && !decision.issue.projectId) {
@@ -90,6 +102,12 @@ Rules:
     }
   } catch (err) {
     console.warn('QA Lead LLM failed', err);
+    pushAgentCall(agentCalls, {
+      agent: 'QA_LEAD',
+      tier: 'strong',
+      skipped: true,
+      reason: 'llm_failed',
+    });
   }
 
   // Conservative fallback

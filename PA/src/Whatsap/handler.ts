@@ -1,4 +1,5 @@
 import type { Message } from 'whatsapp-web.js';
+import { classifyDmIntentFast } from '../Ai/fastIntentClassifier';
 import { generateReply } from '../Ai/reply';
 import { getGroupConfig, patchWhatsAppGroup } from '../Admin/groupsAdmin';
 import { getBotSettings } from '../Config/botSettings';
@@ -9,7 +10,7 @@ import {
   isLowQualityTranscript,
   touchContactHints,
 } from '../Memory/conversationMemory';
-import { analyzeMessage, type MessageType } from '../MessageAnalyzer';
+import { type MessageType } from '../MessageAnalyzer';
 import {
   normalizeGroupProjects,
   type WhatsappGroupDoc,
@@ -21,12 +22,47 @@ import { resolveSenderMobile } from './resolveSenderMobile';
 import { sendReply } from './sendReply';
 
 const busyChats = new Set<string>();
+/** Latest pending message while a chat is processing (coalesce). */
+const pendingByChat = new Map<string, Message>();
+
+/** Test helper — clear queue state between unit tests. */
+export function resetBusyQueueForTests(): void {
+  busyChats.clear();
+  pendingByChat.clear();
+}
+
+export function pendingQueueSizeForTests(): number {
+  return pendingByChat.size;
+}
 
 export async function handleIncomingMessage(msg: Message) {
   if (msg.fromMe) return;
   if (msg.isStatus) return;
   if (msg.from === 'status@broadcast') return;
 
+  const chatId = msg.from;
+
+  if (busyChats.has(chatId)) {
+    pendingByChat.set(chatId, msg);
+    console.log('Busy — coalesce pending message', { chatId });
+    return;
+  }
+
+  busyChats.add(chatId);
+  try {
+    await processIncomingMessage(msg);
+  } finally {
+    busyChats.delete(chatId);
+    const pending = pendingByChat.get(chatId);
+    if (pending) {
+      pendingByChat.delete(chatId);
+      // Process latest coalesced message without blocking the current stack
+      void handleIncomingMessage(pending);
+    }
+  }
+}
+
+async function processIncomingMessage(msg: Message) {
   const chatId = msg.from;
   const isGroup = chatId.endsWith('@g.us');
 
@@ -50,8 +86,6 @@ export async function handleIncomingMessage(msg: Message) {
     }
 
     const official = isOfficialSupportGroup(groupDoc);
-    // Official support groups (projects assigned): process all messages.
-    // Legacy enabled groups without projects: keep @mention gate.
     if (!official && groupDoc.mentionOnly !== false) {
       const addressed = await isBotAddressedInGroup(msg);
       if (!addressed) {
@@ -86,8 +120,6 @@ export async function handleIncomingMessage(msg: Message) {
     }
   }
 
-  if (busyChats.has(chatId)) return;
-
   const settings = await getBotSettings();
   if (settings.botPaused) {
     console.log('Paused — skip auto-reply (global)', { chatId });
@@ -102,7 +134,6 @@ export async function handleIncomingMessage(msg: Message) {
     }
   }
 
-  busyChats.add(chatId);
   try {
     const resolved = await resolveMessageContent(msg);
     if (!resolved) return;
@@ -113,7 +144,6 @@ export async function handleIncomingMessage(msg: Message) {
       contactName: sender.contactName,
     });
 
-    // Official project support group → Support Engineer / QA pipeline
     if (isGroup && groupDoc && isOfficialSupportGroup(groupDoc)) {
       const text =
         resolved.text ||
@@ -210,7 +240,16 @@ export async function handleIncomingMessage(msg: Message) {
       return;
     }
 
-    const analysis = analyzeMessage(resolved.text, { lastType, hasHistory });
+    let analysis = await classifyDmIntentFast(resolved.text, {
+      lastType,
+      hasHistory,
+    });
+
+    // Groups: force non-random toward support like before
+    if (isGroup && analysis.type === 'random') {
+      analysis = { ...analysis, type: 'support', shouldReply: true };
+    }
+
     if (!analysis.shouldReply && !isGroup) {
       console.log('Ignored message', {
         chatId,
@@ -276,7 +315,5 @@ export async function handleIncomingMessage(msg: Message) {
     } catch {
       // ignore
     }
-  } finally {
-    busyChats.delete(chatId);
   }
 }

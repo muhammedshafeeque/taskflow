@@ -1,9 +1,11 @@
 import type { Message } from 'whatsapp-web.js';
+import type { AgentCallLog } from '../Ai/models';
 import {
   craftFinalCustomerReply,
   runSupportEngineer,
 } from './agents/supportEngineer';
 import { runQaLead } from './agents/qaLead';
+import { runReplyCritic } from './agents/replyCritic';
 import { analyzeSupportMessage, isSpamAnalysis } from './chatAnalyzer';
 import { collectConversationContext } from './context/conversationContext';
 import {
@@ -12,6 +14,10 @@ import {
   linkTicketComment,
   mapPriority,
 } from './context/taskflowContext';
+import {
+  knownTicketKeys,
+  withRankedTickets,
+} from './context/ticketRetriever';
 import { emitSupportEvent } from './events';
 import { appendTurn } from '../Memory/conversationMemory';
 import { AgentActivity } from '../Models/AgentActivity';
@@ -81,6 +87,7 @@ export async function runSupportPipeline(input: {
   const projects = normalizeGroupProjects(group);
   const projectIds = projects.map((p) => p.id);
   const groupName = group.name || groupId;
+  const agentCalls: AgentCallLog[] = [];
 
   let quotedText: string | undefined;
   let replyToMessageId: string | undefined;
@@ -110,7 +117,7 @@ export async function runSupportPipeline(input: {
   });
 
   const convCtx = await collectConversationContext(groupId, { quotedText });
-  const taskflow = await fetchProjectSupportContext(projectIds);
+  const taskflowRaw = await fetchProjectSupportContext(projectIds);
 
   const analysisActivity = await AgentActivity.create({
     agentType: 'CHAT_ANALYZER',
@@ -128,11 +135,26 @@ export async function runSupportPipeline(input: {
     hasHistory: convCtx.hasHistory,
     recentContext: convCtx.recentText,
     projectLabels: projects.map((p) => p.name),
+    agentCalls,
   });
+
+  // Rank tickets once we have entities/summary from analysis
+  const taskflow = withRankedTickets(
+    taskflowRaw,
+    `${text} ${analysis.summary} ${analysis.possibleIssue}`,
+    analysis.entities,
+    10
+  );
+  const ticketKeys = knownTicketKeys(taskflow.tickets);
 
   await AgentActivity.updateOne(
     { _id: analysisActivity._id },
-    { $set: { status: 'COMPLETED', output: analysis } }
+    {
+      $set: {
+        status: 'COMPLETED',
+        output: { analysis, agentCalls: agentCalls.slice() },
+      },
+    }
   );
   await SupportMessage.updateOne(
     { _id: userMsg._id },
@@ -140,7 +162,7 @@ export async function runSupportPipeline(input: {
   );
 
   if (isSpamAnalysis(analysis)) {
-    console.log('Support pipeline skip spam', { groupId });
+    console.log('Support pipeline skip spam', { groupId, agentCalls });
     return;
   }
 
@@ -162,13 +184,16 @@ export async function runSupportPipeline(input: {
     conversation: convCtx,
     taskflow,
     langHint: lang,
+    agentCalls,
   });
 
   let customerReply = seDecision.customerReply.trim();
   let ticketId: string | undefined;
   let qaStatus: string | undefined;
+  let escalated = false;
 
   if (seDecision.action === 'ESCALATE_QA') {
+    escalated = true;
     emitSupportEvent({
       type: 'NEW_ISSUE_DETECTED',
       groupId,
@@ -177,6 +202,7 @@ export async function runSupportPipeline(input: {
       projectName: projects[0]?.name,
       summary: analysis.possibleIssue || analysis.summary || text.slice(0, 120),
       agent: 'SUPPORT_ENGINEER',
+      payload: { agentCalls: agentCalls.slice() },
     });
     emitSupportEvent({
       type: 'ISSUE_SENT_TO_QA',
@@ -193,7 +219,7 @@ export async function runSupportPipeline(input: {
       {
         $set: {
           status: 'ESCALATED_TO_QA',
-          output: seDecision,
+          output: { ...seDecision, agentCalls: agentCalls.slice() },
         },
       }
     );
@@ -229,6 +255,7 @@ export async function runSupportPipeline(input: {
       projects,
       conversation: convCtx,
       taskflow,
+      agentCalls,
     });
 
     qaStatus = qa.classification;
@@ -242,6 +269,7 @@ export async function runSupportPipeline(input: {
       summary: qa.reason,
       agent: 'QA_LEAD',
       priority: qa.issue?.priority,
+      payload: { agentCalls: agentCalls.slice() },
     });
 
     if (qa.isDuplicate && qa.duplicateTicketId) {
@@ -261,6 +289,9 @@ export async function runSupportPipeline(input: {
         )?.key ||
         qa.duplicateTicketId;
       ticketId = linked.id || qa.duplicateTicketId;
+      if (displayKey && !ticketKeys.includes(displayKey)) {
+        ticketKeys.push(displayKey);
+      }
       customerReply = await craftFinalCustomerReply({
         message: text,
         analysis,
@@ -270,6 +301,7 @@ export async function runSupportPipeline(input: {
         issueKey: displayKey,
         duplicate: true,
         langHint: lang,
+        agentCalls,
       });
       await AgentActivity.updateOne(
         { _id: qaActivity._id },
@@ -321,6 +353,9 @@ export async function runSupportPipeline(input: {
 
       if (created) {
         ticketId = created.id;
+        if (created.linkedIssueKey && !ticketKeys.includes(created.linkedIssueKey)) {
+          ticketKeys.push(created.linkedIssueKey);
+        }
         customerReply = await craftFinalCustomerReply({
           message: text,
           analysis,
@@ -329,6 +364,7 @@ export async function runSupportPipeline(input: {
           ticketId: created.id,
           issueKey: created.linkedIssueKey,
           langHint: lang,
+          agentCalls,
         });
         await SupportConversation.updateOne(
           { _id: conversation._id },
@@ -371,6 +407,7 @@ export async function runSupportPipeline(input: {
             serviceTicketId: created.id,
             linkedIssueId: created.linkedIssueId,
             linkedIssueKey: created.linkedIssueKey,
+            agentCalls: agentCalls.slice(),
           },
         });
       } else {
@@ -384,6 +421,7 @@ export async function runSupportPipeline(input: {
             qaRecommendedResponse:
               'We logged your report internally and will follow up shortly.',
             langHint: lang,
+            agentCalls,
           }));
         await AgentActivity.updateOne(
           { _id: qaActivity._id },
@@ -398,6 +436,7 @@ export async function runSupportPipeline(input: {
         conversation: convCtx,
         qaRecommendedResponse: qa.recommendedResponse,
         langHint: lang,
+        agentCalls,
       });
       await AgentActivity.updateOne(
         { _id: qaActivity._id },
@@ -417,7 +456,12 @@ export async function runSupportPipeline(input: {
   } else {
     await AgentActivity.updateOne(
       { _id: seActivity._id },
-      { $set: { status: 'COMPLETED', output: seDecision } }
+      {
+        $set: {
+          status: 'COMPLETED',
+          output: { ...seDecision, agentCalls: agentCalls.slice() },
+        },
+      }
     );
   }
 
@@ -427,6 +471,43 @@ export async function runSupportPipeline(input: {
         ? 'നന്ദി. ഞങ്ങൾ നോക്കുകയാണ് — കൂടുതൽ വിവരം ഉണ്ടെങ്കിൽ പങ്കിടൂ.'
         : 'Thanks — we are looking into this. Please share any extra detail if you have it.';
   }
+
+  const criticActivity = await AgentActivity.create({
+    agentType: 'REPLY_CRITIC',
+    conversationId: conversation._id,
+    messageId: userMsg._id,
+    groupId,
+    projectId: projectIds[0],
+    action: 'critique',
+    status: 'ANALYZING',
+    input: { replyPreview: customerReply.slice(0, 200) },
+  });
+
+  const critic = await runReplyCritic({
+    reply: customerReply,
+    message: text,
+    knownTicketKeys: ticketKeys,
+    escalated,
+    analysisConfidence: analysis.confidence,
+    langHint: lang,
+    agentCalls,
+  });
+  customerReply = critic.reply;
+
+  await AgentActivity.updateOne(
+    { _id: criticActivity._id },
+    {
+      $set: {
+        status: 'COMPLETED',
+        output: {
+          ok: critic.ok,
+          issues: critic.issues,
+          skipped: critic.skipped,
+          agentCalls: agentCalls.slice(),
+        },
+      },
+    }
+  );
 
   await sendReply(msg, customerReply, source, lang);
   await appendTurn(groupId, text, customerReply, {
@@ -439,7 +520,7 @@ export async function runSupportPipeline(input: {
     message: customerReply,
     messageType: 'assistant',
     ticketId,
-    agentOutputs: { seDecision, qaStatus },
+    agentOutputs: { seDecision, qaStatus, agentCalls },
   });
 
   emitSupportEvent({
@@ -452,5 +533,9 @@ export async function runSupportPipeline(input: {
     summary: customerReply.slice(0, 120),
     agent: 'SUPPORT_ENGINEER',
     qaStatus,
+    payload: {
+      agentCalls,
+      modelTiers: agentCalls.map((c) => c.tier),
+    },
   });
 }

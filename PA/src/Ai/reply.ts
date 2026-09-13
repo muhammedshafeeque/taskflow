@@ -1,4 +1,5 @@
 import { getGroq } from '../Config/groq';
+import { strongChatModel } from './models';
 import { assessLeadReady, assessLeadUpdate } from '../Leads/assessLeadReady';
 import {
   createAtriumLead,
@@ -18,6 +19,10 @@ import type { ConversationDoc } from '../Models/Conversation';
 import { greetingIntro } from './greeting';
 
 const DEFAULT_CHAT_MODEL = 'qwen/qwen3.8-27b';
+
+function chatModel(): string {
+  return strongChatModel() || DEFAULT_CHAT_MODEL;
+}
 
 function baseSystem(
   lang: ReplyLang,
@@ -105,10 +110,7 @@ async function llmReply(
     )
     .slice(-10);
 
-  const model =
-    process.env.GROQ_CHAT_MODEL?.trim() ||
-    process.env.GROQ_MODEL?.trim() ||
-    DEFAULT_CHAT_MODEL;
+  const model = chatModel();
 
   console.log('LLM reply', {
     model,

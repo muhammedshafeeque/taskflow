@@ -1,11 +1,16 @@
 import { getGroq } from '../../Config/groq';
+import {
+  fastChatModel,
+  strongChatModel,
+  type AgentCallLog,
+  pushAgentCall,
+} from '../../Ai/models';
 import type { AtriumProjectRef } from '../../Models/WhatsappGroup';
 import type { ConversationContextBundle } from '../context/conversationContext';
 import type { TaskflowProjectContext } from '../context/taskflowContext';
 import {
   SupportEngineerDecisionSchema,
   extractJsonObject,
-  supportChatModel,
   type ChatAnalysis,
   type SupportEngineerDecision,
 } from '../types';
@@ -18,6 +23,9 @@ const ESCALATE_CATEGORIES = new Set([
   'COMPLAINT',
 ]);
 
+const REPRO_HINT =
+  /\b(reproduce|steps?\s*to|error\s*code|stack\s*trace|crash|exception|screenshot|500|404|not\s*working|broken)\b/i;
+
 function projectLabel(projects: AtriumProjectRef[]): string {
   return projects[0]?.name?.trim() || 'your project';
 }
@@ -29,7 +37,9 @@ export async function runSupportEngineer(input: {
   conversation: ConversationContextBundle;
   taskflow: TaskflowProjectContext;
   langHint?: 'ml' | 'en';
+  agentCalls?: AgentCallLog[];
 }): Promise<SupportEngineerDecision> {
+  const agentCalls = input.agentCalls || [];
   const shouldEscalate =
     input.analysis.isIssue ||
     ESCALATE_CATEGORIES.has(input.analysis.category) ||
@@ -48,11 +58,12 @@ export async function runSupportEngineer(input: {
     .join('\n');
 
   try {
+    const model = fastChatModel();
     const groq = getGroq();
     const completion = await groq.chat.completions.create({
-      model: supportChatModel(),
+      model,
       temperature: 0.3,
-      max_tokens: 450,
+      max_tokens: 350,
       messages: [
         {
           role: 'system',
@@ -85,35 +96,25 @@ Rules:
         },
       ],
     });
+    pushAgentCall(agentCalls, {
+      agent: 'SUPPORT_ENGINEER',
+      tier: 'fast',
+      model,
+    });
     const raw = completion.choices[0]?.message?.content || '';
     const parsed = extractJsonObject(raw);
     if (parsed) {
       const decision = SupportEngineerDecisionSchema.parse(parsed);
-      if (shouldEscalate && decision.action === 'REPLY' && !decision.customerReply.trim()) {
-        return {
-          ...decision,
-          action: 'ESCALATE_QA',
-          state: 'ESCALATED_TO_QA',
-          escalateReason: decision.escalateReason || input.analysis.possibleIssue || input.analysis.summary,
-        };
-      }
-      if (shouldEscalate && input.analysis.confidence >= 0.55 && decision.action === 'REPLY') {
-        if (ESCALATE_CATEGORIES.has(input.analysis.category)) {
-          return {
-            action: 'ESCALATE_QA',
-            customerReply: decision.customerReply,
-            escalateReason:
-              decision.escalateReason ||
-              input.analysis.possibleIssue ||
-              input.analysis.summary,
-            state: 'ESCALATED_TO_QA',
-          };
-        }
-      }
-      return decision;
+      return softenEscalationOverride(decision, input);
     }
   } catch (err) {
     console.warn('Support Engineer LLM failed', err);
+    pushAgentCall(agentCalls, {
+      agent: 'SUPPORT_ENGINEER',
+      tier: 'fast',
+      skipped: true,
+      reason: 'llm_failed',
+    });
   }
 
   if (shouldEscalate) {
@@ -136,6 +137,61 @@ Rules:
   };
 }
 
+/**
+ * Do not force ESCALATE_QA from a weak seed when SE chose REPLY with a
+ * usable answer and there is no reproduction signal.
+ */
+export function softenEscalationOverride(
+  decision: SupportEngineerDecision,
+  input: {
+    message: string;
+    analysis: ChatAnalysis;
+  }
+): SupportEngineerDecision {
+  const shouldEscalateHint =
+    input.analysis.isIssue ||
+    ESCALATE_CATEGORIES.has(input.analysis.category) ||
+    Boolean(input.analysis.possibleIssue?.trim());
+
+  if (decision.action !== 'REPLY') return decision;
+
+  // Empty reply + escalate hint → escalate
+  if (shouldEscalateHint && !decision.customerReply.trim()) {
+    return {
+      ...decision,
+      action: 'ESCALATE_QA',
+      state: 'ESCALATED_TO_QA',
+      escalateReason:
+        decision.escalateReason ||
+        input.analysis.possibleIssue ||
+        input.analysis.summary,
+    };
+  }
+
+  // Soft override only for strong bug signals with repro evidence
+  const hasRepro = REPRO_HINT.test(input.message);
+  if (
+    shouldEscalateHint &&
+    input.analysis.isIssue &&
+    input.analysis.confidence >= 0.85 &&
+    hasRepro &&
+    ESCALATE_CATEGORIES.has(input.analysis.category)
+  ) {
+    return {
+      action: 'ESCALATE_QA',
+      customerReply: decision.customerReply,
+      escalateReason:
+        decision.escalateReason ||
+        input.analysis.possibleIssue ||
+        input.analysis.summary,
+      state: 'ESCALATED_TO_QA',
+    };
+  }
+
+  // Trust SE REPLY when it provided a customer answer (no blanket force)
+  return decision;
+}
+
 export async function craftFinalCustomerReply(input: {
   message: string;
   analysis: ChatAnalysis;
@@ -146,7 +202,9 @@ export async function craftFinalCustomerReply(input: {
   issueKey?: string;
   duplicate?: boolean;
   langHint?: 'ml' | 'en';
+  agentCalls?: AgentCallLog[];
 }): Promise<string> {
+  const agentCalls = input.agentCalls || [];
   const looksLikeMongoId = (v?: string) =>
     Boolean(v && /^[a-f0-9]{24}$/i.test(v.trim()));
   const ref =
@@ -172,9 +230,10 @@ export async function craftFinalCustomerReply(input: {
   }
   if (input.qaRecommendedResponse?.trim()) {
     try {
+      const model = strongChatModel();
       const groq = getGroq();
       const completion = await groq.chat.completions.create({
-        model: supportChatModel(),
+        model,
         temperature: 0.25,
         max_tokens: 260,
         messages: [
@@ -200,6 +259,11 @@ Rules:
             }),
           },
         ],
+      });
+      pushAgentCall(agentCalls, {
+        agent: 'CRAFT_REPLY',
+        tier: 'strong',
+        model,
       });
       const text = (completion.choices[0]?.message?.content || '')
         .replace(/<think>[\s\S]*?<\/think>/gi, '')

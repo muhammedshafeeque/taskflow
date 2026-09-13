@@ -88,14 +88,15 @@ export type SupportEngineerDecision = z.infer<
   typeof SupportEngineerDecisionSchema
 >;
 
-export function supportChatModel(): string {
-  return (
-    process.env.SUPPORT_CHAT_MODEL?.trim() ||
-    process.env.GROQ_CHAT_MODEL?.trim() ||
-    process.env.GROQ_MODEL?.trim() ||
-    'qwen/qwen3.8-27b'
-  );
-}
+export {
+  fastChatModel,
+  strongChatModel,
+  supportChatModel,
+  modelForTier,
+  type ModelTier,
+  type AgentCallLog,
+  pushAgentCall,
+} from '../Ai/models';
 
 export function extractJsonObject(text: string): unknown | null {
   if (!text) return null;

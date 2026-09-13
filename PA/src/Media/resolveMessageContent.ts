@@ -1,4 +1,6 @@
 import type { Message, MessageMedia } from 'whatsapp-web.js';
+import { getBotSettings } from '../Config/botSettings';
+import { isLowQualityTranscript } from '../Memory/conversationMemory';
 import { detectReplyLang, type ReplyLang } from './lang';
 import { transcribeAudio } from './transcribe';
 
@@ -52,11 +54,42 @@ export async function resolveMessageContent(
     const media = await downloadMediaWithRetry(msg);
     if (!media?.data) return null;
 
-    const { text, language } = await transcribeAudio(
+    let { text, language } = await transcribeAudio(
       media.data,
       media.mimetype || 'audio/ogg'
     );
     if (!text) return null;
+
+    // Low-quality forced-language transcript → one auto-language retry
+    const settings = await getBotSettings();
+    const forcedLang = (
+      settings.sttLanguage ||
+      process.env.GROQ_STT_LANGUAGE?.trim().toLowerCase() ||
+      'ml'
+    ).toLowerCase();
+    if (isLowQualityTranscript(text) && forcedLang !== 'auto') {
+      console.log('STT low quality — retry with auto language', {
+        from: msg.from,
+        preview: text.slice(0, 80),
+      });
+      try {
+        const retry = await transcribeAudio(
+          media.data,
+          media.mimetype || 'audio/ogg',
+          'auto'
+        );
+        if (retry.text && !isLowQualityTranscript(retry.text)) {
+          text = retry.text;
+          language = retry.language;
+        } else if (retry.text && retry.text.length > text.length) {
+          text = retry.text;
+          language = retry.language;
+        }
+      } catch (err) {
+        console.warn('STT auto retry failed', err);
+      }
+    }
+
     const lang = detectReplyLang(text, language);
     console.log('Voice transcribed', {
       from: msg.from,
