@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "tsx --test src/Support/__tests__/**/*.test.ts",
+    "test": "tsx --test src/Support/__tests__/**/*.test.ts src/Agent/__tests__/**/*.test.ts",
     "postinstall": "patch-package"
   },
   "keywords": [],

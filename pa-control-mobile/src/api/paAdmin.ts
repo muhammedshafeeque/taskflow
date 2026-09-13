@@ -372,6 +372,61 @@ export const paAdmin = {
       `/api/admin/service-tickets/${encodeURIComponent(id)}`,
       { method: 'PATCH', body: JSON.stringify(body) }
     ),
+  listAgentDevices: () => request<AgentDeviceRow[]>('/api/admin/agent/devices'),
+  createAgentPairing: (body: { name?: string; userLabel?: string } = {}) =>
+    request<{
+      device: AgentDeviceRow
+      pairingCode: string
+      expiresAt?: string
+    }>('/api/admin/agent/devices', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  revokeAgentDevice: (deviceId: string) =>
+    request<AgentDeviceRow>(
+      `/api/admin/agent/devices/${encodeURIComponent(deviceId)}/revoke`,
+      { method: 'POST' }
+    ),
+  listAgentJobs: (opts: { deviceId?: string; status?: string } = {}) => {
+    const q = new URLSearchParams()
+    if (opts.deviceId) q.set('deviceId', opts.deviceId)
+    if (opts.status) q.set('status', opts.status)
+    const qs = q.toString()
+    return request<AgentJobRow[]>(
+      `/api/admin/agent/jobs${qs ? `?${qs}` : ''}`
+    )
+  },
+  getAgentJob: (id: string) =>
+    request<AgentJobRow>(`/api/admin/agent/jobs/${encodeURIComponent(id)}`),
+  createAgentJob: (body: {
+    type: 'fix_issue' | 'follow_up' | 'run_command' | 'deploy'
+    deviceId: string
+    issueKey?: string
+    projectId?: string
+    projectKey?: string
+    instruction?: string
+    command?: string
+    parentJobId?: string
+  }) =>
+    request<AgentJobRow>('/api/admin/agent/jobs', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  cancelAgentJob: (id: string) =>
+    request<AgentJobRow>(
+      `/api/admin/agent/jobs/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST' }
+    ),
+  approveAgentDeploy: (id: string, command?: string) =>
+    request<{ parent: AgentJobRow; deployJob: AgentJobRow }>(
+      `/api/admin/agent/jobs/${encodeURIComponent(id)}/approve-deploy`,
+      { method: 'POST', body: JSON.stringify({ command }) }
+    ),
+  rejectAgentJob: (id: string) =>
+    request<AgentJobRow>(
+      `/api/admin/agent/jobs/${encodeURIComponent(id)}/reject`,
+      { method: 'POST' }
+    ),
 }
 
 export type CustomerRequestRow = {
@@ -397,4 +452,44 @@ export type ServiceTicketRow = {
 export function supportEventsUrl(): string {
   const secret = encodeURIComponent(getStoredSecret())
   return `${getBaseUrl()}/api/admin/support/events?secret=${secret}`
+}
+
+export type AgentDeviceRow = {
+  deviceId: string
+  name: string
+  userLabel?: string
+  lastSeenAt?: string
+  online?: boolean
+  workspaces?: Array<{
+    projectKey: string
+    projectId?: string
+    localPath: string
+  }>
+  allowCommands?: string[]
+  aiProviders?: string[]
+}
+
+export type AgentJobRow = {
+  id: string
+  type: string
+  status: string
+  deviceId: string
+  issueKey?: string
+  projectId?: string
+  projectKey?: string
+  instruction?: string
+  command?: string
+  logs?: Array<{ at?: string; line: string }>
+  summary?: string
+  diffStat?: string
+  error?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export function agentJobEventsUrl(jobId: string): string {
+  const secret = encodeURIComponent(getStoredSecret())
+  return `${getBaseUrl()}/api/admin/agent/jobs/${encodeURIComponent(
+    jobId
+  )}/events?secret=${secret}`
 }

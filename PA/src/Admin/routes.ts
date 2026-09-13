@@ -36,10 +36,12 @@ import {
   voiceSpeak,
   voiceTranscribe,
 } from './voiceRoutes';
+import { agentAdminRouter } from '../Agent/adminRoutes';
 
 export const adminRouter = Router();
 
 adminRouter.use(requireAdminSecret);
+adminRouter.use('/agent', agentAdminRouter);
 
 adminRouter.get('/status', async (_req, res) => {
   const settings = await getBotSettings();

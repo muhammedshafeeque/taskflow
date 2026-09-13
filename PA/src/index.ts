@@ -2,6 +2,7 @@ import cors from 'cors';
 import express from 'express';
 import dotenv from 'dotenv';
 import { adminRouter } from './Admin/routes';
+import { agentDeviceRouter } from './Agent/deviceRoutes';
 import { connectDB } from './Config/db';
 import { startWhatsApp } from './Whatsap';
 
@@ -27,7 +28,12 @@ const origin =
 app.use(
   cors({
     origin: [origin, 'http://127.0.0.1:5174', 'http://localhost:5173'],
-    allowedHeaders: ['Content-Type', 'x-pa-admin-secret'],
+    allowedHeaders: [
+      'Content-Type',
+      'x-pa-admin-secret',
+      'Authorization',
+      'x-agent-device-token',
+    ],
   })
 );
 
@@ -36,6 +42,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/admin', adminRouter);
+app.use('/api/agent/device', agentDeviceRouter);
 
 async function main() {
   await connectDB();

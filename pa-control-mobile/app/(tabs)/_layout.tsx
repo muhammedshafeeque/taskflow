@@ -85,6 +85,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="agent"
+        options={{
+          title: 'Agent',
+          tabBarIcon: tabIcon('desktop-outline', 'desktop'),
+        }}
+      />
+      <Tabs.Screen
         name="leads"
         options={{
           title: 'Leads',
