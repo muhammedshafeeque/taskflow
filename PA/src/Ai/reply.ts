@@ -202,9 +202,12 @@ export async function generateReply(
       atriumProjectKey?: string;
     }>;
     isGroup?: boolean;
+    /** Already-loaded conversation (skips a DB read); null = none exists. */
+    conv?: ConversationDoc | null;
   }
 ): Promise<GenerateReplyResult> {
-  const conv = await getConversation(chatId);
+  const conv =
+    opts?.conv !== undefined ? opts.conv : await getConversation(chatId);
 
   const hasHistory = (conv?.messages?.length ?? 0) > 0;
   const groupMode = Boolean(opts?.isGroup || opts?.supportProjects);

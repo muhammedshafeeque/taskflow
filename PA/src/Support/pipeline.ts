@@ -90,28 +90,27 @@ export async function runSupportPipeline(input: {
   const groupName = group.name || groupId;
   const agentCalls: AgentCallLog[] = [];
 
-  let quotedText: string | undefined;
-  let replyToMessageId: string | undefined;
-  if (msg.hasQuotedMsg) {
-    try {
-      const quoted = await msg.getQuotedMessage();
-      quotedText = String(quoted?.body || '').slice(0, 500);
-      replyToMessageId = quoted?.id?._serialized;
-    } catch {
-      // ignore
-    }
-  }
-
-  const conversation = await ensureConversation(groupId, groupName, projectIds);
   const whatsappMessageId = msg.id?._serialized || String(msg.id || '');
 
-  // Capability-gated intents (ticket status, billing, KB FAQ, etc.)
-  const eco = await tryEcosystemReply({
-    text,
-    group,
-    lang,
-    senderPhone: sender.phone,
-  });
+  // Independent lookups run together: quote, support thread, ecosystem intents.
+  const [quoted, conversation, eco] = await Promise.all([
+    msg.hasQuotedMsg
+      ? msg.getQuotedMessage().catch(() => null)
+      : Promise.resolve(null),
+    ensureConversation(groupId, groupName, projectIds),
+    // Capability-gated intents (ticket status, billing, KB FAQ, etc.)
+    tryEcosystemReply({
+      text,
+      group,
+      lang,
+      senderPhone: sender.phone,
+    }),
+  ]);
+  const quotedText = quoted
+    ? String(quoted.body || '').slice(0, 500)
+    : undefined;
+  const replyToMessageId = quoted?.id?._serialized;
+
   if (eco.handled && eco.reply) {
     await sendReply(msg, eco.reply, source, lang);
     await appendTurn(groupId, text, eco.reply, {
@@ -131,39 +130,45 @@ export async function runSupportPipeline(input: {
     return;
   }
 
-  const userMsg = await SupportMessage.create({
-    conversationId: conversation._id,
-    groupId,
-    whatsappMessageId,
-    senderId: msg.author || msg.from,
-    senderName: sender.contactName,
-    senderPhone: sender.phone,
-    message: text,
-    messageType: 'user',
-    replyToMessageId,
-  });
+  const [userMsg, convCtx, taskflowRaw] = await Promise.all([
+    SupportMessage.create({
+      conversationId: conversation._id,
+      groupId,
+      whatsappMessageId,
+      senderId: msg.author || msg.from,
+      senderName: sender.contactName,
+      senderPhone: sender.phone,
+      message: text,
+      messageType: 'user',
+      replyToMessageId,
+    }),
+    // Current message is passed separately — keep it out of history.
+    collectConversationContext(groupId, {
+      quotedText,
+      excludeMessageId: whatsappMessageId,
+    }),
+    fetchProjectSupportContext(projectIds),
+  ]);
 
-  const convCtx = await collectConversationContext(groupId, { quotedText });
-  const taskflowRaw = await fetchProjectSupportContext(projectIds);
-
-  const analysisActivity = await AgentActivity.create({
-    agentType: 'CHAT_ANALYZER',
-    conversationId: conversation._id,
-    messageId: userMsg._id,
-    groupId,
-    projectId: projectIds[0],
-    action: 'analyze',
-    status: 'ANALYZING',
-    input: { text: text.slice(0, 500) },
-  });
-
-  const analysis = await analyzeSupportMessage(text, {
-    isReply: Boolean(quotedText),
-    hasHistory: convCtx.hasHistory,
-    recentContext: convCtx.recentText,
-    projectLabels: projects.map((p) => p.name),
-    agentCalls,
-  });
+  const [analysisActivity, analysis] = await Promise.all([
+    AgentActivity.create({
+      agentType: 'CHAT_ANALYZER',
+      conversationId: conversation._id,
+      messageId: userMsg._id,
+      groupId,
+      projectId: projectIds[0],
+      action: 'analyze',
+      status: 'ANALYZING',
+      input: { text: text.slice(0, 500) },
+    }),
+    analyzeSupportMessage(text, {
+      isReply: Boolean(quotedText),
+      hasHistory: convCtx.hasHistory,
+      recentContext: convCtx.recentText,
+      projectLabels: projects.map((p) => p.name),
+      agentCalls,
+    }),
+  ]);
 
   // Rank tickets once we have entities/summary from analysis
   const taskflow = withRankedTickets(
@@ -174,19 +179,18 @@ export async function runSupportPipeline(input: {
   );
   const ticketKeys = knownTicketKeys(taskflow.tickets);
 
-  await AgentActivity.updateOne(
-    { _id: analysisActivity._id },
-    {
-      $set: {
-        status: 'COMPLETED',
-        output: { analysis, agentCalls: agentCalls.slice() },
-      },
-    }
-  );
-  await SupportMessage.updateOne(
-    { _id: userMsg._id },
-    { $set: { analysis } }
-  );
+  await Promise.all([
+    AgentActivity.updateOne(
+      { _id: analysisActivity._id },
+      {
+        $set: {
+          status: 'COMPLETED',
+          output: { analysis, agentCalls: agentCalls.slice() },
+        },
+      }
+    ),
+    SupportMessage.updateOne({ _id: userMsg._id }, { $set: { analysis } }),
+  ]);
 
   if (isSpamAnalysis(analysis)) {
     console.log('Support pipeline skip spam', { groupId, agentCalls });
@@ -204,17 +208,19 @@ export async function runSupportPipeline(input: {
     const kb = await lookupKbForSupport(text, true);
     if (kb.hit && kb.reply) {
       await sendReply(msg, kb.reply, source, lang);
-      await appendTurn(groupId, text, kb.reply, {
-        lastType: 'support',
-        lastLang: lang,
-      });
-      await SupportMessage.create({
-        conversationId: conversation._id,
-        groupId,
-        message: kb.reply,
-        messageType: 'assistant',
-        agentOutputs: { kbTitle: kb.title },
-      });
+      await Promise.all([
+        appendTurn(groupId, text, kb.reply, {
+          lastType: 'support',
+          lastLang: lang,
+        }),
+        SupportMessage.create({
+          conversationId: conversation._id,
+          groupId,
+          message: kb.reply,
+          messageType: 'assistant',
+          agentOutputs: { kbTitle: kb.title },
+        }),
+      ]);
       emitSupportEvent({
         type: 'SUPPORT_REPLY_SENT',
         groupId,
@@ -229,26 +235,27 @@ export async function runSupportPipeline(input: {
     }
   }
 
-  const seActivity = await AgentActivity.create({
-    agentType: 'SUPPORT_ENGINEER',
-    conversationId: conversation._id,
-    messageId: userMsg._id,
-    groupId,
-    projectId: projectIds[0],
-    action: 'decide',
-    status: 'ANALYZING',
-    input: { analysis },
-  });
-
-  const seDecision = await runSupportEngineer({
-    message: text,
-    analysis,
-    projects,
-    conversation: convCtx,
-    taskflow,
-    langHint: lang,
-    agentCalls,
-  });
+  const [seActivity, seDecision] = await Promise.all([
+    AgentActivity.create({
+      agentType: 'SUPPORT_ENGINEER',
+      conversationId: conversation._id,
+      messageId: userMsg._id,
+      groupId,
+      projectId: projectIds[0],
+      action: 'decide',
+      status: 'ANALYZING',
+      input: { analysis },
+    }),
+    runSupportEngineer({
+      message: text,
+      analysis,
+      projects,
+      conversation: convCtx,
+      taskflow,
+      langHint: lang,
+      agentCalls,
+    }),
+  ]);
 
   let customerReply = seDecision.customerReply.trim();
   let ticketId: string | undefined;
@@ -277,19 +284,21 @@ export async function runSupportPipeline(input: {
       agent: 'SUPPORT_ENGINEER',
     });
 
-    await AgentActivity.updateOne(
-      { _id: seActivity._id },
-      {
-        $set: {
-          status: 'ESCALATED_TO_QA',
-          output: { ...seDecision, agentCalls: agentCalls.slice() },
-        },
-      }
-    );
-    await SupportConversation.updateOne(
-      { _id: conversation._id },
-      { $set: { status: 'waiting_qa', updatedAt: new Date() } }
-    );
+    await Promise.all([
+      AgentActivity.updateOne(
+        { _id: seActivity._id },
+        {
+          $set: {
+            status: 'ESCALATED_TO_QA',
+            output: { ...seDecision, agentCalls: agentCalls.slice() },
+          },
+        }
+      ),
+      SupportConversation.updateOne(
+        { _id: conversation._id },
+        { $set: { status: 'waiting_qa', updatedAt: new Date() } }
+      ),
+    ]);
 
     emitSupportEvent({
       type: 'QA_VERIFICATION_STARTED',
@@ -300,26 +309,27 @@ export async function runSupportPipeline(input: {
       agent: 'QA_LEAD',
     });
 
-    const qaActivity = await AgentActivity.create({
-      agentType: 'QA_LEAD',
-      conversationId: conversation._id,
-      messageId: userMsg._id,
-      groupId,
-      projectId: projectIds[0],
-      action: 'investigate',
-      status: 'INVESTIGATING',
-      input: { escalateReason: seDecision.escalateReason },
-    });
-
-    const qa = await runQaLead({
-      message: text,
-      analysis,
-      escalateReason: seDecision.escalateReason,
-      projects,
-      conversation: convCtx,
-      taskflow,
-      agentCalls,
-    });
+    const [qaActivity, qa] = await Promise.all([
+      AgentActivity.create({
+        agentType: 'QA_LEAD',
+        conversationId: conversation._id,
+        messageId: userMsg._id,
+        groupId,
+        projectId: projectIds[0],
+        action: 'investigate',
+        status: 'INVESTIGATING',
+        input: { escalateReason: seDecision.escalateReason },
+      }),
+      runQaLead({
+        message: text,
+        analysis,
+        escalateReason: seDecision.escalateReason,
+        projects,
+        conversation: convCtx,
+        taskflow,
+        agentCalls,
+      }),
+    ]);
 
     qaStatus = qa.classification;
     emitSupportEvent({
@@ -535,56 +545,59 @@ export async function runSupportPipeline(input: {
         : 'Thanks — we are looking into this. Please share any extra detail if you have it.';
   }
 
-  const criticActivity = await AgentActivity.create({
-    agentType: 'REPLY_CRITIC',
-    conversationId: conversation._id,
-    messageId: userMsg._id,
-    groupId,
-    projectId: projectIds[0],
-    action: 'critique',
-    status: 'ANALYZING',
-    input: { replyPreview: customerReply.slice(0, 200) },
-  });
-
-  const critic = await runReplyCritic({
-    reply: customerReply,
-    message: text,
-    knownTicketKeys: ticketKeys,
-    escalated,
-    analysisConfidence: analysis.confidence,
-    langHint: lang,
-    agentCalls,
-  });
+  const [criticActivity, critic] = await Promise.all([
+    AgentActivity.create({
+      agentType: 'REPLY_CRITIC',
+      conversationId: conversation._id,
+      messageId: userMsg._id,
+      groupId,
+      projectId: projectIds[0],
+      action: 'critique',
+      status: 'ANALYZING',
+      input: { replyPreview: customerReply.slice(0, 200) },
+    }),
+    runReplyCritic({
+      reply: customerReply,
+      message: text,
+      knownTicketKeys: ticketKeys,
+      escalated,
+      analysisConfidence: analysis.confidence,
+      langHint: lang,
+      agentCalls,
+    }),
+  ]);
   customerReply = critic.reply;
 
-  await AgentActivity.updateOne(
-    { _id: criticActivity._id },
-    {
-      $set: {
-        status: 'COMPLETED',
-        output: {
-          ok: critic.ok,
-          issues: critic.issues,
-          skipped: critic.skipped,
-          agentCalls: agentCalls.slice(),
-        },
-      },
-    }
-  );
-
+  // Customer first — bookkeeping writes happen after the reply is out.
   await sendReply(msg, customerReply, source, lang);
-  await appendTurn(groupId, text, customerReply, {
-    lastType: 'support',
-    lastLang: lang,
-  });
-  await SupportMessage.create({
-    conversationId: conversation._id,
-    groupId,
-    message: customerReply,
-    messageType: 'assistant',
-    ticketId,
-    agentOutputs: { seDecision, qaStatus, agentCalls },
-  });
+  await Promise.all([
+    AgentActivity.updateOne(
+      { _id: criticActivity._id },
+      {
+        $set: {
+          status: 'COMPLETED',
+          output: {
+            ok: critic.ok,
+            issues: critic.issues,
+            skipped: critic.skipped,
+            agentCalls: agentCalls.slice(),
+          },
+        },
+      }
+    ),
+    appendTurn(groupId, text, customerReply, {
+      lastType: 'support',
+      lastLang: lang,
+    }),
+    SupportMessage.create({
+      conversationId: conversation._id,
+      groupId,
+      message: customerReply,
+      messageType: 'assistant',
+      ticketId,
+      agentOutputs: { seDecision, qaStatus, agentCalls },
+    }),
+  ]);
 
   emitSupportEvent({
     type: 'SUPPORT_REPLY_SENT',

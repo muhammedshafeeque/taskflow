@@ -10,7 +10,7 @@ export type ConversationContextBundle = {
 
 export async function collectConversationContext(
   groupId: string,
-  opts?: { quotedText?: string }
+  opts?: { quotedText?: string; excludeMessageId?: string }
 ): Promise<ConversationContextBundle> {
   const [conv, supportMsgs] = await Promise.all([
     getConversation(groupId),
@@ -20,7 +20,14 @@ export async function collectConversationContext(
       .lean(),
   ]);
 
-  const fromSupport = [...supportMsgs].reverse().map((m) => {
+  const fromSupport = [...supportMsgs]
+    .reverse()
+    .filter(
+      (m) =>
+        !opts?.excludeMessageId ||
+        m.whatsappMessageId !== opts.excludeMessageId
+    )
+    .map((m) => {
     const who =
       m.messageType === 'assistant'
         ? 'SupportEngineer'

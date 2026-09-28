@@ -156,6 +156,7 @@ export async function patchWhatsAppGroup(
     procurementEnabled?: boolean;
   }
 ): Promise<GroupListItem> {
+  groupCache.delete(chatId);
   const $set: Record<string, unknown> = { updatedAt: new Date() };
   const $unset: Record<string, 1> = {};
 
@@ -217,10 +218,22 @@ export async function patchWhatsAppGroup(
   return toListItem(chatId, saved.name || patch.name || chatId, saved);
 }
 
+const GROUP_CACHE_MS = 5000;
+const groupCache = new Map<string, { at: number; value: WhatsappGroupDoc | null }>();
+
+/** Hot path (every group message) — short cache, invalidated on patch. */
 export async function getGroupConfig(
   chatId: string
 ): Promise<WhatsappGroupDoc | null> {
-  return (await WhatsappGroup.findOne({ chatId }).lean()) as WhatsappGroupDoc | null;
+  const hit = groupCache.get(chatId);
+  if (hit && Date.now() - hit.at < GROUP_CACHE_MS) return hit.value;
+  const value = (await WhatsappGroup.findOne({ chatId }).lean()) as WhatsappGroupDoc | null;
+  groupCache.set(chatId, { at: Date.now(), value });
+  if (groupCache.size > 1000) {
+    const oldest = groupCache.keys().next().value;
+    if (oldest !== undefined) groupCache.delete(oldest);
+  }
+  return value;
 }
 
 export async function listCustomerOrgsForAdmin() {

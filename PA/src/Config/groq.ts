@@ -12,6 +12,8 @@ export function getGroq(): Groq {
     );
   }
 
-  client = new Groq({ apiKey });
+  const timeout = Number(process.env.GROQ_TIMEOUT_MS) || 30_000;
+  // Fail fast instead of hanging a chat; SDK retries 429/5xx with backoff.
+  client = new Groq({ apiKey, timeout, maxRetries: 2 });
   return client;
 }

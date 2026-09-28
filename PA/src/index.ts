@@ -4,7 +4,8 @@ import dotenv from 'dotenv';
 import { adminRouter } from './Admin/routes';
 import { agentDeviceRouter } from './Agent/deviceRoutes';
 import { connectDB } from './Config/db';
-import { startWhatsApp } from './Whatsap';
+import mongoose from 'mongoose';
+import { startWhatsApp, stopWhatsApp } from './Whatsap';
 
 dotenv.config();
 
@@ -49,9 +50,22 @@ async function main() {
   await startWhatsApp();
 
   const port = Number(process.env.PORT) || 3000;
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log(`PA server on port ${port}`);
   });
+
+  let stopping = false;
+  const shutdown = async (signal: string) => {
+    if (stopping) process.exit(1); // second Ctrl+C forces exit
+    stopping = true;
+    console.log(`${signal} — shutting down gracefully`);
+    server.close();
+    await stopWhatsApp();
+    await mongoose.disconnect().catch(() => undefined);
+    process.exit(0);
+  };
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
 main().catch((err) => {

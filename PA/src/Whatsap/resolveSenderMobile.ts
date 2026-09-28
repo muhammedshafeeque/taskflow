@@ -1,14 +1,36 @@
 import type { Client, Message } from 'whatsapp-web.js';
 
+type SenderInfo = {
+  phone: string;
+  contactName?: string;
+  chatId: string;
+};
+
+const CACHE_TTL_MS = 30 * 60 * 1000;
+const CACHE_CAP = 2000;
+/** Contact lookups are puppeteer round-trips — cache per chat+author. */
+const cache = new Map<string, { at: number; value: SenderInfo }>();
+
 /**
  * Resolve the sender's real mobile number from a WhatsApp message.
  * Prefers phone (c.us / Contact.number) over opaque @lid ids.
  */
-export async function resolveSenderMobile(msg: Message): Promise<{
-  phone: string;
-  contactName?: string;
-  chatId: string;
-}> {
+export async function resolveSenderMobile(msg: Message): Promise<SenderInfo> {
+  const key = `${msg.from}|${msg.author || ''}`;
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
+
+  const value = await lookupSender(msg);
+  cache.delete(key);
+  cache.set(key, { at: Date.now(), value });
+  if (cache.size > CACHE_CAP) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  return value;
+}
+
+async function lookupSender(msg: Message): Promise<SenderInfo> {
   const chatId = msg.from;
   let contactName: string | undefined;
   let phone = '';

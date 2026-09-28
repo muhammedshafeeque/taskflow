@@ -51,7 +51,41 @@ function ingestHeaders(): Record<string, string> | null {
   return h;
 }
 
+function timeoutSignal(): AbortSignal {
+  return AbortSignal.timeout(Number(process.env.TASKFLOW_TIMEOUT_MS) || 8000);
+}
+
+const CONTEXT_TTL_MS = 30_000;
+/** Shared in-flight + short-lived cache so bursts across groups hit TaskFlow once. */
+const contextCache = new Map<
+  string,
+  { at: number; value: Promise<TaskflowProjectContext> }
+>();
+
+/** Drop cached project context (after creating/linking tickets). */
+export function invalidateProjectContextCache(): void {
+  contextCache.clear();
+}
+
 export async function fetchProjectSupportContext(
+  projectIds: string[]
+): Promise<TaskflowProjectContext> {
+  const key = [...projectIds].sort().join(',');
+  const hit = contextCache.get(key);
+  if (hit && Date.now() - hit.at < CONTEXT_TTL_MS) return hit.value;
+
+  const value = loadProjectSupportContext(projectIds);
+  contextCache.set(key, { at: Date.now(), value });
+  // Only successful responses stay cached
+  void value.then((ctx) => {
+    if (!ctx.available && contextCache.get(key)?.value === value) {
+      contextCache.delete(key);
+    }
+  });
+  return value;
+}
+
+async function loadProjectSupportContext(
   projectIds: string[]
 ): Promise<TaskflowProjectContext> {
   const base = apiBase();
@@ -80,7 +114,7 @@ export async function fetchProjectSupportContext(
     });
     const res = await fetch(
       `${base}/api/service/ingest/project-context?${qs}`,
-      { headers }
+      { headers, signal: timeoutSignal() }
     );
     if (!res.ok) {
       const body = await res.text();
@@ -145,7 +179,9 @@ export async function createServiceTicket(input: {
       method: 'POST',
       headers,
       body: JSON.stringify({ ...input, createIssue: input.createIssue !== false }),
+      signal: timeoutSignal(),
     });
+    invalidateProjectContextCache();
     if (!res.ok) {
       console.warn(
         'create ticket failed',
@@ -203,8 +239,10 @@ export async function linkTicketComment(input: {
           whatsappMessageId: input.whatsappMessageId,
           whatsappGroupId: input.whatsappGroupId,
         }),
+        signal: timeoutSignal(),
       }
     );
+    invalidateProjectContextCache();
     if (!res.ok) {
       console.warn('link ticket failed', res.status);
       return { ok: false };
