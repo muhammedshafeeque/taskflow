@@ -1,5 +1,5 @@
 import { getGroq } from '../Config/groq';
-import { fastChatModel, type AgentCallLog, pushAgentCall } from '../Ai/models';
+import { fastChatModel, reasoningParams, type AgentCallLog, pushAgentCall } from '../Ai/models';
 import { analyzeMessage } from '../MessageAnalyzer';
 import {
   ChatAnalysisSchema,
@@ -132,6 +132,7 @@ export async function analyzeSupportMessage(
     const groq = getGroq();
     const completion = await groq.chat.completions.create({
       model,
+      ...reasoningParams(model),
       temperature: 0.1,
       max_tokens: 300,
       messages: [

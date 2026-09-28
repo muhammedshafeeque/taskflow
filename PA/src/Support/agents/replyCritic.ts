@@ -1,6 +1,7 @@
 import { getGroq } from '../../Config/groq';
 import {
   fastChatModel,
+  reasoningParams,
   strongChatModel,
   type AgentCallLog,
   pushAgentCall,
@@ -112,6 +113,7 @@ export async function runReplyCritic(input: {
     const groq = getGroq();
     const completion = await groq.chat.completions.create({
       model,
+      ...reasoningParams(model),
       temperature: 0.1,
       max_tokens: 280,
       messages: [

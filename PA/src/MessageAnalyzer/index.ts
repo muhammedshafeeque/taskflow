@@ -47,6 +47,24 @@ const REQUIREMENT =
 const SUPPORT =
   /\b(status|update|progress|bug|issue|error|problem|help|support|follow\s*up|pending|delay|fix|not\s*working|broken|സ്റ്റാറ്റസ്|അപ്ഡേറ്റ്|പ്രശ്നം|ഹെല്പ്|സപ്പോര്?ട്ട്)\b/i;
 
+/*
+ * Malayalam stems. JS `\b` only sees ASCII word chars, so the Malayalam
+ * alternatives above never match; Malayalam also inflects by suffix
+ * (ആപ്പ് → ആപ്പിന്, ആപ്പുകൾ), so match stems anywhere instead.
+ */
+const GREETING_ML = /^(ഹലോ|ഹായ്|ഹായ|നമസ്കാരം|നമസ്കാരം സർ|സുഖമാണോ|ഗുഡ് മോണിംഗ്)[\s!.]*$/u;
+
+const GREETING_SOFT_ML = /(ഹലോ|ഹായ്|നമസ്കാരം)/u;
+
+const LEAD_ML =
+  /(വെബ്സ|വെബ്‌സ|സൈറ്റ്|ആപ്|ആപ്ലിക്കേഷ|പ്രോജക്ട|പ്രൊജക്ട|പ്രോജക്റ്റ|സോഫ്റ്റ്|ബഡ്ജറ്റ|ബജറ്റ|ക്വോട്ട|ക്വട്ടേഷ|നിരക്ക|ചെലവ|റേറ്റ|ബില്ലിംഗ|ബില്ലിങ|ബിസിനസ|കമ്പനി|ഡെവലപ്|ഉണ്ടാക്ക|ചെയ്തു തര|ഇ-കൊമേഴ്സ|ഓൺലൈൻ ഷോപ്പ)/u;
+
+const REQUIREMENT_ML =
+  /(ആവശ്യ|വേണം|വേണ്ടത|ഫീച്ചർ|ഫീച്ചറ|വിശദാംശ|ലോഗി|ഡാഷ്ബോർഡ|പേയ്മെന്റ|പേമെന്റ|ഡിസൈൻ|ഡെഡ്‌ലൈൻ|എത്ര ദിവസ)/u;
+
+const SUPPORT_ML =
+  /(സ്റ്റാറ്റസ|അപ്ഡേറ്റ|അപ്‌ഡേറ്റ|പ്രശ്ന|ഹെൽപ്പ|ഹെല്പ|സഹായ|സപ്പോർട്ട|സപ്പോര്ട്ട|എറർ|എര്ര|എറര|ബഗ്|വർക്ക് ചെയ്യുന്നില്ല|പ്രവർത്തിക്കുന്നില്ല|ശരിയാകുന്നില്ല|തകരാ|കിട്ടുന്നില്ല|ഓപ്പൺ ആകുന്നില്ല|തുറക്കുന്നില്ല|തുരകുന്നില്ല)/u;
+
 /** Obvious off-topic — still ignore even mid-conversation. */
 const SPAM =
   /\b(lottery|crypto\s*giveaway|forex\s*signal|porn|xxx|joke|meme|cricket\s*score)\b/i;
@@ -76,14 +94,15 @@ export function analyzeMessage(
     return toResult('random', 'spam');
   }
 
-  if (GREETING.test(cleaned)) {
+  if (GREETING.test(cleaned) || GREETING_ML.test(cleaned)) {
     return toResult('greeting', 'greeting_exact');
   }
 
-  const hasLead = LEAD.test(cleaned);
-  const hasReq = REQUIREMENT.test(cleaned);
-  const hasSupport = SUPPORT.test(cleaned);
-  const hasGreeting = GREETING_SOFT.test(cleaned);
+  const hasLead = LEAD.test(cleaned) || LEAD_ML.test(cleaned);
+  const hasReq = REQUIREMENT.test(cleaned) || REQUIREMENT_ML.test(cleaned);
+  const hasSupport = SUPPORT.test(cleaned) || SUPPORT_ML.test(cleaned);
+  const hasGreeting =
+    GREETING_SOFT.test(cleaned) || GREETING_SOFT_ML.test(cleaned);
 
   if (hasLead && hasReq) {
     return toResult('requirement', 'lead_and_requirement');

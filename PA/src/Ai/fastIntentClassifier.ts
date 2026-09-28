@@ -1,6 +1,7 @@
 import { getGroq } from '../Config/groq';
 import {
   fastChatModel,
+  reasoningParams,
   type AgentCallLog,
   pushAgentCall,
 } from './models';
@@ -39,6 +40,7 @@ export async function classifyDmIntentFast(
     const groq = getGroq();
     const completion = await groq.chat.completions.create({
       model,
+      ...reasoningParams(model),
       temperature: 0,
       max_tokens: 120,
       messages: [
@@ -97,5 +99,9 @@ Prefer support/requirement over random when ambiguous business text.`,
     });
   }
 
+  // Classifier unavailable: a help desk should answer, not silently drop.
+  if (rules.reason === 'no_business_keywords' && text.trim().length >= 4) {
+    return { type: 'support', shouldReply: true, reason: 'classifier_unavailable' };
+  }
   return rules;
 }

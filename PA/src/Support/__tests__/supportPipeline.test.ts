@@ -252,7 +252,7 @@ describe('model tiers', () => {
     delete process.env.SUPPORT_CHAT_MODEL;
     delete process.env.SUPPORT_STRONG_MODEL;
     delete process.env.GROQ_MODEL;
-    assert.equal(fastChatModel(), 'llama-3.1-8b-instant');
+    assert.equal(fastChatModel(), 'openai/gpt-oss-20b');
     assert.equal(strongChatModel(), 'qwen/qwen3.8-27b');
     if (prevFast !== undefined) process.env.GROQ_FAST_MODEL = prevFast;
     if (prevStrong !== undefined) process.env.GROQ_CHAT_MODEL = prevStrong;

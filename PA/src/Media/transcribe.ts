@@ -50,10 +50,14 @@ export async function transcribeAudio(
   const result = await getGroq().audio.transcriptions.create({
     file,
     model,
+    // Whisper treats the prompt as preceding transcript: an English prompt
+    // made large-v3 *translate* Malayalam speech to English (losing meaning).
+    // A Malayalam-script prompt keeps Malayalam output; English speech is
+    // still transcribed as English.
     prompt:
       language === 'en'
         ? 'Transcribe clear English. Speakers discuss business, projects, leads, WhatsApp, Atrium, Taskflow, Ivorix.'
-        : 'Transcribe Malayalam speech in Malayalam script when possible. English product words (app, billing, features) may appear.',
+        : 'ഐവോറിക്സ് ഹെൽപ്പ് ഡെസ്ക്. ആപ്പ്, വെബ്സൈറ്റ്, ബില്ലിംഗ്, സോഫ്റ്റ്‌വെയർ, ലോഗിൻ, പ്രശ്നം.',
     ...(language ? { language } : {}),
     response_format: 'verbose_json',
     temperature: 0,

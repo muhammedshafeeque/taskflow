@@ -3,6 +3,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { adminRouter } from './Admin/routes';
 import { agentDeviceRouter } from './Agent/deviceRoutes';
+import { verifyGroqModels } from './Ai/models';
 import { connectDB } from './Config/db';
 import mongoose from 'mongoose';
 import { startWhatsApp, stopWhatsApp } from './Whatsap';
@@ -46,7 +47,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/agent/device', agentDeviceRouter);
 
 async function main() {
-  await connectDB();
+  await Promise.all([connectDB(), verifyGroqModels()]);
   await startWhatsApp();
 
   const port = Number(process.env.PORT) || 3000;
