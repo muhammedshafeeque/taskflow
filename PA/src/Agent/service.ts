@@ -272,9 +272,9 @@ export async function createJob(input: {
     const parent = await AgentJob.findById(input.parentJobId);
     if (parent) {
       issueContext = parent.issueContext;
-      if (!input.issueKey) input.issueKey = parent.issueKey;
-      if (!input.projectId) input.projectId = parent.projectId;
-      if (!input.projectKey) input.projectKey = parent.projectKey;
+      if (!input.issueKey) input.issueKey = parent.issueKey ?? undefined;
+      if (!input.projectId) input.projectId = parent.projectId ?? undefined;
+      if (!input.projectKey) input.projectKey = parent.projectKey ?? undefined;
     }
   }
 
