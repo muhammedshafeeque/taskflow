@@ -59,10 +59,21 @@ index dd977e8..b2ea9b4 100644
                    }
                  : undefined;
 diff --git a/node_modules/whatsapp-web.js/src/util/Injected/Utils.js b/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
-index 540078a..95a6f9a 100644
+index 540078a..78ec4c2 100644
 --- a/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
 +++ b/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
-@@ -582,7 +582,7 @@ exports.LoadUtils = () => {
+@@ -483,6 +483,10 @@ exports.LoadUtils = () => {
+             ...extraOptions,
+         };
+ 
++        // WA Web 2026-09-17+: MediaData spreads an enumerable __x_id that clobbers
++        // the Msg key and fails with "Data passed to getter must include an id".
++        delete message.__x_id;
++
+         // Bot's won't reply if canonicalUrl is set (linking)
+         if (botOptions) {
+             delete message.canonicalUrl;
+@@ -582,7 +586,7 @@ exports.LoadUtils = () => {
  
          return window
              .require('WAWebCollections')
@@ -71,7 +82,7 @@ index 540078a..95a6f9a 100644
      };
  
      window.WWebJS.editMessage = async (msg, content, options = {}) => {
-@@ -625,7 +625,9 @@ exports.LoadUtils = () => {
+@@ -625,7 +629,9 @@ exports.LoadUtils = () => {
          await window
              .require('WAWebSendMessageEditAction')
              .sendMessageEdit(msg, content, internalOptions);
@@ -82,7 +93,7 @@ index 540078a..95a6f9a 100644
      };
  
      window.WWebJS.toStickerData = async (mediaInfo) => {
-@@ -830,10 +832,20 @@ exports.LoadUtils = () => {
+@@ -830,10 +836,20 @@ exports.LoadUtils = () => {
  
          if (typeof msg.id.remote === 'object') {
              msg.id = Object.assign({}, msg.id, {
@@ -104,7 +115,7 @@ index 540078a..95a6f9a 100644
          delete msg.pendingAckUpdate;
  
          return msg;
-@@ -917,12 +929,24 @@ exports.LoadUtils = () => {
+@@ -917,12 +933,24 @@ exports.LoadUtils = () => {
          };
      };
  
@@ -133,7 +144,7 @@ index 540078a..95a6f9a 100644
      };
  
      window.WWebJS.getChannels = async () => {
-@@ -953,11 +977,16 @@ exports.LoadUtils = () => {
+@@ -953,11 +981,16 @@ exports.LoadUtils = () => {
              model.isGroup = true;
              const chatWid = window
                  .require('WAWebWidFactory')
@@ -152,7 +163,7 @@ index 540078a..95a6f9a 100644
              const { toPn } = window.require('WAWebLidMigrationUtils');
              const serializedMetadata = chat.groupMetadata.serialize();
              for (const p of serializedMetadata.participants || []) {
-@@ -981,16 +1010,17 @@ exports.LoadUtils = () => {
+@@ -981,16 +1014,17 @@ exports.LoadUtils = () => {
  
          model.lastMessage = null;
          if (model.msgs && model.msgs.length) {
