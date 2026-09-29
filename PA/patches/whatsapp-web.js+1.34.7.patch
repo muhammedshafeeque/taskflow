@@ -1,5 +1,5 @@
 diff --git a/node_modules/whatsapp-web.js/src/structures/Message.js b/node_modules/whatsapp-web.js/src/structures/Message.js
-index dd977e8..b2ea9b4 100644
+index dd977e8..8c55dec 100644
 --- a/node_modules/whatsapp-web.js/src/structures/Message.js
 +++ b/node_modules/whatsapp-web.js/src/structures/Message.js
 @@ -35,6 +35,9 @@ class Message extends Base {
@@ -58,6 +58,90 @@ index dd977e8..b2ea9b4 100644
                                : data.to,
                    }
                  : undefined;
+@@ -515,14 +516,43 @@ class Message extends Base {
+             return undefined;
+         }
+ 
+-        const result = await this.client.pupPage.evaluate(async (msgId) => {
+-            const msg =
+-                window.require('WAWebCollections').Msg.get(msgId) ||
+-                (
+-                    await window
+-                        .require('WAWebCollections')
+-                        .Msg.getMessagesById([msgId])
+-                )?.messages?.[0];
++        const rawRemote = this.id && this.id.remote;
++        const keyParts = {
++            serialized: this.id && this.id._serialized,
++            id: this.id && this.id.id,
++            fromMe: this.id && this.id.fromMe,
++            remote:
++                rawRemote && typeof rawRemote === 'object'
++                    ? rawRemote._serialized || rawRemote.$1
++                    : rawRemote,
++        };
++
++        const result = await this.client.pupPage.evaluate(async (key) => {
++          let stage = 'lookup';
++          try {
++            // WA Web LID migration: a single Msg.get(_serialized) misses @lid
++            // messages, so try every key shape, then scan loaded models.
++            const Msg = window.require('WAWebCollections').Msg;
++            const candidates = [
++                key.serialized,
++                key.remote && key.id
++                    ? `${!!key.fromMe}_${key.remote}_${key.id}`
++                    : null,
++            ].filter(Boolean);
++            let msg = null;
++            for (const c of candidates) {
++                try { msg = Msg.get(c); } catch { msg = null; }
++                if (msg) break;
++            }
++            if (!msg && key.id) {
++                msg = Msg.getModelsArray().find((m) => m.id && m.id.id === key.id) || null;
++            }
++            for (const c of candidates) {
++                if (msg) break;
++                try {
++                    msg = (await Msg.getMessagesById([c]))?.messages?.[0] || null;
++                } catch { msg = null; }
++            }
+ 
+             // REUPLOADING mediaStage means the media is expired and the download button is spinning, cannot be downloaded now
+             if (
+@@ -532,6 +562,7 @@ class Message extends Base {
+             ) {
+                 return null;
+             }
++            stage = 'resolve';
+             if (msg.mediaData.mediaStage != 'RESOLVED') {
+                 // try to resolve media
+                 await msg.downloadMedia({
+@@ -548,6 +579,7 @@ class Message extends Base {
+                 return undefined;
+             }
+ 
++            stage = 'decrypt';
+             try {
+                 const mockQpl = {
+                     addAnnotations: function () {
+@@ -585,7 +617,14 @@ class Message extends Base {
+                 if (e.status && e.status === 404) return undefined;
+                 throw e;
+             }
+-        }, this.id._serialized);
++          } catch (e) {
++            // WA errors are minified ("t: t"); surface where it failed.
++            const detail = [e && e.name, e && e.message, e && e.status]
++                .filter(Boolean)
++                .join(' / ');
++            throw new Error(`downloadMedia failed at ${stage}: ${detail || String(e)}`);
++          }
++        }, keyParts);
+ 
+         if (!result) return undefined;
+         return new MessageMedia(
 diff --git a/node_modules/whatsapp-web.js/src/util/Injected/Utils.js b/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
 index 540078a..78ec4c2 100644
 --- a/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
