@@ -1,8 +1,56 @@
 diff --git a/node_modules/whatsapp-web.js/src/structures/Message.js b/node_modules/whatsapp-web.js/src/structures/Message.js
-index dd977e8..8c55dec 100644
+index dd977e8..4e74d7c 100644
 --- a/node_modules/whatsapp-web.js/src/structures/Message.js
 +++ b/node_modules/whatsapp-web.js/src/structures/Message.js
-@@ -35,6 +35,9 @@ class Message extends Base {
+@@ -14,6 +14,47 @@ const { MessageTypes } = require('../util/Constants');
+  * Represents a Message on WhatsApp
+  * @extends {Base}
+  */
++const MEDIA_HKDF_INFO = {
++    image: 'WhatsApp Image Keys',
++    sticker: 'WhatsApp Image Keys',
++    video: 'WhatsApp Video Keys',
++    gif: 'WhatsApp Video Keys',
++    ptv: 'WhatsApp Video Keys',
++    ptt: 'WhatsApp Audio Keys',
++    audio: 'WhatsApp Audio Keys',
++    document: 'WhatsApp Document Keys',
++};
++
++/** Fetch + decrypt WhatsApp CDN media (HKDF-SHA256 → AES-256-CBC, HMAC-checked). Returns base64. */
++async function downloadAndDecryptMedia({ directPath, mediaKey, type }) {
++    const crypto = require('crypto');
++    const info = MEDIA_HKDF_INFO[type];
++    if (!info) throw new Error(`downloadMedia: no decrypt keys for type ${type}`);
++    const expanded = Buffer.from(
++        crypto.hkdfSync('sha256', Buffer.from(mediaKey, 'base64'), Buffer.alloc(0), info, 112),
++    );
++    const iv = expanded.subarray(0, 16);
++    const cipherKey = expanded.subarray(16, 48);
++    const macKey = expanded.subarray(48, 80);
++
++    const res = await fetch(`https://mmg.whatsapp.net${directPath}`, {
++        headers: { Origin: 'https://web.whatsapp.com' },
++    });
++    if (!res.ok) throw new Error(`downloadMedia: CDN responded ${res.status}`);
++    const body = Buffer.from(await res.arrayBuffer());
++    const enc = body.subarray(0, -10);
++    const mac = crypto
++        .createHmac('sha256', macKey)
++        .update(Buffer.concat([iv, enc]))
++        .digest()
++        .subarray(0, 10);
++    if (!mac.equals(body.subarray(-10))) {
++        throw new Error('downloadMedia: media MAC mismatch');
++    }
++    const decipher = crypto.createDecipheriv('aes-256-cbc', cipherKey, iv);
++    return Buffer.concat([decipher.update(enc), decipher.final()]).toString('base64');
++}
++
+ class Message extends Base {
+     constructor(client, data) {
+         super(client);
+@@ -35,6 +76,9 @@ class Message extends Base {
           * @type {object}
           */
          this.id = data.id;
@@ -12,7 +60,7 @@ index dd977e8..8c55dec 100644
  
          /**
           * ACK status for the message
-@@ -74,7 +77,7 @@ class Message extends Base {
+@@ -74,7 +118,7 @@ class Message extends Base {
           */
          this.from =
              typeof data.from === 'object' && data.from !== null
@@ -21,7 +69,7 @@ index dd977e8..8c55dec 100644
                  : data.from;
  
          /**
-@@ -86,7 +89,7 @@ class Message extends Base {
+@@ -86,7 +130,7 @@ class Message extends Base {
           */
          this.to =
              typeof data.to === 'object' && data.to !== null
@@ -30,7 +78,7 @@ index dd977e8..8c55dec 100644
                  : data.to;
  
          /**
-@@ -95,7 +98,7 @@ class Message extends Base {
+@@ -95,7 +139,7 @@ class Message extends Base {
           */
          this.author =
              typeof data.author === 'object' && data.author !== null
@@ -39,7 +87,7 @@ index dd977e8..8c55dec 100644
                  : data.author;
  
          /**
-@@ -209,14 +212,12 @@ class Message extends Base {
+@@ -209,14 +253,12 @@ class Message extends Base {
                        groupId: data.inviteGrp,
                        groupName: data.inviteGrpName,
                        fromId:
@@ -58,7 +106,7 @@ index dd977e8..8c55dec 100644
                                : data.to,
                    }
                  : undefined;
-@@ -515,14 +516,43 @@ class Message extends Base {
+@@ -515,14 +557,43 @@ class Message extends Base {
              return undefined;
          }
  
@@ -110,7 +158,7 @@ index dd977e8..8c55dec 100644
  
              // REUPLOADING mediaStage means the media is expired and the download button is spinning, cannot be downloaded now
              if (
-@@ -532,6 +562,7 @@ class Message extends Base {
+@@ -532,6 +603,7 @@ class Message extends Base {
              ) {
                  return null;
              }
@@ -118,7 +166,7 @@ index dd977e8..8c55dec 100644
              if (msg.mediaData.mediaStage != 'RESOLVED') {
                  // try to resolve media
                  await msg.downloadMedia({
-@@ -548,6 +579,7 @@ class Message extends Base {
+@@ -548,6 +620,7 @@ class Message extends Base {
                  return undefined;
              }
  
@@ -126,9 +174,27 @@ index dd977e8..8c55dec 100644
              try {
                  const mockQpl = {
                      addAnnotations: function () {
-@@ -585,7 +617,14 @@ class Message extends Base {
+@@ -583,11 +656,36 @@ class Message extends Base {
+                 };
+             } catch (e) {
                  if (e.status && e.status === 404) return undefined;
-                 throw e;
+-                throw e;
++                // WA Web 2026-09 rejects ptt blobs as octet-stream; hand the
++                // encrypted-media keys to Node and decrypt there instead.
++                const mk = msg.mediaKey;
++                if (!msg.directPath || !mk) throw e;
++                return {
++                    needsNodeDecrypt: true,
++                    directPath: msg.directPath,
++                    mediaKey:
++                        typeof mk === 'string'
++                            ? mk
++                            : window.WWebJS.arrayBufferToBase64(mk),
++                    type: msg.type,
++                    mimetype: msg.mimetype,
++                    filename: msg.filename,
++                    filesize: msg.size,
++                };
              }
 -        }, this.id._serialized);
 +          } catch (e) {
@@ -141,7 +207,12 @@ index dd977e8..8c55dec 100644
 +        }, keyParts);
  
          if (!result) return undefined;
++        if (result.needsNodeDecrypt) {
++            result.data = await downloadAndDecryptMedia(result);
++        }
          return new MessageMedia(
+             result.mimetype,
+             result.data,
 diff --git a/node_modules/whatsapp-web.js/src/util/Injected/Utils.js b/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
 index 540078a..78ec4c2 100644
 --- a/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
