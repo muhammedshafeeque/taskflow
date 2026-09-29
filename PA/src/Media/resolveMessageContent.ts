@@ -2,6 +2,7 @@ import type { Message, MessageMedia } from 'whatsapp-web.js';
 import { getBotSettings } from '../Config/botSettings';
 import { isLowQualityTranscript } from '../Memory/conversationMemory';
 import { detectReplyLang, type ReplyLang } from './lang';
+import { downloadAndDecrypt, encryptedMediaRef } from './decryptMedia';
 import { transcribeAudio } from './transcribe';
 
 export type MediaSource = 'text' | 'voice' | 'image';
@@ -21,23 +22,50 @@ async function sleep(ms: number) {
   await new Promise((r) => setTimeout(r, ms));
 }
 
+type DownloadedMedia = Pick<MessageMedia, 'data' | 'mimetype'>;
+
+/** whatsapp-web.js first; if WA Web refuses, fetch + decrypt from the CDN directly. */
 async function downloadMediaWithRetry(
   msg: Message,
-  attempts = 3
-): Promise<MessageMedia | null> {
+  attempts = 2
+): Promise<DownloadedMedia | null> {
   let lastErr: unknown;
+  try {
+    const media = await msg.downloadMedia();
+    if (media?.data) return media;
+  } catch (err) {
+    lastErr = err;
+    console.warn('downloadMedia failed — trying direct decrypt', {
+      from: msg.from,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  const ref = encryptedMediaRef(msg);
+  if (!ref) {
+    console.warn('Direct decrypt unavailable — no media key on message', {
+      from: msg.from,
+    });
+    if (lastErr) throw lastErr;
+    return null;
+  }
   for (let i = 0; i < attempts; i++) {
     try {
       if (i > 0) await sleep(800 * i);
-      const media = await msg.downloadMedia();
-      if (media?.data) return media;
+      const buf = await downloadAndDecrypt(ref);
+      return {
+        data: buf.toString('base64'),
+        mimetype: ref.mimetype || 'audio/ogg',
+      };
     } catch (err) {
       lastErr = err;
-      console.warn(`downloadMedia attempt ${i + 1}/${attempts} failed`, err);
+      console.warn(`Direct decrypt attempt ${i + 1}/${attempts} failed`, {
+        from: msg.from,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
-  if (lastErr) throw lastErr;
-  return null;
+  throw lastErr;
 }
 
 /**

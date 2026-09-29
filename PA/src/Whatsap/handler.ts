@@ -123,6 +123,18 @@ export function mergeResolvedContents(
   };
 }
 
+/**
+ * The bot stays silent when it can't process or understand a message;
+ * a human answers those manually.
+ */
+function leaveForManualReply(chatId: string, reason: string, detail?: string) {
+  console.warn('No auto-reply — left for manual reply', {
+    chatId,
+    reason,
+    ...(detail ? { detail: detail.slice(0, 200) } : {}),
+  });
+}
+
 async function processBatch(batch: Message[]): Promise<void> {
   for (const run of splitRunsByAuthor(batch)) {
     await processIncomingMessages(run);
@@ -228,7 +240,10 @@ async function processIncomingMessages(msgs: Message[]) {
       resolveAll(msgs),
       resolveSenderMobile(msg),
     ]);
-    if (!resolved) return;
+    if (!resolved) {
+      leaveForManualReply(chatId, 'nothing_to_process');
+      return;
+    }
 
     if (
       sender.phone !== conv?.contactPhone ||
@@ -246,14 +261,11 @@ async function processIncomingMessages(msgs: Message[]) {
     }
 
     if (isGroup && groupDoc && isOfficialSupportGroup(groupDoc)) {
-      const text =
-        resolved.text ||
-        (resolved.imageNeedsDescription
-          ? lang === 'ml'
-            ? 'ഉപയോക്താവ് ക്യാപ്ഷൻ ഇല്ലാതെ ഒരു ചിത്രം അയച്ചു.'
-            : 'User sent an image with no caption.'
-          : '');
-      if (!text) return;
+      const text = resolved.text;
+      if (!text) {
+        leaveForManualReply(chatId, 'image_without_caption');
+        return;
+      }
 
       console.log('Support pipeline', {
         chatId,
@@ -288,45 +300,19 @@ async function processIncomingMessages(msgs: Message[]) {
       conv,
     };
 
-    if (resolved.imageNeedsDescription) {
-      const { text: reply } = await generateReply(
+    if (!resolved.text) {
+      leaveForManualReply(
         chatId,
-        lang === 'ml'
-          ? 'ഉപയോക്താവ് ക്യാപ്ഷൻ ഇല്ലാതെ ഒരു ചിത്രം അയച്ചു.'
-          : 'User sent an image with no caption.',
-        'support',
-        lang,
-        'image_no_caption',
-        replyOpts
+        resolved.imageNeedsDescription ? 'image_without_caption' : 'empty_content'
       );
-      if (!reply.trim()) return;
-      await sendReply(msg, reply, resolved.source, lang);
       return;
     }
 
-    if (!resolved.text) return;
-
-    const sttUncertain =
+    if (
       resolved.source === 'voice' &&
-      hasHistory &&
-      isLowQualityTranscript(resolved.text);
-
-    if (sttUncertain) {
-      console.log('Low-quality STT; AI continuity reply', {
-        chatId,
-        memoryTurns,
-        preview: resolved.text.slice(0, 80),
-      });
-      const { text: reply } = await generateReply(
-        chatId,
-        resolved.text,
-        lastType && lastType !== 'random' ? lastType : 'support',
-        lang,
-        'stt_uncertain',
-        { ...replyOpts, sttUncertain: true }
-      );
-      if (!reply.trim()) return;
-      await sendReply(msg, reply, resolved.source, lang);
+      isLowQualityTranscript(resolved.text)
+    ) {
+      leaveForManualReply(chatId, 'voice_not_understood', resolved.text);
       return;
     }
 
@@ -385,23 +371,11 @@ async function processIncomingMessages(msgs: Message[]) {
       alsoSendText: Boolean(leadCreated),
     });
   } catch (err) {
-    console.error('Failed to handle WhatsApp message:', err);
-    try {
-      if (msgs.some((m) => m.hasMedia && VOICE_TYPES.has(m.type))) {
-        await sendReply(
-          msg,
-          'ഐവോറിക്സ് ഹെൽപ്പ് ഡെസ്കിന് ആ വോയ്സ് നോട്ട് പ്രോസസ് ചെയ്യാൻ കഴിഞ്ഞില്ല. ദയവായി വീണ്ടും ശ്രമിക്കൂ.',
-          'voice',
-          'ml'
-        );
-      } else if (msgs.some((m) => m.hasMedia && m.type === 'image')) {
-        await msg.reply(
-          'Ivorix Help Desk could not process that. Please send a short text or voice note.'
-        );
-      }
-    } catch {
-      // ignore
-    }
+    leaveForManualReply(
+      chatId,
+      'processing_failed',
+      err instanceof Error ? err.message : String(err)
+    );
   } finally {
     await stopPresence();
   }
