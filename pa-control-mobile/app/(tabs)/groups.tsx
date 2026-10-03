@@ -1,6 +1,6 @@
-import { useCallback, useState } from 'react'
-import { FlatList, StyleSheet, Text, View } from 'react-native'
 import { useFocusEffect } from 'expo-router'
+import { useCallback, useMemo, useState } from 'react'
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import {
   type AtriumProject,
   type CustomerOrgOption,
@@ -8,43 +8,43 @@ import {
   paAdmin,
 } from '../../src/api/paAdmin'
 import { colors, fonts, spacing } from '../../src/theme'
+import { useToast } from '../../src/ui/Toast'
 import {
+  Avatar,
   Badge,
+  Banner,
   Btn,
+  Card,
   Chip,
   EmptyState,
-  ErrorText,
-  Loading,
-  Muted,
-  PageHeader,
-  Panel,
+  Header,
   Screen,
-  SectionLabel,
-  SuccessText,
+  SearchBar,
+  SkeletonList,
+  ToggleRow,
+  Wrap,
+  type IconName,
 } from '../../src/ui/Ui'
 
-type Draft = { selectedIds: string[] }
+type CapKey =
+  | 'kbEnabled'
+  | 'portalRequestsEnabled'
+  | 'ticketStatusEnabled'
+  | 'issueStatusEnabled'
+  | 'billingEnabled'
+  | 'hrmsEnabled'
+  | 'assetsEnabled'
+  | 'procurementEnabled'
 
-const CAP_FLAGS: Array<{
-  key:
-    | 'kbEnabled'
-    | 'portalRequestsEnabled'
-    | 'ticketStatusEnabled'
-    | 'issueStatusEnabled'
-    | 'billingEnabled'
-    | 'hrmsEnabled'
-    | 'assetsEnabled'
-    | 'procurementEnabled'
-  label: string
-}> = [
-  { key: 'kbEnabled', label: 'KB' },
-  { key: 'portalRequestsEnabled', label: 'Portal' },
-  { key: 'ticketStatusEnabled', label: 'Tickets' },
-  { key: 'issueStatusEnabled', label: 'Issues' },
-  { key: 'billingEnabled', label: 'Billing' },
-  { key: 'hrmsEnabled', label: 'HR' },
-  { key: 'assetsEnabled', label: 'Assets' },
-  { key: 'procurementEnabled', label: 'POs' },
+const CAP_FLAGS: Array<{ key: CapKey; label: string; icon: IconName }> = [
+  { key: 'kbEnabled', label: 'Knowledge base', icon: 'book' },
+  { key: 'portalRequestsEnabled', label: 'Portal requests', icon: 'document-text' },
+  { key: 'ticketStatusEnabled', label: 'Tickets', icon: 'ticket' },
+  { key: 'issueStatusEnabled', label: 'Issues', icon: 'git-branch' },
+  { key: 'billingEnabled', label: 'Billing', icon: 'card' },
+  { key: 'hrmsEnabled', label: 'HR', icon: 'id-card' },
+  { key: 'assetsEnabled', label: 'Assets', icon: 'hardware-chip' },
+  { key: 'procurementEnabled', label: 'POs', icon: 'cart' },
 ]
 
 function projectsFromRow(row: WhatsappGroupRow) {
@@ -58,19 +58,19 @@ function idsEqual(a: string[], b: string[]) {
 }
 
 export default function GroupsScreen() {
+  const toast = useToast()
   const [rows, setRows] = useState<WhatsappGroupRow[]>([])
   const [projects, setProjects] = useState<AtriumProject[]>([])
   const [customerOrgs, setCustomerOrgs] = useState<CustomerOrgOption[]>([])
   const [hint, setHint] = useState('')
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
   const [busyId, setBusyId] = useState('')
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({})
+  const [drafts, setDrafts] = useState<Record<string, string[]>>({})
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [expanded, setExpanded] = useState('')
+  const [q, setQ] = useState('')
 
   const load = useCallback(async () => {
-    setError('')
-    setSuccess('')
     try {
       const [groups, atrium, orgsRes] = await Promise.all([
         paAdmin.listGroups(),
@@ -83,24 +83,15 @@ export default function GroupsScreen() {
       setHint(
         atrium.available && (atrium.projects || []).length > 0
           ? ''
-          : atrium.reason ||
-              (atrium.available
-                ? 'No Taskflow projects returned for this org'
-                : 'Could not load Taskflow projects')
+          : atrium.reason || (atrium.available ? 'No Taskflow projects returned for this org' : 'Could not load Taskflow projects')
       )
-      const next: Record<string, Draft> = {}
-      for (const g of groups) {
-        next[g.chatId] = {
-          selectedIds: projectsFromRow(g).map((p) => p.id),
-        }
-      }
-      setDrafts(next)
+      setDrafts(Object.fromEntries(groups.map((g) => [g.chatId, projectsFromRow(g).map((p) => p.id)])))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load groups')
+      toast.error(err instanceof Error ? err.message : 'Failed to load groups')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [toast])
 
   useFocusEffect(
     useCallback(() => {
@@ -108,228 +99,173 @@ export default function GroupsScreen() {
     }, [load])
   )
 
-  function applyGroupUpdate(updated: WhatsappGroupRow) {
-    const atriumProjects = projectsFromRow(updated)
-    setRows((prev) =>
-      prev.map((r) => (r.chatId === updated.chatId ? { ...r, ...updated } : r))
-    )
-    setDrafts((d) => ({
-      ...d,
-      [updated.chatId]: { selectedIds: atriumProjects.map((p) => p.id) },
-    }))
+  function apply(updated: WhatsappGroupRow) {
+    setRows((prev) => prev.map((r) => (r.chatId === updated.chatId ? { ...r, ...updated } : r)))
+    setDrafts((d) => ({ ...d, [updated.chatId]: projectsFromRow(updated).map((p) => p.id) }))
   }
 
-  async function toggleAutoReply(row: WhatsappGroupRow) {
+  async function patch(row: WhatsappGroupRow, body: Parameters<typeof paAdmin.patchGroup>[1], msg: string) {
     setBusyId(row.chatId)
-    setError('')
-    setSuccess('')
     try {
-      const updated = await paAdmin.patchGroup(row.chatId, {
-        autoReplyEnabled: !row.autoReplyEnabled,
-        name: row.name,
-      })
-      applyGroupUpdate({
-        ...row,
-        ...updated,
-        atriumProjects: updated.atriumProjects ?? projectsFromRow(row),
-        autoReplyEnabled:
-          typeof updated.autoReplyEnabled === 'boolean'
-            ? updated.autoReplyEnabled
-            : !row.autoReplyEnabled,
-      })
-      setSuccess(
-        `${row.name}: auto-reply ${!row.autoReplyEnabled ? 'enabled' : 'disabled'}`
-      )
+      const updated = await paAdmin.patchGroup(row.chatId, { name: row.name, ...body })
+      apply({ ...row, ...updated, atriumProjects: updated.atriumProjects ?? projectsFromRow(row) })
+      toast.success(msg)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Update failed')
-    } finally {
-      setBusyId('')
-    }
-  }
-
-  function toggleProject(chatId: string, projectId: string) {
-    setDrafts((d) => {
-      const cur = d[chatId]?.selectedIds || []
-      const selectedIds = cur.includes(projectId)
-        ? cur.filter((id) => id !== projectId)
-        : [...cur, projectId]
-      return { ...d, [chatId]: { selectedIds } }
-    })
-  }
-
-  async function toggleFlag(
-    row: WhatsappGroupRow,
-    key: (typeof CAP_FLAGS)[number]['key']
-  ) {
-    setBusyId(row.chatId)
-    setError('')
-    try {
-      const updated = await paAdmin.patchGroup(row.chatId, {
-        name: row.name,
-        [key]: !row[key],
-      })
-      applyGroupUpdate({ ...row, ...updated })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Update failed')
-    } finally {
-      setBusyId('')
-    }
-  }
-
-  async function setCustomerOrg(row: WhatsappGroupRow, orgId: string) {
-    setBusyId(row.chatId)
-    setError('')
-    try {
-      const org = customerOrgs.find((o) => o.id === orgId)
-      const updated = await paAdmin.patchGroup(row.chatId, {
-        name: row.name,
-        customerOrgId: orgId || null,
-        customerOrgName: org?.name || null,
-      })
-      applyGroupUpdate({ ...row, ...updated })
-      setSuccess(`${row.name}: customer org updated`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Org update failed')
+      toast.error(err instanceof Error ? err.message : 'Update failed')
     } finally {
       setBusyId('')
     }
   }
 
   async function saveProjects(row: WhatsappGroupRow) {
-    const selectedIds = drafts[row.chatId]?.selectedIds || []
+    const selectedIds = drafts[row.chatId] || []
     const atriumProjects = projects
       .filter((p) => selectedIds.includes(p.id))
       .map((p) => ({ id: p.id, name: p.name, key: p.key }))
-    setBusyId(row.chatId)
-    setError('')
-    setSuccess('')
-    try {
-      const updated = await paAdmin.patchGroup(row.chatId, {
-        name: row.name,
-        atriumProjects,
-        autoReplyEnabled:
-          atriumProjects.length > 0 ? true : row.autoReplyEnabled,
-      })
-      applyGroupUpdate({
-        ...row,
-        ...updated,
-        atriumProjects: updated.atriumProjects ?? atriumProjects,
-      })
-      setSuccess(`${row.name}: projects saved`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed')
-    } finally {
-      setBusyId('')
-    }
+    await patch(
+      row,
+      { atriumProjects, autoReplyEnabled: atriumProjects.length > 0 ? true : row.autoReplyEnabled },
+      `${row.name}: projects saved`
+    )
   }
 
-  if (loading) return <Loading />
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    return s ? rows.filter((r) => (r.name || r.chatId).toLowerCase().includes(s)) : rows
+  }, [rows, q])
+
+  const active = rows.filter((r) => r.autoReplyEnabled).length
 
   return (
-    <Screen style={{ paddingTop: spacing.sm }}>
-      <PageHeader
-        title="Groups"
-        subtitle="Assign Atrium projects and enable auto-reply for support channels"
-      />
-      <ErrorText>{error || hint}</ErrorText>
-      <SuccessText>{success}</SuccessText>
-      <FlatList
-        data={rows}
-        keyExtractor={(item) => item.chatId}
-        contentContainerStyle={{ paddingBottom: 48, gap: spacing.sm }}
-        ListEmptyComponent={
-          <EmptyState message="No WhatsApp groups found. Ensure PA is ready and joined." />
-        }
-        renderItem={({ item }) => {
-          const selected = drafts[item.chatId]?.selectedIds || []
-          const saved = projectsFromRow(item).map((p) => p.id)
-          const dirty = !idsEqual(selected, saved)
-          return (
-            <Panel>
-              <View style={{ gap: 6 }}>
-                <Text style={styles.name}>{item.name || item.chatId}</Text>
-                <Badge
-                  label={
-                    item.autoReplyEnabled
-                      ? selected.length
-                        ? 'Support channel'
-                        : '@mention'
-                      : 'Disabled'
-                  }
-                  tone={item.autoReplyEnabled ? 'ok' : 'neutral'}
-                />
-              </View>
-              <Btn
-                label={
-                  item.autoReplyEnabled
-                    ? 'Disable auto-reply'
-                    : 'Enable auto-reply'
-                }
-                variant="ghost"
-                compact
-                disabled={busyId === item.chatId}
-                onPress={() => void toggleAutoReply(item)}
-              />
-              <SectionLabel>Customer org</SectionLabel>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                <Chip
-                  label="None"
-                  active={!item.customerOrgId}
-                  onPress={() => void setCustomerOrg(item, '')}
-                />
-                {customerOrgs.map((o) => (
-                  <Chip
-                    key={o.id}
-                    label={o.name}
-                    active={item.customerOrgId === o.id}
-                    onPress={() => void setCustomerOrg(item, o.id)}
+    <Screen>
+      <Header title="Groups" subtitle={`${rows.length} groups · ${active} with auto-reply`} back />
+      <SearchBar value={q} onChangeText={setQ} placeholder="Search groups" />
+      {hint ? <Banner tone="warn">{hint}</Banner> : null}
+      {loading ? (
+        <SkeletonList count={6} />
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.chatId}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
+              progressBackgroundColor={colors.panel}
+              onRefresh={async () => {
+                setRefreshing(true)
+                await load()
+                setRefreshing(false)
+              }}
+            />
+          }
+          ListEmptyComponent={<EmptyState icon="people-outline" message="No WhatsApp groups found. Ensure PA is ready and joined." />}
+          renderItem={({ item }) => {
+            const selected = drafts[item.chatId] || []
+            const saved = projectsFromRow(item).map((p) => p.id)
+            const dirty = !idsEqual(selected, saved)
+            const open = expanded === item.chatId
+            const busy = busyId === item.chatId
+            const caps = CAP_FLAGS.filter((f) => item[f.key]).length
+            return (
+              <Card onPress={() => setExpanded(open ? '' : item.chatId)} tone={open ? 'accent' : undefined}>
+                <View style={styles.head}>
+                  <Avatar name={item.name || item.chatId} icon="people" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.name} numberOfLines={1}>
+                      {item.name || item.chatId}
+                    </Text>
+                    <Text style={styles.meta}>
+                      {saved.length} project{saved.length === 1 ? '' : 's'} · {caps} capabilities
+                      {item.customerOrgName ? ` · ${item.customerOrgName}` : ''}
+                    </Text>
+                  </View>
+                  <Badge
+                    label={item.autoReplyEnabled ? (saved.length ? 'Support' : '@mention') : 'Off'}
+                    tone={item.autoReplyEnabled ? 'ok' : 'neutral'}
                   />
-                ))}
-              </View>
-              <SectionLabel>Capabilities</SectionLabel>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {CAP_FLAGS.map((f) => (
-                  <Chip
-                    key={f.key}
-                    label={f.label}
-                    active={Boolean(item[f.key])}
-                    disabled={busyId === item.chatId}
-                    onPress={() => void toggleFlag(item, f.key)}
-                  />
-                ))}
-              </View>
-              <SectionLabel>Atrium projects</SectionLabel>
-              {projects.length === 0 ? (
-                <Muted>No projects available</Muted>
-              ) : (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {projects.map((p) => (
-                    <Chip
-                      key={p.id}
-                      active={selected.includes(p.id)}
-                      onPress={() => toggleProject(item.chatId, p.id)}
-                      label={p.key ? `${p.name} [${p.key}]` : p.name}
-                    />
-                  ))}
                 </View>
-              )}
-              <Btn
-                label={dirty ? 'Save projects' : 'Saved'}
-                disabled={!dirty || busyId === item.chatId}
-                onPress={() => void saveProjects(item)}
-              />
-            </Panel>
-          )
-        }}
-      />
+
+                {open ? (
+                  <View style={{ gap: spacing.sm }}>
+                    <ToggleRow
+                      title="Auto-reply"
+                      subtitle="PA answers in this group"
+                      value={item.autoReplyEnabled}
+                      disabled={busy}
+                      onChange={(v) => void patch(item, { autoReplyEnabled: v }, `${item.name}: auto-reply ${v ? 'on' : 'off'}`)}
+                    />
+                    <Text style={styles.label}>Customer org</Text>
+                    <Wrap>
+                      <Chip label="None" active={!item.customerOrgId} disabled={busy} onPress={() => void patch(item, { customerOrgId: null, customerOrgName: null }, 'Customer org cleared')} />
+                      {customerOrgs.map((o) => (
+                        <Chip
+                          key={o.id}
+                          label={o.name}
+                          active={item.customerOrgId === o.id}
+                          disabled={busy}
+                          onPress={() => void patch(item, { customerOrgId: o.id, customerOrgName: o.name }, `Linked to ${o.name}`)}
+                        />
+                      ))}
+                    </Wrap>
+                    <Text style={styles.label}>Capabilities</Text>
+                    <Wrap>
+                      {CAP_FLAGS.map((f) => (
+                        <Chip
+                          key={f.key}
+                          label={f.label}
+                          icon={f.icon}
+                          tone="info"
+                          active={Boolean(item[f.key])}
+                          disabled={busy}
+                          onPress={() => void patch(item, { [f.key]: !item[f.key] }, `${f.label} ${item[f.key] ? 'disabled' : 'enabled'}`)}
+                        />
+                      ))}
+                    </Wrap>
+                    <Text style={styles.label}>Atrium projects</Text>
+                    {projects.length ? (
+                      <Wrap>
+                        {projects.map((p) => (
+                          <Chip
+                            key={p.id}
+                            label={p.key ? `${p.name} · ${p.key}` : p.name}
+                            tone="ok"
+                            active={selected.includes(p.id)}
+                            onPress={() =>
+                              setDrafts((d) => {
+                                const cur = d[item.chatId] || []
+                                return {
+                                  ...d,
+                                  [item.chatId]: cur.includes(p.id) ? cur.filter((x) => x !== p.id) : [...cur, p.id],
+                                }
+                              })
+                            }
+                          />
+                        ))}
+                      </Wrap>
+                    ) : (
+                      <Text style={styles.meta}>No projects available</Text>
+                    )}
+                    {dirty ? (
+                      <Btn label="Save projects" icon="save" loading={busy} block onPress={() => void saveProjects(item)} />
+                    ) : null}
+                  </View>
+                ) : null}
+              </Card>
+            )
+          }}
+        />
+      )}
     </Screen>
   )
 }
 
 const styles = StyleSheet.create({
-  name: {
-    fontFamily: fonts.semiBold,
-    color: colors.text,
-    fontSize: 16,
-  },
+  list: { paddingHorizontal: spacing.md, paddingBottom: 110, gap: spacing.sm },
+  head: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  name: { fontFamily: fonts.semiBold, color: colors.text, fontSize: 15 },
+  meta: { fontFamily: fonts.regular, color: colors.muted, fontSize: 12, marginTop: 2 },
+  label: { fontFamily: fonts.semiBold, color: colors.textDim, fontSize: 13, marginTop: spacing.xs },
 })

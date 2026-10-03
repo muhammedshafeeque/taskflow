@@ -7,6 +7,7 @@ import { verifyGroqModels } from './Ai/models';
 import { connectDB } from './Config/db';
 import mongoose from 'mongoose';
 import { startWhatsApp, stopWhatsApp } from './Whatsap';
+import { startMonitorAlertWatcher, stopMonitorAlertWatcher } from './Admin/monitorAdmin';
 
 dotenv.config();
 
@@ -49,6 +50,7 @@ app.use('/api/agent/device', agentDeviceRouter);
 async function main() {
   await Promise.all([connectDB(), verifyGroqModels()]);
   await startWhatsApp();
+  startMonitorAlertWatcher();
 
   const port = Number(process.env.PORT) || 3000;
   const server = app.listen(port, () => {
@@ -61,6 +63,7 @@ async function main() {
     stopping = true;
     console.log(`${signal} — shutting down gracefully`);
     server.close();
+    stopMonitorAlertWatcher();
     await stopWhatsApp();
     await mongoose.disconnect().catch(() => undefined);
     process.exit(0);

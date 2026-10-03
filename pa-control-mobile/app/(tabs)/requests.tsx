@@ -1,36 +1,25 @@
-import { useCallback, useState } from 'react'
-import {
-  FlatList,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native'
 import { useFocusEffect } from 'expo-router'
-import {
-  type CustomerRequestRow,
-  type ServiceTicketRow,
-  paAdmin,
-} from '../../src/api/paAdmin'
-import { colors, fonts, spacing } from '../../src/theme'
+import { useCallback, useState } from 'react'
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { type CustomerRequestRow, type ServiceTicketRow, paAdmin } from '../../src/api/paAdmin'
+import { humanize } from '../../src/lib/format'
+import { colors, fonts, spacing, type Tone } from '../../src/theme'
+import { useToast } from '../../src/ui/Toast'
 import {
   Badge,
   Btn,
+  Card,
   Chip,
   EmptyState,
-  ErrorText,
+  Header,
+  IconTile,
   Input,
   ListRow,
-  Loading,
-  Muted,
-  PageHeader,
-  Panel,
-  Row,
   Screen,
   Segmented,
-  SuccessText,
-  Title,
+  Sheet,
+  SkeletonList,
+  Wrap,
 } from '../../src/ui/Ui'
 
 type Tab = 'pending' | 'all' | 'tickets'
@@ -39,14 +28,14 @@ function labelOf(v: unknown): string {
   if (!v) return '—'
   if (typeof v === 'string') return v
   if (typeof v === 'object' && v !== null) {
-    const o = v as { name?: string; key?: string }
+    const o = v as { name?: string; key?: string; title?: string }
     if (o.name && o.key) return `${o.name} (${o.key})`
-    return o.name || '—'
+    return o.name || o.key || o.title || '—'
   }
   return String(v)
 }
 
-function statusTone(status: string): 'ok' | 'warn' | 'danger' | 'neutral' | 'accent' {
+function statusTone(status: string): Tone {
   if (status.includes('pending')) return 'warn'
   if (status.includes('reject') || status.includes('closed')) return 'danger'
   if (status.includes('approv') || status.includes('resolv')) return 'ok'
@@ -54,64 +43,61 @@ function statusTone(status: string): 'ok' | 'warn' | 'danger' | 'neutral' | 'acc
   return 'neutral'
 }
 
+function priorityTone(p?: string): Tone {
+  if (!p) return 'neutral'
+  if (/urgent|critical|highest/i.test(p)) return 'danger'
+  if (/high/i.test(p)) return 'warn'
+  return 'neutral'
+}
+
 export default function RequestsScreen() {
+  const toast = useToast()
   const [tab, setTab] = useState<Tab>('pending')
   const [requests, setRequests] = useState<CustomerRequestRow[]>([])
   const [tickets, setTickets] = useState<ServiceTicketRow[]>([])
   const [selected, setSelected] = useState<CustomerRequestRow | null>(null)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const [ticket, setTicket] = useState<ServiceTicketRow | null>(null)
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [workClassification, setWorkClassification] = useState<
-    'billable_change' | 'fix' | ''
-  >('')
-  const [approveNote, setApproveNote] = useState('')
-  const [rejectReason, setRejectReason] = useState('')
+  const [refreshing, setRefreshing] = useState(false)
+  const [workClassification, setWorkClassification] = useState<'billable_change' | 'fix' | ''>('')
+  const [note, setNote] = useState('')
+  const [comment, setComment] = useState('')
 
   const load = useCallback(async () => {
-    setError('')
     try {
       if (tab === 'tickets') {
         const data = await paAdmin.listServiceTickets({})
         setTickets(data.tickets || [])
       } else {
-        const data = await paAdmin.listServiceRequests({
-          pendingOnly: tab === 'pending',
-          limit: 80,
-        })
+        const data = await paAdmin.listServiceRequests({ pendingOnly: tab === 'pending', limit: 80 })
         setRequests(data.requests || [])
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load')
+      toast.error(err instanceof Error ? err.message : 'Failed to load')
     } finally {
       setLoading(false)
     }
-  }, [tab])
+  }, [tab, toast])
 
   useFocusEffect(
     useCallback(() => {
+      setLoading(true)
       void load()
     }, [load])
   )
 
   async function onApprove() {
-    if (!selected || !workClassification) {
-      setError('Select work classification')
-      return
-    }
+    if (!selected) return
+    if (!workClassification) return toast.error('Choose a work classification')
     setBusy(true)
-    setError('')
     try {
-      await paAdmin.approveServiceRequest(selected._id, {
-        workClassification,
-        note: approveNote || undefined,
-      })
-      setSuccess('Approved')
+      await paAdmin.approveServiceRequest(selected._id, { workClassification, note: note || undefined })
+      toast.success('Request approved')
       setSelected(null)
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Approve failed')
+      toast.error(err instanceof Error ? err.message : 'Approve failed')
     } finally {
       setBusy(false)
     }
@@ -120,187 +106,208 @@ export default function RequestsScreen() {
   async function onReject() {
     if (!selected) return
     setBusy(true)
-    setError('')
     try {
-      await paAdmin.rejectServiceRequest(selected._id, {
-        reason: rejectReason || undefined,
-      })
-      setSuccess('Rejected')
+      await paAdmin.rejectServiceRequest(selected._id, { reason: note || undefined })
+      toast.success('Request rejected')
       setSelected(null)
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Reject failed')
+      toast.error(err instanceof Error ? err.message : 'Reject failed')
     } finally {
       setBusy(false)
     }
   }
 
-  async function setTicketStatus(id: string, status: string) {
+  async function updateTicket(body: { status?: string; priority?: string; comment?: string }, msg: string) {
+    if (!ticket) return
     setBusy(true)
     try {
-      await paAdmin.patchServiceTicket(id, { status })
+      await paAdmin.patchServiceTicket(ticket._id, body)
+      toast.success(msg)
+      setTicket((t) => (t ? { ...t, ...(body.status ? { status: body.status } : {}), ...(body.priority ? { priority: body.priority } : {}) } : t))
+      if (body.comment) setComment('')
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Update failed')
+      toast.error(err instanceof Error ? err.message : 'Update failed')
     } finally {
       setBusy(false)
     }
   }
 
-  if (loading) return <Loading />
+  const refresh = (
+    <RefreshControl
+      refreshing={refreshing}
+      tintColor={colors.accent}
+      colors={[colors.accent]}
+      progressBackgroundColor={colors.panel}
+      onRefresh={async () => {
+        setRefreshing(true)
+        await load()
+        setRefreshing(false)
+      }}
+    />
+  )
 
   return (
-    <Screen style={{ paddingTop: spacing.sm }}>
-      <PageHeader
-        title="Requests"
-        subtitle="Approve / reject portal requests and update service tickets"
-      />
-      <ErrorText>{error}</ErrorText>
-      <SuccessText>{success}</SuccessText>
+    <Screen>
+      <Header title="Requests" subtitle="Portal approvals & service tickets" back />
       <Segmented
         value={tab}
         onChange={setTab}
         options={[
-          { id: 'pending', label: 'Pending' },
+          { id: 'pending', label: 'Pending', count: tab === 'pending' ? requests.length : undefined },
           { id: 'all', label: 'All' },
           { id: 'tickets', label: 'Tickets' },
         ]}
       />
-
-      {tab !== 'tickets' ? (
+      {loading ? (
+        <SkeletonList count={6} />
+      ) : tab !== 'tickets' ? (
         <FlatList
           data={requests}
           keyExtractor={(item) => item._id}
-          contentContainerStyle={{ gap: spacing.sm, paddingBottom: 40 }}
-          ListEmptyComponent={<EmptyState message="No requests" />}
+          contentContainerStyle={styles.list}
+          refreshControl={refresh}
+          ListEmptyComponent={
+            <EmptyState icon="checkmark-done-outline" title={tab === 'pending' ? 'Inbox zero' : 'No requests'} message="Nothing waiting for approval." />
+          }
           renderItem={({ item }) => (
-            <ListRow
-              title={item.title}
-              subtitle={labelOf(item.customerOrgId)}
+            <Card
               onPress={() => {
                 setSelected(item)
                 setWorkClassification('')
-                setApproveNote('')
-                setRejectReason('')
+                setNote('')
               }}
-              trailing={
-                <Badge
-                  label={item.status.replace(/_/g, ' ')}
-                  tone={statusTone(item.status)}
-                />
-              }
-            />
+            >
+              <View style={styles.head}>
+                <IconTile icon="document-text" tone={statusTone(item.status)} size={38} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.title} numberOfLines={2}>
+                    {item.title}
+                  </Text>
+                  <Text style={styles.meta} numberOfLines={1}>
+                    {labelOf(item.customerOrgId)} · {labelOf(item.projectId)}
+                  </Text>
+                </View>
+              </View>
+              <Wrap>
+                <Badge label={humanize(item.status)} tone={statusTone(item.status)} />
+                {item.type ? <Badge label={humanize(item.type)} tone="neutral" /> : null}
+                {item.priority ? <Badge label={humanize(item.priority)} tone={priorityTone(item.priority)} /> : null}
+              </Wrap>
+            </Card>
           )}
         />
       ) : (
         <FlatList
           data={tickets}
           keyExtractor={(item) => item._id}
-          contentContainerStyle={{ gap: spacing.sm, paddingBottom: 40 }}
-          ListEmptyComponent={<EmptyState message="No tickets" />}
+          contentContainerStyle={styles.list}
+          refreshControl={refresh}
+          ListEmptyComponent={<EmptyState icon="ticket-outline" message="No service tickets." />}
           renderItem={({ item }) => (
-            <Panel>
-              <Text style={styles.name}>{item.subject}</Text>
-              <Row style={{ justifyContent: 'flex-start', flexWrap: 'wrap' }}>
-                <Badge label={item.status} tone={statusTone(item.status)} />
-                <Badge label={item.priority} tone="neutral" />
-              </Row>
-              <View style={styles.chipRow}>
-                {['in_progress', 'resolved', 'closed'].map((s) => (
-                  <Chip
-                    key={s}
-                    label={s.replace(/_/g, ' ')}
-                    active={item.status === s}
-                    disabled={busy || item.status === s}
-                    onPress={() => void setTicketStatus(item._id, s)}
-                  />
-                ))}
-              </View>
-            </Panel>
+            <ListRow
+              leading={<IconTile icon="ticket" tone={statusTone(item.status)} size={38} />}
+              title={item.subject}
+              subtitle={`${labelOf(item.projectId)}${item.linkedIssueId ? ` · ${labelOf(item.linkedIssueId)}` : ''}`}
+              onPress={() => {
+                setTicket(item)
+                setComment('')
+              }}
+              trailing={
+                <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                  <Badge label={humanize(item.status)} tone={statusTone(item.status)} />
+                  <Badge label={humanize(item.priority)} tone={priorityTone(item.priority)} />
+                </View>
+              }
+            />
           )}
         />
       )}
 
-      <Modal visible={Boolean(selected)} animationType="slide">
-        <Screen>
-          <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-            <Row>
-              <View style={{ flex: 1 }}>
-                <Title>{selected?.title || ''}</Title>
-                {selected ? (
-                  <Badge
-                    label={selected.status.replace(/_/g, ' ')}
-                    tone={statusTone(selected.status)}
-                  />
-                ) : null}
-              </View>
-              <Btn label="Close" variant="ghost" compact onPress={() => setSelected(null)} />
-            </Row>
-            <Text style={styles.body}>{selected?.description || '—'}</Text>
-            {selected?.status === 'pending_taskflow_approval' ? (
+      <Sheet
+        visible={Boolean(selected)}
+        onClose={() => setSelected(null)}
+        title={selected?.title}
+        subtitle={selected ? `${labelOf(selected.customerOrgId)} · ${labelOf(selected.projectId)}` : ''}
+        footer={
+          selected?.status === 'pending_taskflow_approval' ? (
+            <>
+              <Btn label="Reject" icon="close" variant="danger" loading={busy} onPress={() => void onReject()} style={{ flex: 1 }} />
+              <Btn label="Approve" icon="checkmark" variant="success" loading={busy} onPress={() => void onApprove()} style={{ flex: 1 }} />
+            </>
+          ) : undefined
+        }
+      >
+        {selected ? (
+          <View style={{ gap: spacing.sm }}>
+            <Wrap>
+              <Badge label={humanize(selected.status)} tone={statusTone(selected.status)} />
+              {selected.type ? <Badge label={humanize(selected.type)} tone="neutral" /> : null}
+              {selected.priority ? <Badge label={humanize(selected.priority)} tone={priorityTone(selected.priority)} /> : null}
+            </Wrap>
+            <Text style={styles.body} selectable>
+              {selected.description || 'No description provided.'}
+            </Text>
+            {selected.status === 'pending_taskflow_approval' ? (
               <>
-                <Muted>Work classification</Muted>
-                <View style={styles.chipRow}>
-                  <Chip
-                    label="Billable"
-                    active={workClassification === 'billable_change'}
-                    onPress={() => setWorkClassification('billable_change')}
-                  />
-                  <Chip
-                    label="Fix"
-                    active={workClassification === 'fix'}
-                    onPress={() => setWorkClassification('fix')}
-                  />
-                </View>
-                <Input
-                  placeholder="Approve note"
-                  value={approveNote}
-                  onChangeText={setApproveNote}
-                />
-                <Btn
-                  label="Approve"
-                  disabled={busy}
-                  onPress={() => void onApprove()}
-                />
-                <Input
-                  placeholder="Reject reason"
-                  value={rejectReason}
-                  onChangeText={setRejectReason}
-                />
-                <Btn
-                  label="Reject"
-                  variant="danger"
-                  disabled={busy}
-                  onPress={() => void onReject()}
-                />
+                <Text style={styles.label}>Work classification</Text>
+                <Wrap>
+                  <Chip label="Billable change" icon="cash" tone="warn" active={workClassification === 'billable_change'} onPress={() => setWorkClassification('billable_change')} />
+                  <Chip label="Fix (no charge)" icon="build" tone="ok" active={workClassification === 'fix'} onPress={() => setWorkClassification('fix')} />
+                </Wrap>
+                <Input label="Note / reject reason" value={note} onChangeText={setNote} placeholder="Optional" multiline />
               </>
             ) : (
-              <Muted>Not pending TaskFlow approval</Muted>
+              <Text style={styles.meta}>This request is not awaiting TaskFlow approval.</Text>
             )}
-          </ScrollView>
-        </Screen>
-      </Modal>
+          </View>
+        ) : null}
+      </Sheet>
+
+      <Sheet visible={Boolean(ticket)} onClose={() => setTicket(null)} title={ticket?.subject} subtitle={ticket ? labelOf(ticket.projectId) : ''}>
+        {ticket ? (
+          <View style={{ gap: spacing.sm }}>
+            <Text style={styles.label}>Status</Text>
+            <Wrap>
+              {['open', 'in_progress', 'waiting', 'resolved', 'closed'].map((s) => (
+                <Chip
+                  key={s}
+                  label={humanize(s)}
+                  tone={statusTone(s)}
+                  active={ticket.status === s}
+                  disabled={busy || ticket.status === s}
+                  onPress={() => void updateTicket({ status: s }, `Status → ${humanize(s)}`)}
+                />
+              ))}
+            </Wrap>
+            <Text style={styles.label}>Priority</Text>
+            <Wrap>
+              {['low', 'medium', 'high', 'urgent'].map((p) => (
+                <Chip
+                  key={p}
+                  label={humanize(p)}
+                  tone={priorityTone(p) === 'neutral' ? 'accent' : priorityTone(p)}
+                  active={ticket.priority === p}
+                  disabled={busy || ticket.priority === p}
+                  onPress={() => void updateTicket({ priority: p }, `Priority → ${humanize(p)}`)}
+                />
+              ))}
+            </Wrap>
+            <Input label="Add comment" value={comment} onChangeText={setComment} placeholder="Visible on the ticket" multiline />
+            <Btn label="Post comment" icon="chatbubble" block loading={busy} disabled={!comment.trim()} onPress={() => void updateTicket({ comment: comment.trim() }, 'Comment added')} />
+          </View>
+        ) : null}
+      </Sheet>
     </Screen>
   )
 }
 
 const styles = StyleSheet.create({
-  name: {
-    fontFamily: fonts.semiBold,
-    color: colors.text,
-    fontSize: 15,
-  },
-  body: {
-    fontFamily: fonts.regular,
-    color: colors.text,
-    fontSize: 14,
-    lineHeight: 20,
-    marginVertical: 12,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: spacing.sm,
-  },
+  list: { paddingHorizontal: spacing.md, paddingBottom: 110, gap: spacing.sm },
+  head: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  title: { fontFamily: fonts.semiBold, color: colors.text, fontSize: 15 },
+  meta: { fontFamily: fonts.regular, color: colors.muted, fontSize: 12, marginTop: 2 },
+  body: { fontFamily: fonts.regular, color: colors.textDim, fontSize: 14, lineHeight: 21 },
+  label: { fontFamily: fonts.semiBold, color: colors.textDim, fontSize: 13, marginTop: spacing.xs },
 })

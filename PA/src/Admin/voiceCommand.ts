@@ -1,3 +1,4 @@
+import type Groq from 'groq-sdk';
 import { getGroq } from '../Config/groq';
 import {
   getBotSettings,
@@ -11,8 +12,19 @@ import {
   fetchTaskflowSnapshot,
   formatSnapshotForPrompt,
 } from './taskflowContext';
+import {
+  ATRIUM_ENDPOINT_CATALOG,
+  ATRIUM_TOOLS,
+  runAtriumTool,
+  type AtriumToolCallLog,
+} from './atriumTools';
 
 const DEFAULT_CHAT_MODEL = 'qwen/qwen3.8-27b';
+/** Max model↔tool round trips per question. */
+const MAX_TOOL_ROUNDS = 6;
+
+/** 'voice' = spoken control-center replies; 'chat' = mobile text chat (longer, light formatting). */
+export type AssistantMode = 'voice' | 'chat';
 
 export type VoiceCommandResult = {
   action: string;
@@ -232,51 +244,93 @@ async function buildBusinessContext(): Promise<string> {
   });
 }
 
-async function conversationalReply(userText: string): Promise<VoiceCommandResult> {
+async function conversationalReply(
+  userText: string,
+  mode: AssistantMode
+): Promise<VoiceCommandResult> {
   const context = await buildBusinessContext();
   const model =
     process.env.GROQ_CHAT_MODEL?.trim() ||
     process.env.GROQ_MODEL?.trim() ||
     DEFAULT_CHAT_MODEL;
 
+  const style =
+    mode === 'chat'
+      ? `- This is a text chat on the owner's phone. Be concise but complete: lead with the answer, then key facts.
+- Plain text with short "- " lists is fine; no tables, no code fences. Include issue keys / names so they can find things.`
+      : `- Speak like a trusted human PA: clear, concise, natural. 1–3 short sentences unless they ask for detail.
+- No markdown, no bullet dumps, no code fences — this is read aloud.`;
+
   const system = `You are Ivorix, a warm, capable human-like executive personal assistant for the business owner.
-You work inside the Ivorix Control Center and help run the business on Atrium/Taskflow (projects, CRM) and the WhatsApp PA bot.
+You work inside the Ivorix Control Center and help run the business on Atrium/Taskflow (projects, issues, sprints, CRM, service desk, calendar, monitor, HRMS) and the WhatsApp PA bot.
+
+You have FULL live access to Atrium through tools:
+- atrium_get: read any Atrium data. Always fetch real data before answering questions about projects, issues, people, leads, tickets, errors, etc. Never guess or invent names, numbers or ids.
+- atrium_write: create/update records, ONLY when the owner explicitly asks in their latest message. Resolve ids with atrium_get first, then confirm what you changed (with the issue key / name).
+- Drill down: list with filters → detail by id. Use /search or /issues/search-global when you only have a name or phrase. Use project ids from the context below.
+- If a tool returns 401/403/503, explain that Atrium access needs TASKFLOW_API_TOKEN (or TASKFLOW_EMAIL + TASKFLOW_PASSWORD) with enough permissions in PA/.env.
 
 Style:
-- Speak like a trusted human PA: clear, concise, natural. 1–3 short sentences unless they ask for detail.
-- No markdown, no bullet dumps, no code fences — this is read aloud.
+${style}
 - If they greet you or ask if you can hear them, answer warmly and offer help.
-- Use the live business context below. Prefer facts from context over guessing.
-- If Atrium data is missing, say what you can do with WhatsApp/PA data and that TASKFLOW_API_TOKEN unlocks live projects/CRM.
-- You may suggest WhatsApp ops (pause bot, list leads) in plain language; do not invent project names that are not in context.
+- You may suggest WhatsApp ops (pause bot, list leads) in plain language.
+
+Today: ${new Date().toISOString().slice(0, 10)}
+
+${ATRIUM_ENDPOINT_CATALOG}
 
 Live context:
 ${context}`;
 
+  type Msg = Groq.Chat.Completions.ChatCompletionMessageParam;
+  const messages: Msg[] = [
+    { role: 'system', content: system },
+    ...voiceHistory.map((m) => ({ role: m.role, content: m.content }) as Msg),
+    { role: 'user', content: userText },
+  ];
+  const calls: AtriumToolCallLog[] = [];
+
   try {
-    const completion = await getGroq().chat.completions.create({
-      model,
-      temperature: 0.45,
-      max_tokens: 350,
-      messages: [
-        { role: 'system', content: system },
-        ...voiceHistory.map((m) => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        })),
-        { role: 'user', content: userText },
-      ],
-    });
-    let reply = (completion.choices[0]?.message?.content ?? '').trim();
+    let reply = '';
+    for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+      const completion = await getGroq().chat.completions.create({
+        model,
+        temperature: 0.3,
+        max_tokens: mode === 'chat' ? 1200 : 400,
+        messages,
+        // Last round: force a text answer from what was gathered.
+        ...(round < MAX_TOOL_ROUNDS ? { tools: ATRIUM_TOOLS, tool_choice: 'auto' as const } : {}),
+      });
+      const msg = completion.choices[0]?.message;
+      const toolCalls = msg?.tool_calls ?? [];
+      if (!toolCalls.length) {
+        reply = (msg?.content ?? '').trim();
+        break;
+      }
+      messages.push({ role: 'assistant', content: msg?.content ?? '', tool_calls: toolCalls });
+      const results = await Promise.all(
+        toolCalls.map((tc) => runAtriumTool(tc.function.name, tc.function.arguments, calls))
+      );
+      toolCalls.forEach((tc, i) =>
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: results[i] })
+      );
+    }
+
     reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
     reply = reply.replace(/^```[\s\S]*?```$/g, '').trim();
     if (!reply) {
       reply =
-        "I'm here. Ask me about your projects, leads, WhatsApp chats, or say pause the bot.";
+        "I'm here. Ask me about your projects, issues, leads, tickets, WhatsApp chats, or say pause the bot.";
     }
-    // Keep spoken answers reasonably short
-    if (reply.length > 600) reply = `${reply.slice(0, 580).trim()}…`;
-    return { action: 'assistant', reply, data: { model } };
+    const cap = mode === 'chat' ? 4000 : 600;
+    if (reply.length > cap) reply = `${reply.slice(0, cap - 20).trim()}…`;
+
+    const wrote = calls.some((c) => c.tool === 'atrium_write' && c.status < 300);
+    return {
+      action: wrote ? 'atrium_update' : 'assistant',
+      reply,
+      data: { model, atriumCalls: calls },
+    };
   } catch (err) {
     console.error('conversationalReply failed:', err);
     return {
@@ -290,7 +344,10 @@ ${context}`;
 /**
  * Control-center voice entry: explicit WhatsApp ops OR conversational AI PA.
  */
-export async function runVoiceCommand(text: string): Promise<VoiceCommandResult> {
+export async function runVoiceCommand(
+  text: string,
+  mode: AssistantMode = 'voice'
+): Promise<VoiceCommandResult> {
   const cleaned = text.trim();
   if (!cleaned) {
     return {
@@ -308,7 +365,7 @@ export async function runVoiceCommand(text: string): Promise<VoiceCommandResult>
     return opsResult;
   }
 
-  const result = await conversationalReply(cleaned);
+  const result = await conversationalReply(cleaned, mode);
   pushHistory('assistant', result.reply);
   return result;
 }

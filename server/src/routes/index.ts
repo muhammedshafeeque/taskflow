@@ -40,6 +40,7 @@ import { documentsRoutes } from '../modules/documents/documents.routes';
 import { calendarRoutes } from '../modules/calendar/calendar.routes';
 import { searchRoutes } from '../modules/search/search.routes';
 import { monitorStaffRoutes, monitorIngestRoutes } from '../modules/monitor/monitor.routes';
+import { monitorPaRoutes } from '../modules/monitor/monitor.pa.routes';
 import { customerRoleRoutes } from '../modules/customer-portal/customer-role/customerRole.routes';
 import { customerUserRoutes } from '../modules/customer-portal/customer-user/customerUser.routes';
 import { customerProjectMappingRoutes } from '../modules/customer-portal/customer-project-mapping/customerProjectMapping.routes';
@@ -125,6 +126,8 @@ router.use('/accounts', accountsEnabled, accountsRoutes);
 router.use('/documents', documentsEnabled, documentsRoutes);
 router.use('/calendar', calendarEnabled, calendarRoutes);
 router.use('/monitor', monitorEnabled, monitorIngestRoutes);
+// PA service API (x-pa-ingest-secret) — must precede staff routes, which require a JWT.
+router.use('/monitor/pa', monitorEnabled, monitorPaRoutes);
 router.use('/monitor', monitorEnabled, monitorStaffRoutes);
 router.use('/search', searchRoutes);
 

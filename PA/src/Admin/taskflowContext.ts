@@ -116,6 +116,79 @@ async function getJson(path: string): Promise<unknown | null> {
   }
 }
 
+/** Authenticated Taskflow call that surfaces upstream status + body (for proxies). */
+export async function taskflowRequest(
+  path: string,
+  init: { method?: string; body?: unknown } = {}
+): Promise<{ status: number; json: unknown }> {
+  const base = apiBase()
+  if (!base) return { status: 503, json: { success: false, error: 'TASKFLOW_API_URL not configured' } }
+  const auth = await resolveAccessToken()
+  const h = await authHeaders()
+  if (!h) {
+    return { status: 503, json: { success: false, error: auth.reason || 'Taskflow auth missing' } }
+  }
+  try {
+    const res = await fetch(`${base}${path}`, {
+      method: init.method || 'GET',
+      headers: h,
+      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      signal: AbortSignal.timeout(Number(process.env.TASKFLOW_TIMEOUT_MS) || 15000),
+    })
+    if (res.status === 401) {
+      cachedAccessToken = null
+      cachedTokenAt = 0
+    }
+    const json = (await res.json().catch(() => ({}))) as unknown
+    return { status: res.status, json }
+  } catch (err) {
+    return {
+      status: 502,
+      json: { success: false, error: err instanceof Error ? err.message : 'Taskflow request failed' },
+    }
+  }
+}
+
+/**
+ * Atrium Monitor API call. Uses the service API (/api/monitor/pa, x-pa-ingest-secret)
+ * when TASKFLOW_INGEST_SECRET is set; otherwise the staff API with a JWT.
+ * `path` is relative to the monitor root, e.g. `/summary` or `/projects/:id/errors`.
+ */
+export async function taskflowMonitorRequest(
+  path: string,
+  init: { method?: string; body?: unknown } = {}
+): Promise<{ status: number; json: unknown }> {
+  const base = apiBase()
+  const secret = ingestSecret()
+  if (!base || !secret) return taskflowRequest(`/api/monitor${path}`, init)
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-pa-ingest-secret': secret,
+  }
+  const orgId = process.env.TASKFLOW_ORG_ID?.trim()
+  if (orgId) headers['x-organization-id'] = orgId
+  try {
+    const res = await fetch(`${base}/api/monitor/pa${path}`, {
+      method: init.method || 'GET',
+      headers,
+      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      signal: AbortSignal.timeout(Number(process.env.TASKFLOW_TIMEOUT_MS) || 15000),
+    })
+    const json = (await res.json().catch(() => ({}))) as unknown
+    return { status: res.status, json }
+  } catch (err) {
+    const timedOut = err instanceof Error && err.name === 'TimeoutError'
+    return {
+      status: timedOut ? 504 : 502,
+      json: {
+        success: false,
+        error: timedOut ? 'Taskflow monitor request timed out' : err instanceof Error ? err.message : 'Taskflow request failed',
+      },
+    }
+  }
+}
+
 function asArray(data: unknown): unknown[] {
   if (Array.isArray(data)) return data
   if (data && typeof data === 'object') {
@@ -293,11 +366,11 @@ export function formatSnapshotForPrompt(
 
   lines.push('', '## Atrium / Taskflow')
   if (!snap.available) {
-    lines.push(`- Live Atrium API: unavailable (${snap.reason})`)
+    lines.push(`- Live Atrium API: unavailable (${snap.reason}) — tools will fail until this is fixed`)
   } else if (snap.projects.length) {
     lines.push(
       `- Projects (${snap.projects.length}): ${snap.projects
-        .map((p) => `${p.name}${p.key ? ` [${p.key}]` : ''}`)
+        .map((p) => `${p.name}${p.key ? ` [${p.key}]` : ''} id=${p.id}`)
         .join('; ')}`
     )
   } else {

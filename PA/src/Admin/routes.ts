@@ -37,11 +37,14 @@ import {
   voiceTranscribe,
 } from './voiceRoutes';
 import { agentAdminRouter } from '../Agent/adminRoutes';
+import { monitorAdminRouter, pushAdminRouter } from './monitorAdmin';
 
 export const adminRouter = Router();
 
 adminRouter.use(requireAdminSecret);
 adminRouter.use('/agent', agentAdminRouter);
+adminRouter.use('/monitor', monitorAdminRouter);
+adminRouter.use('/push', pushAdminRouter);
 
 adminRouter.get('/status', async (_req, res) => {
   const settings = await getBotSettings();

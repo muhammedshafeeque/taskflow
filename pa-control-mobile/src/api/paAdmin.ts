@@ -102,14 +102,25 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const secret = getStoredSecret()
   if (!secret) throw new Error('Admin secret required')
 
-  const res = await fetch(`${getBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-pa-admin-secret': secret,
-      ...(init.headers || {}),
-    },
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000)
+  let res: Response
+  try {
+    res = await fetch(`${getBaseUrl()}${path}`, {
+      ...init,
+      signal: init.signal ?? controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-pa-admin-secret': secret,
+        ...(init.headers || {}),
+      },
+    })
+  } catch (err) {
+    if (controller.signal.aborted) throw new Error('Request timed out — is the PA server reachable?')
+    throw err
+  } finally {
+    clearTimeout(timeout)
+  }
 
   const json = (await res.json().catch(() => ({}))) as {
     success?: boolean
@@ -293,7 +304,7 @@ export const paAdmin = {
   listGroups: () => request<WhatsappGroupRow[]>('/api/admin/groups'),
   patchGroup: (
     chatId: string,
-    body: Partial<WhatsappGroupRow> & {
+    body: Partial<Omit<WhatsappGroupRow, 'atriumProjects' | 'customerOrgId' | 'customerOrgName'>> & {
       atriumProjects?: Array<{ id: string; name: string; key?: string }> | null
       customerOrgId?: string | null
       customerOrgName?: string | null
@@ -492,4 +503,276 @@ export function agentJobEventsUrl(jobId: string): string {
   return `${getBaseUrl()}/api/admin/agent/jobs/${encodeURIComponent(
     jobId
   )}/events?secret=${secret}`
+}
+
+/* ------------------------------ Atrium Monitor ----------------------------- */
+
+export type MonitorSeverity = 'critical' | 'warning' | 'info'
+
+export type MonitorFeedAlert = {
+  id: string
+  kind: 'delivery' | 'error' | 'uptime'
+  severity: MonitorSeverity
+  title: string
+  body: string
+  projectId: string
+  projectName: string
+  at: string
+  ref?: string
+}
+
+export type MonitorOverview = {
+  last24hLogs: number
+  openErrors: number
+  liveUsers: number
+  transactionAvgMs: number
+  transactionCount: number
+  httpErrors: number
+  vitals: Record<string, number>
+  uptimeOk: number
+  uptimeFail: number
+}
+
+export type MonitorUptimeSummary = {
+  id: string
+  name: string
+  url: string
+  up: boolean | null
+  latencyMs?: number
+  okRate: number | null
+  samples: Array<{ ok: boolean; latencyMs?: number; at: string }>
+}
+
+export type MonitorFeed = {
+  available: boolean
+  reason?: string
+  generatedAt: string
+  projects: Array<{
+    id: string
+    name: string
+    key: string
+    overview: MonitorOverview | null
+    uptime: MonitorUptimeSummary[]
+  }>
+  alerts: MonitorFeedAlert[]
+  totals: {
+    openErrors: number
+    liveUsers: number
+    httpErrors: number
+    uptimeDown: number
+    alerts24h: number
+  }
+}
+
+export type MonitorErrorGroup = {
+  _id: string
+  type?: string
+  message: string
+  sampleStack?: string
+  kind?: string
+  count: number
+  status: 'open' | 'resolved'
+  firstSeen?: string
+  lastSeen?: string
+  appId?: string
+  environmentId?: string
+}
+
+export type MonitorLogRow = {
+  _id: string
+  level: string
+  message: string
+  release?: string
+  meta?: unknown
+  timestamp: string
+}
+
+export type MonitorHttpRow = {
+  _id: string
+  method: string
+  url: string
+  status?: number
+  durationMs?: number
+  direction?: 'in' | 'out'
+  timestamp: string
+}
+
+export type MonitorTransactionRow = {
+  _id: string
+  name: string
+  durationMs: number
+  status?: string
+  timestamp: string
+}
+
+export type MonitorPresenceRow = {
+  _id: string
+  sessionId: string
+  userId?: string
+  page?: string
+  userAgent?: string
+  lastSeen: string
+}
+
+export type MonitorReleaseRow = {
+  _id: string
+  version: string
+  firstSeen?: string
+  appId?: string
+}
+
+export type MonitorUptimeCheck = {
+  _id: string
+  name: string
+  url: string
+  method?: string
+  expectedStatus?: number
+  intervalMinutes?: number
+  enabled?: boolean
+}
+
+export const ALERT_TRIGGERS = [
+  { id: 'error_new', label: 'New error', icon: 'bug' },
+  { id: 'error_spike', label: 'Error spike', icon: 'trending-up' },
+  { id: 'log_level', label: 'Log level', icon: 'document-text' },
+  { id: 'http_status', label: 'HTTP status', icon: 'swap-horizontal' },
+  { id: 'transaction_slow', label: 'Slow transaction', icon: 'speedometer' },
+  { id: 'vital_threshold', label: 'Web vital', icon: 'pulse' },
+  { id: 'uptime_down', label: 'Uptime down', icon: 'cloud-offline' },
+  { id: 'event_name', label: 'Custom event', icon: 'flash' },
+  { id: 'new_release', label: 'New release', icon: 'rocket' },
+] as const
+
+export type AlertTrigger = (typeof ALERT_TRIGGERS)[number]['id']
+
+export type MonitorAlertRule = {
+  _id: string
+  name: string
+  enabled: boolean
+  trigger: AlertTrigger
+  environmentId?: string | null
+  appId?: string | null
+  recipients: string[]
+  cooldownMinutes: number
+  lastFiredAt?: string
+  lastError?: string
+  fireCount: number
+  subjectTemplate?: string
+  bodyTemplate?: string
+  conditions: {
+    logLevels?: string[]
+    messageContains?: string
+    minCount?: number
+    windowMinutes?: number
+    httpStatusMin?: number
+    httpStatusMax?: number
+    durationMs?: number
+    vitalName?: string
+    vitalGte?: number
+    eventName?: string
+    uptimeFailStreak?: number
+  }
+}
+
+export type MonitorAlertDelivery = {
+  _id: string
+  ruleId: string
+  trigger?: string
+  subject?: string
+  recipients: string[]
+  summary?: string
+  ok: boolean
+  error?: string
+  timestamp: string
+}
+
+type MonitorQuery = {
+  q?: string
+  level?: string
+  status?: string
+  limit?: number
+  environmentId?: string
+  appId?: string
+}
+
+function qs(o: Record<string, string | number | undefined>): string {
+  const p = new URLSearchParams()
+  for (const [k, v] of Object.entries(o)) if (v !== undefined && v !== '') p.set(k, String(v))
+  const s = p.toString()
+  return s ? `?${s}` : ''
+}
+
+const mp = (projectId: string, rest = '') =>
+  `/api/admin/monitor/projects/${encodeURIComponent(projectId)}${rest}`
+
+export const monitorApi = {
+  feed: () => request<MonitorFeed>('/api/admin/monitor/feed'),
+  overview: (pid: string) => request<MonitorOverview>(mp(pid, '/overview')),
+  errors: (pid: string, o: MonitorQuery = {}) =>
+    request<MonitorErrorGroup[]>(mp(pid, `/errors${qs(o)}`)),
+  errorGroup: (pid: string, id: string) =>
+    request<MonitorErrorGroup>(mp(pid, `/errors/${encodeURIComponent(id)}`)),
+  setErrorStatus: (pid: string, id: string, status: 'open' | 'resolved') =>
+    request<MonitorErrorGroup>(mp(pid, `/errors/${encodeURIComponent(id)}`), {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+  logs: (pid: string, o: MonitorQuery = {}) => request<MonitorLogRow[]>(mp(pid, `/logs${qs(o)}`)),
+  http: (pid: string, o: MonitorQuery = {}) => request<MonitorHttpRow[]>(mp(pid, `/http${qs(o)}`)),
+  transactions: (pid: string, o: MonitorQuery = {}) =>
+    request<MonitorTransactionRow[]>(mp(pid, `/transactions${qs(o)}`)),
+  liveUsers: (pid: string) => request<MonitorPresenceRow[]>(mp(pid, '/live-users')),
+  releases: (pid: string) => request<MonitorReleaseRow[]>(mp(pid, '/releases')),
+  uptime: (pid: string) => request<MonitorUptimeCheck[]>(mp(pid, '/uptime')),
+  createUptime: (
+    pid: string,
+    body: { name: string; url: string; method?: string; expectedStatus?: number; intervalMinutes?: number }
+  ) => request<MonitorUptimeCheck>(mp(pid, '/uptime'), { method: 'POST', body: JSON.stringify(body) }),
+  deleteUptime: (pid: string, id: string) =>
+    request<{ ok: boolean }>(mp(pid, `/uptime/${encodeURIComponent(id)}`), { method: 'DELETE' }),
+  alertRules: (pid: string) => request<MonitorAlertRule[]>(mp(pid, '/alerts')),
+  createAlertRule: (pid: string, body: Partial<MonitorAlertRule>) =>
+    request<MonitorAlertRule>(mp(pid, '/alerts'), { method: 'POST', body: JSON.stringify(body) }),
+  updateAlertRule: (pid: string, id: string, body: Partial<MonitorAlertRule>) =>
+    request<MonitorAlertRule>(mp(pid, `/alerts/${encodeURIComponent(id)}`), {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteAlertRule: (pid: string, id: string) =>
+    request<{ ok: boolean }>(mp(pid, `/alerts/${encodeURIComponent(id)}`), { method: 'DELETE' }),
+  testAlertRule: (pid: string, id: string) =>
+    request<{ ok: boolean }>(mp(pid, `/alerts/${encodeURIComponent(id)}/test`), { method: 'POST' }),
+  deliveries: (pid: string, ruleId?: string) =>
+    request<MonitorAlertDelivery[]>(mp(pid, `/alert-deliveries${qs({ ruleId })}`)),
+}
+
+/* ---------------------------------- push ---------------------------------- */
+
+export const pushApi = {
+  register: (body: { token: string; platform: string; deviceName?: string; kinds?: string[] }) =>
+    request<unknown>('/api/admin/push/register', { method: 'POST', body: JSON.stringify(body) }),
+  unregister: (token: string) =>
+    request<unknown>('/api/admin/push/unregister', { method: 'POST', body: JSON.stringify({ token }) }),
+  test: (token?: string) =>
+    request<{ sent: number }>('/api/admin/push/test', { method: 'POST', body: JSON.stringify({ token }) }),
+}
+
+/* -------------------------------- assistant -------------------------------- */
+
+export type AssistantResult = { action: string; reply: string; data?: Record<string, unknown> }
+
+export const assistantApi = {
+  /** mode 'chat' = longer text answers; the assistant reads/updates Atrium via server-side tools. */
+  command: (text: string, mode: 'chat' | 'voice' = 'chat') =>
+    request<AssistantResult>('/api/admin/voice/command', { method: 'POST', body: JSON.stringify({ text, mode }) }),
+  transcribe: (audioBase64: string, mimetype: string, language?: 'en' | 'ml' | 'auto') =>
+    request<{ text: string; language?: string }>('/api/admin/voice/transcribe', {
+      method: 'POST',
+      body: JSON.stringify({ audioBase64, mimetype, language }),
+    }),
+  speak: (text: string, lang: 'en' | 'ml' = 'en') =>
+    request<{ mimetype: string; filename: string; audioBase64: string }>('/api/admin/voice/speak', {
+      method: 'POST',
+      body: JSON.stringify({ text, lang }),
+    }),
 }

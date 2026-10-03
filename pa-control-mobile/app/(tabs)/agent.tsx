@@ -1,44 +1,42 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  FlatList,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native'
+import * as Clipboard from 'expo-clipboard'
 import { useFocusEffect } from 'expo-router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
   type AgentDeviceRow,
   type AgentJobRow,
   type AtriumProject,
   paAdmin,
 } from '../../src/api/paAdmin'
-import { colors, fonts, spacing } from '../../src/theme'
+import { humanize, timeAgo } from '../../src/lib/format'
+import { colors, fonts, radius, spacing, type Tone } from '../../src/theme'
+import { useToast } from '../../src/ui/Toast'
 import {
   Badge,
   Btn,
+  Card,
   Chip,
   EmptyState,
-  ErrorText,
+  GradientCard,
+  Header,
+  IconButton,
+  IconTile,
   Input,
   ListRow,
-  Loading,
-  Muted,
-  PageHeader,
-  Panel,
-  Row,
+  Mono,
   Screen,
+  ScreenScroll,
   Segmented,
-  SuccessText,
-  Title,
+  Sheet,
+  SkeletonList,
+  StatusDot,
+  Wrap,
 } from '../../src/ui/Ui'
 
-type Tab = 'devices' | 'jobs'
+type Tab = 'jobs' | 'devices'
+type JobFilter = 'all' | 'active' | 'needs_review' | 'done' | 'failed'
 
-function statusTone(
-  status: string
-): 'ok' | 'warn' | 'danger' | 'neutral' | 'accent' {
+function statusTone(status: string): Tone {
   if (status === 'needs_review') return 'warn'
   if (status === 'done' || status === 'online') return 'ok'
   if (status === 'failed' || status === 'cancelled') return 'danger'
@@ -46,453 +44,463 @@ function statusTone(
   return 'neutral'
 }
 
+const ACTIVE = new Set(['queued', 'running', 'claimed'])
+
 export default function AgentScreen() {
-  const [tab, setTab] = useState<Tab>('devices')
+  const toast = useToast()
+  const [tab, setTab] = useState<Tab>('jobs')
+  const [filter, setFilter] = useState<JobFilter>('all')
   const [devices, setDevices] = useState<AgentDeviceRow[]>([])
   const [jobs, setJobs] = useState<AgentJobRow[]>([])
   const [projects, setProjects] = useState<AtriumProject[]>([])
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+
+  const [pairOpen, setPairOpen] = useState(false)
   const [pairingCode, setPairingCode] = useState('')
   const [deviceName, setDeviceName] = useState('PC')
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [selectedDeviceId, setSelectedDeviceId] = useState('')
+  const [jobType, setJobType] = useState<'fix_issue' | 'run_command'>('fix_issue')
+  const [deviceId, setDeviceId] = useState('')
   const [issueKey, setIssueKey] = useState('')
   const [projectId, setProjectId] = useState('')
   const [projectKey, setProjectKey] = useState('')
   const [instruction, setInstruction] = useState('')
+  const [command, setCommand] = useState('')
 
   const [jobDetail, setJobDetail] = useState<AgentJobRow | null>(null)
   const [followUp, setFollowUp] = useState('')
   const [deployCmd, setDeployCmd] = useState('')
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const logScroll = useRef<ScrollView>(null)
 
   const load = useCallback(async () => {
-    setError('')
     try {
       const [devs, jobList, atrium] = await Promise.all([
         paAdmin.listAgentDevices(),
         paAdmin.listAgentJobs({}),
-        paAdmin.listAtriumProjects().catch(() => ({
-          available: false,
-          projects: [] as AtriumProject[],
-        })),
+        paAdmin.listAtriumProjects().catch(() => ({ available: false, projects: [] as AtriumProject[] })),
       ])
       setDevices(devs || [])
       setJobs(jobList || [])
       setProjects(atrium.projects || [])
-      if (!selectedDeviceId && devs?.[0]) {
-        setSelectedDeviceId(devs[0].deviceId)
-      }
+      setDeviceId((cur) => cur || devs.find((d) => d.online)?.deviceId || devs[0]?.deviceId || '')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load')
+      toast.error(err instanceof Error ? err.message : 'Failed to load')
     } finally {
       setLoading(false)
     }
-  }, [selectedDeviceId])
+  }, [toast])
 
   useFocusEffect(
     useCallback(() => {
       void load()
+      const t = setInterval(() => void load(), 10000)
+      return () => clearInterval(t)
     }, [load])
   )
 
   useEffect(() => {
-    if (!jobDetail?.id) {
-      if (pollRef.current) clearInterval(pollRef.current)
-      return
-    }
-    const tick = async () => {
+    if (!jobDetail?.id) return
+    const id = jobDetail.id
+    const t = setInterval(async () => {
       try {
-        const j = await paAdmin.getAgentJob(jobDetail.id)
-        setJobDetail(j)
+        setJobDetail(await paAdmin.getAgentJob(id))
       } catch {
-        // ignore transient
+        // transient
       }
-    }
-    void tick()
-    pollRef.current = setInterval(() => void tick(), 2500)
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
-    }
+    }, 2500)
+    return () => clearInterval(t)
   }, [jobDetail?.id])
 
-  async function onPair() {
+  const filteredJobs = useMemo(
+    () =>
+      jobs.filter((j) =>
+        filter === 'all'
+          ? true
+          : filter === 'active'
+            ? ACTIVE.has(j.status)
+            : filter === 'failed'
+              ? j.status === 'failed' || j.status === 'cancelled'
+              : j.status === filter
+      ),
+    [jobs, filter]
+  )
+
+  const reviewCount = jobs.filter((j) => j.status === 'needs_review').length
+  const activeCount = jobs.filter((j) => ACTIVE.has(j.status)).length
+  const deviceName_ = (id: string) => devices.find((d) => d.deviceId === id)?.name || id
+
+  async function run<T>(fn: () => Promise<T>, ok: (r: T) => string) {
     setBusy(true)
-    setError('')
-    setSuccess('')
     try {
-      const data = await paAdmin.createAgentPairing({ name: deviceName })
-      setPairingCode(data.pairingCode)
-      setSuccess(`Run on PC: ivx pair ${data.pairingCode}`)
-      await load()
+      const r = await fn()
+      toast.success(ok(r))
+      return r
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Pairing failed')
+      toast.error(err instanceof Error ? err.message : 'Action failed')
+      return null
     } finally {
       setBusy(false)
     }
   }
 
-  async function onCreateFix() {
-    if (!selectedDeviceId || !issueKey.trim() || !projectId.trim()) {
-      setError('Device, issue key, and project id required')
-      return
+  async function onPair() {
+    const data = await run(() => paAdmin.createAgentPairing({ name: deviceName }), () => 'Pairing code created')
+    if (data) {
+      setPairingCode(data.pairingCode)
+      void load()
     }
-    setBusy(true)
-    setError('')
-    try {
-      const job = await paAdmin.createAgentJob({
-        type: 'fix_issue',
-        deviceId: selectedDeviceId,
-        issueKey: issueKey.trim().toUpperCase(),
-        projectId: projectId.trim(),
-        projectKey: projectKey.trim().toUpperCase() || undefined,
-        instruction: instruction.trim(),
-      })
+  }
+
+  async function onCreate() {
+    if (!deviceId) return toast.error('Pick a device')
+    if (jobType === 'fix_issue' && (!issueKey.trim() || !projectId)) return toast.error('Issue key and project required')
+    if (jobType === 'run_command' && !command.trim()) return toast.error('Enter a command')
+    const job = await run(
+      () =>
+        paAdmin.createAgentJob(
+          jobType === 'fix_issue'
+            ? {
+                type: 'fix_issue',
+                deviceId,
+                issueKey: issueKey.trim().toUpperCase(),
+                projectId,
+                projectKey: projectKey.trim().toUpperCase() || undefined,
+                instruction: instruction.trim(),
+              }
+            : { type: 'run_command', deviceId, command: command.trim() }
+        ),
+      (j) => `Job ${j.id.slice(-6)} queued`
+    )
+    if (job) {
       setCreateOpen(false)
-      setSuccess(`Job ${job.id} queued`)
       setTab('jobs')
       setJobDetail(job)
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Create failed')
-    } finally {
-      setBusy(false)
+      void load()
     }
   }
 
   async function onApproveDeploy() {
     if (!jobDetail) return
-    setBusy(true)
-    setError('')
-    try {
-      const data = await paAdmin.approveAgentDeploy(
-        jobDetail.id,
-        deployCmd.trim() || undefined
-      )
-      setSuccess(`Deploy job ${data.deployJob.id} queued`)
+    const data = await run(
+      () => paAdmin.approveAgentDeploy(jobDetail.id, deployCmd.trim() || undefined),
+      (d) => `Deploy ${d.deployJob.id.slice(-6)} queued`
+    )
+    if (data) {
       setJobDetail(data.deployJob)
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Approve failed')
-    } finally {
-      setBusy(false)
+      void load()
     }
   }
 
   async function onFollowUp() {
-    if (!jobDetail || !followUp.trim()) {
-      setError('Enter follow-up instructions')
-      return
-    }
-    setBusy(true)
-    setError('')
-    try {
-      const job = await paAdmin.createAgentJob({
-        type: 'follow_up',
-        deviceId: jobDetail.deviceId,
-        issueKey: jobDetail.issueKey,
-        projectId: jobDetail.projectId,
-        projectKey: jobDetail.projectKey,
-        instruction: followUp.trim(),
-        parentJobId: jobDetail.id,
-      })
-      setFollowUp('')
-      setSuccess(`Follow-up ${job.id} queued`)
-      setJobDetail(job)
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Follow-up failed')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function onCancel() {
-    if (!jobDetail) return
-    setBusy(true)
-    try {
-      const job = await paAdmin.cancelAgentJob(jobDetail.id)
-      setJobDetail(job)
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Cancel failed')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function onReject() {
-    if (!jobDetail) return
-    setBusy(true)
-    try {
-      const job = await paAdmin.rejectAgentJob(jobDetail.id)
-      setJobDetail(job)
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Reject failed')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (loading) {
-    return (
-      <Screen>
-        <PageHeader title="Agent" subtitle="Remote PC jobs" />
-        <Loading />
-      </Screen>
+    if (!jobDetail || !followUp.trim()) return toast.error('Enter follow-up instructions')
+    const job = await run(
+      () =>
+        paAdmin.createAgentJob({
+          type: 'follow_up',
+          deviceId: jobDetail.deviceId,
+          issueKey: jobDetail.issueKey,
+          projectId: jobDetail.projectId,
+          projectKey: jobDetail.projectKey,
+          instruction: followUp.trim(),
+          parentJobId: jobDetail.id,
+        }),
+      (j) => `Follow-up ${j.id.slice(-6)} queued`
     )
+    if (job) {
+      setFollowUp('')
+      setJobDetail(job)
+      void load()
+    }
+  }
+
+  function revoke(d: AgentDeviceRow) {
+    Alert.alert('Revoke device', `Revoke ${d.name}? It will need to pair again.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Revoke',
+        style: 'destructive',
+        onPress: () => void run(() => paAdmin.revokeAgentDevice(d.deviceId), () => 'Device revoked').then(() => load()),
+      },
+    ])
   }
 
   return (
     <Screen>
-      <PageHeader
+      <Header
         title="Agent"
-        subtitle="Pair a PC CLI and push fix / deploy jobs"
+        subtitle="Remote fix & deploy on your PCs"
+        back
+        right={<IconButton icon="add" tone="accent" onPress={() => setCreateOpen(true)} />}
       />
-      {error ? <ErrorText>{error}</ErrorText> : null}
-      {success ? <SuccessText>{success}</SuccessText> : null}
-
       <Segmented
         value={tab}
         onChange={setTab}
         options={[
-          { id: 'devices', label: 'Devices' },
-          { id: 'jobs', label: 'Jobs' },
+          { id: 'jobs', label: 'Jobs', count: reviewCount || undefined },
+          { id: 'devices', label: 'Devices', count: devices.filter((d) => d.online).length || undefined },
         ]}
       />
+      <ScreenScroll onRefresh={load}>
+        {loading ? <SkeletonList count={5} /> : null}
 
-      {tab === 'devices' ? (
-        <ScrollView contentContainerStyle={styles.pad}>
-          <Panel>
-            <Title>Pair new device</Title>
-            <Muted>Show this code on the PC: ivx pair CODE</Muted>
-            <Input
-              value={deviceName}
-              onChangeText={setDeviceName}
-              placeholder="Device name"
-            />
-            <Btn label={busy ? '…' : 'Create pairing code'} onPress={onPair} />
-            {pairingCode ? (
-              <Text style={styles.code}>{pairingCode}</Text>
+        {tab === 'jobs' ? (
+          <View style={{ gap: spacing.sm }}>
+            {reviewCount ? (
+              <GradientCard colorsPair={['#3A2A12', '#121722']}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                  <IconTile icon="eye" tone="warn" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.title}>{reviewCount} job(s) need review</Text>
+                    <Text style={styles.meta}>Approve the deploy, reject or send follow-up instructions</Text>
+                  </View>
+                </View>
+              </GradientCard>
             ) : null}
-          </Panel>
-
-          <Btn label="New fix job" onPress={() => setCreateOpen(true)} />
-
-          {devices.length === 0 ? (
-            <EmptyState message="No devices — create a pairing code, then run ivx pair on your PC." />
-          ) : (
-            devices.map((d) => (
-              <ListRow
-                key={d.deviceId}
-                title={d.name || d.deviceId}
-                subtitle={`${d.deviceId} · ${d.workspaces?.length || 0} workspaces · ${d.allowCommands?.length || 0} cmds`}
-                trailing={
-                  <Badge
-                    tone={d.online ? 'ok' : 'neutral'}
-                    label={d.online ? 'online' : 'offline'}
-                  />
-                }
-                onPress={() => {
-                  setSelectedDeviceId(d.deviceId)
-                  setSuccess(`Selected ${d.name}`)
-                }}
-              />
-            ))
-          )}
-        </ScrollView>
-      ) : (
-        <FlatList
-          data={jobs}
-          keyExtractor={(j) => j.id}
-          contentContainerStyle={styles.pad}
-          ListEmptyComponent={
-            <EmptyState message="No jobs — create a fix job from Devices." />
-          }
-          renderItem={({ item }) => (
-            <ListRow
-              title={`${item.type} ${item.issueKey || ''}`.trim()}
-              subtitle={`${item.status} · ${item.deviceId}`}
-              trailing={
-                <Badge tone={statusTone(item.status)} label={item.status} />
-              }
-              onPress={() => setJobDetail(item)}
-            />
-          )}
-        />
-      )}
-
-      <Modal visible={createOpen} animationType="slide" transparent>
-        <View style={styles.modalBg}>
-          <Panel style={styles.modalCard}>
-            <Title>Fix on my PC</Title>
-            <Muted>Uses TaskFlow issue context via PA</Muted>
-            <Input
-              value={selectedDeviceId}
-              onChangeText={setSelectedDeviceId}
-              placeholder="Device id"
-            />
-            <Row style={styles.wrap}>
-              {devices.map((d) => (
+            <Wrap>
+              {(['all', 'active', 'needs_review', 'done', 'failed'] as const).map((f) => (
                 <Chip
-                  key={d.deviceId}
-                  label={d.name}
-                  active={selectedDeviceId === d.deviceId}
-                  onPress={() => setSelectedDeviceId(d.deviceId)}
+                  key={f}
+                  label={f === 'needs_review' ? 'Review' : humanize(f)}
+                  tone={f === 'needs_review' ? 'warn' : f === 'failed' ? 'danger' : f === 'done' ? 'ok' : 'accent'}
+                  active={filter === f}
+                  count={f === 'active' ? activeCount : f === 'needs_review' ? reviewCount : undefined}
+                  onPress={() => setFilter(f)}
                 />
               ))}
-            </Row>
-            <Input
-              value={issueKey}
-              onChangeText={setIssueKey}
-              placeholder="Issue key e.g. APP-12"
-              autoCapitalize="characters"
+            </Wrap>
+            {filteredJobs.map((j) => (
+              <ListRow
+                key={j.id}
+                leading={<IconTile icon={j.type === 'deploy' ? 'rocket' : j.type === 'run_command' ? 'terminal' : 'construct'} tone={statusTone(j.status)} size={38} />}
+                title={`${humanize(j.type)}${j.issueKey ? ` · ${j.issueKey}` : ''}`}
+                subtitle={j.summary?.slice(0, 120) || j.instruction?.slice(0, 120) || j.command || deviceName_(j.deviceId)}
+                meta={`${deviceName_(j.deviceId)} · ${timeAgo(j.updatedAt || j.createdAt)}`}
+                onPress={() => setJobDetail(j)}
+                trailing={<Badge label={humanize(j.status)} tone={statusTone(j.status)} />}
+              />
+            ))}
+            {!loading && !filteredJobs.length ? (
+              <EmptyState icon="construct-outline" title="No jobs" message="Queue a fix job and your paired PC will pick it up." action="New job" onAction={() => setCreateOpen(true)} />
+            ) : null}
+          </View>
+        ) : (
+          <View style={{ gap: spacing.sm }}>
+            <Btn label="Pair a new device" icon="link" variant="secondary" block onPress={() => setPairOpen(true)} />
+            {devices.map((d) => (
+              <Card key={d.deviceId} onPress={() => setDeviceId(d.deviceId)} tone={deviceId === d.deviceId ? 'accent' : undefined}>
+                <View style={styles.devHead}>
+                  <IconTile icon="desktop" tone={d.online ? 'ok' : 'neutral'} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.title}>{d.name || d.deviceId}</Text>
+                    <Text style={styles.meta}>
+                      {d.userLabel ? `${d.userLabel} · ` : ''}seen {timeAgo(d.lastSeenAt)}
+                    </Text>
+                  </View>
+                  <StatusDot tone={d.online ? 'ok' : 'neutral'} pulse={d.online} />
+                </View>
+                <Wrap>
+                  <Badge label={`${d.workspaces?.length || 0} workspaces`} tone="neutral" icon="folder" />
+                  <Badge label={`${d.allowCommands?.length || 0} commands`} tone="neutral" icon="terminal" />
+                  {(d.aiProviders || []).map((p) => (
+                    <Badge key={p} label={p} tone="accent" icon="sparkles" />
+                  ))}
+                </Wrap>
+                {d.workspaces?.length ? (
+                  <Text style={styles.meta} numberOfLines={2}>
+                    {d.workspaces.map((w) => w.projectKey).join(' · ')}
+                  </Text>
+                ) : null}
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Btn label="New job here" icon="add" compact variant="secondary" onPress={() => { setDeviceId(d.deviceId); setCreateOpen(true) }} />
+                  <Btn label="Revoke" icon="ban" compact variant="ghost" onPress={() => revoke(d)} />
+                </View>
+              </Card>
+            ))}
+            {!loading && !devices.length ? (
+              <EmptyState icon="desktop-outline" title="No devices" message="Pair a PC running the ivx CLI to send it jobs." />
+            ) : null}
+          </View>
+        )}
+      </ScreenScroll>
+
+      <Sheet visible={pairOpen} onClose={() => { setPairOpen(false); setPairingCode('') }} title="Pair a device" subtitle="Run the code with the ivx CLI on your PC">
+        <Input label="Device name" value={deviceName} onChangeText={setDeviceName} />
+        {pairingCode ? (
+          <View style={styles.codeBox}>
+            <Text style={styles.code} selectable>
+              {pairingCode}
+            </Text>
+            <Mono style={{ textAlign: 'center' }}>ivx pair {pairingCode}</Mono>
+            <Btn
+              label="Copy command"
+              icon="copy"
+              compact
+              variant="secondary"
+              style={{ alignSelf: 'center', marginTop: spacing.sm }}
+              onPress={() => void Clipboard.setStringAsync(`ivx pair ${pairingCode}`).then(() => toast.success('Copied'))}
             />
-            <Input
-              value={projectId}
-              onChangeText={setProjectId}
-              placeholder="Project id"
-            />
-            <Input
-              value={projectKey}
-              onChangeText={setProjectKey}
-              placeholder="Project key (optional)"
-              autoCapitalize="characters"
-            />
-            <Row style={styles.wrap}>
-              {projects.slice(0, 8).map((p) => (
+          </View>
+        ) : (
+          <Btn label="Generate pairing code" icon="key" block loading={busy} onPress={() => void onPair()} />
+        )}
+      </Sheet>
+
+      <Sheet
+        visible={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="New agent job"
+        footer={
+          <>
+            <Btn label="Cancel" variant="ghost" onPress={() => setCreateOpen(false)} style={{ flex: 1 }} />
+            <Btn label="Queue job" icon="send" loading={busy} onPress={() => void onCreate()} style={{ flex: 1 }} />
+          </>
+        }
+      >
+        <Segmented
+          style={{ marginHorizontal: 0 }}
+          value={jobType}
+          onChange={setJobType}
+          options={[
+            { id: 'fix_issue', label: 'Fix issue' },
+            { id: 'run_command', label: 'Run command' },
+          ]}
+        />
+        <Text style={styles.label}>Device</Text>
+        <Wrap style={{ marginBottom: spacing.md }}>
+          {devices.map((d) => (
+            <Chip key={d.deviceId} label={d.name} icon={d.online ? 'radio-button-on' : 'radio-button-off'} tone={d.online ? 'ok' : 'accent'} active={deviceId === d.deviceId} onPress={() => setDeviceId(d.deviceId)} />
+          ))}
+        </Wrap>
+        {jobType === 'fix_issue' ? (
+          <>
+            <Text style={styles.label}>Project</Text>
+            <Wrap style={{ marginBottom: spacing.md }}>
+              {projects.slice(0, 20).map((p) => (
                 <Chip
                   key={p.id}
                   label={p.key || p.name}
                   active={projectId === p.id}
                   onPress={() => {
                     setProjectId(p.id)
-                    if (p.key) setProjectKey(p.key)
+                    setProjectKey(p.key || '')
                   }}
                 />
               ))}
-            </Row>
-            <Input
-              value={instruction}
-              onChangeText={setInstruction}
-              placeholder="Extra instructions"
-              multiline
-            />
-            <Row>
-              <Btn
-                label="Cancel"
-                variant="ghost"
-                onPress={() => setCreateOpen(false)}
-              />
-              <Btn label={busy ? '…' : 'Queue fix'} onPress={onCreateFix} />
-            </Row>
-          </Panel>
-        </View>
-      </Modal>
+            </Wrap>
+            <Input label="Issue key" value={issueKey} onChangeText={setIssueKey} placeholder={`${projectKey || 'APP'}-12`} autoCapitalize="characters" />
+            <Input label="Extra instructions" value={instruction} onChangeText={setInstruction} placeholder="Optional guidance for the AI" multiline />
+          </>
+        ) : (
+          <>
+            <Input label="Command (must be allowlisted on the device)" value={command} onChangeText={setCommand} placeholder="npm test" autoCapitalize="none" />
+            {devices.find((d) => d.deviceId === deviceId)?.allowCommands?.length ? (
+              <Wrap>
+                {devices
+                  .find((d) => d.deviceId === deviceId)
+                  ?.allowCommands?.map((c) => <Chip key={c} label={c} icon="terminal" onPress={() => setCommand(c)} active={command === c} />)}
+              </Wrap>
+            ) : null}
+          </>
+        )}
+      </Sheet>
 
-      <Modal visible={Boolean(jobDetail)} animationType="slide" transparent>
-        <View style={styles.modalBg}>
-          <Panel style={styles.modalCard}>
-            <ScrollView>
-              <Title>
-                {jobDetail?.type} {jobDetail?.issueKey}
-              </Title>
-              <Badge
-                tone={statusTone(jobDetail?.status || '')}
-                label={jobDetail?.status || ''}
-              />
-              {jobDetail?.summary ? (
-                <Muted>{jobDetail.summary.slice(0, 800)}</Muted>
-              ) : null}
-              {jobDetail?.diffStat ? (
-                <Text style={styles.mono}>{jobDetail.diffStat}</Text>
-              ) : null}
-              <Text style={styles.logTitle}>Logs</Text>
+      <Sheet
+        visible={Boolean(jobDetail)}
+        onClose={() => setJobDetail(null)}
+        title={jobDetail ? `${humanize(jobDetail.type)}${jobDetail.issueKey ? ` · ${jobDetail.issueKey}` : ''}` : ''}
+        subtitle={jobDetail ? `${deviceName_(jobDetail.deviceId)} · ${timeAgo(jobDetail.updatedAt || jobDetail.createdAt)}` : ''}
+      >
+        {jobDetail ? (
+          <View style={{ gap: spacing.sm }}>
+            <Wrap>
+              <Badge label={humanize(jobDetail.status)} tone={statusTone(jobDetail.status)} />
+              {ACTIVE.has(jobDetail.status) ? <StatusDot tone="accent" pulse /> : null}
+            </Wrap>
+            {jobDetail.summary ? <Text style={styles.body}>{jobDetail.summary.slice(0, 1200)}</Text> : null}
+            {jobDetail.error ? <Text style={[styles.body, { color: colors.danger }]}>{jobDetail.error}</Text> : null}
+            {jobDetail.diffStat ? (
               <View style={styles.logBox}>
-                {(jobDetail?.logs || []).slice(-80).map((l, i) => (
-                  <Text key={`${i}-${l.line.slice(0, 12)}`} style={styles.mono}>
-                    {l.line}
-                  </Text>
-                ))}
+                <Mono>{jobDetail.diffStat}</Mono>
               </View>
-              {jobDetail?.status === 'needs_review' ? (
-                <>
-                  <Input
-                    value={deployCmd}
-                    onChangeText={setDeployCmd}
-                    placeholder="Deploy command (must be allowlisted)"
-                  />
-                  <Row>
-                    <Btn label="Approve deploy" onPress={onApproveDeploy} />
-                    <Btn label="Reject" variant="ghost" onPress={onReject} />
-                  </Row>
-                  <Input
-                    value={followUp}
-                    onChangeText={setFollowUp}
-                    placeholder="More instructions"
-                    multiline
-                  />
-                  <Btn label="Follow-up" onPress={onFollowUp} />
-                </>
-              ) : null}
-              {jobDetail &&
-              !['done', 'cancelled', 'failed'].includes(jobDetail.status) ? (
-                <Btn label="Cancel job" variant="danger" onPress={onCancel} />
-              ) : null}
-              <Btn
-                label="Close"
-                variant="ghost"
-                onPress={() => setJobDetail(null)}
-              />
+            ) : null}
+            <Text style={styles.label}>Logs</Text>
+            <ScrollView
+              ref={logScroll}
+              style={styles.logBox}
+              nestedScrollEnabled
+              onContentSizeChange={() => logScroll.current?.scrollToEnd({ animated: false })}
+            >
+              {(jobDetail.logs || []).slice(-150).map((l, i) => (
+                <Mono key={`${i}-${l.line.slice(0, 12)}`} style={{ fontSize: 11 }}>
+                  {l.line}
+                </Mono>
+              ))}
+              {!jobDetail.logs?.length ? <Mono>Waiting for output…</Mono> : null}
             </ScrollView>
-          </Panel>
-        </View>
-      </Modal>
+            {jobDetail.status === 'needs_review' ? (
+              <>
+                <Input label="Deploy command" value={deployCmd} onChangeText={setDeployCmd} placeholder="Allowlisted deploy command" autoCapitalize="none" />
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Btn label="Approve deploy" icon="rocket" variant="success" loading={busy} onPress={() => void onApproveDeploy()} style={{ flex: 1 }} />
+                  <Btn
+                    label="Reject"
+                    icon="close"
+                    variant="secondary"
+                    disabled={busy}
+                    onPress={() => void run(() => paAdmin.rejectAgentJob(jobDetail.id), () => 'Job rejected').then((j) => j && setJobDetail(j))}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+                <Input label="Follow-up instructions" value={followUp} onChangeText={setFollowUp} placeholder="Ask the agent to change something" multiline />
+                <Btn label="Send follow-up" icon="return-down-forward" variant="secondary" block loading={busy} onPress={() => void onFollowUp()} />
+              </>
+            ) : null}
+            {!['done', 'cancelled', 'failed'].includes(jobDetail.status) ? (
+              <Btn
+                label="Cancel job"
+                icon="stop-circle"
+                variant="danger"
+                block
+                disabled={busy}
+                onPress={() => void run(() => paAdmin.cancelAgentJob(jobDetail.id), () => 'Job cancelled').then((j) => j && setJobDetail(j))}
+              />
+            ) : null}
+          </View>
+        ) : null}
+      </Sheet>
     </Screen>
   )
 }
 
 const styles = StyleSheet.create({
-  pad: { paddingBottom: spacing.lg, gap: spacing.sm },
+  title: { fontFamily: fonts.semiBold, color: colors.text, fontSize: 15 },
+  meta: { fontFamily: fonts.regular, color: colors.muted, fontSize: 12, marginTop: 2 },
+  body: { fontFamily: fonts.regular, color: colors.textDim, fontSize: 14, lineHeight: 20 },
+  label: { fontFamily: fonts.semiBold, color: colors.textDim, fontSize: 13, marginBottom: 6 },
+  devHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  codeBox: {
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    gap: 4,
+  },
   code: {
-    fontFamily: fonts.semiBold,
-    fontSize: 28,
-    letterSpacing: 4,
+    fontFamily: fonts.bold,
+    fontSize: 34,
+    letterSpacing: 6,
     color: colors.accent,
     textAlign: 'center',
-    marginTop: spacing.sm,
-  },
-  modalBg: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    maxHeight: '88%',
-    margin: spacing.md,
-    gap: spacing.sm,
-  },
-  wrap: { flexWrap: 'wrap', gap: 6 },
-  mono: {
-    fontFamily: fonts.regular,
-    fontSize: 11,
-    color: colors.muted,
-  },
-  logTitle: {
-    fontFamily: fonts.semiBold,
-    color: colors.text,
-    marginTop: spacing.sm,
   },
   logBox: {
-    backgroundColor: colors.bg,
-    borderRadius: 8,
+    backgroundColor: colors.input,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: spacing.sm,
-    maxHeight: 220,
-    gap: 2,
+    maxHeight: 260,
   },
 })

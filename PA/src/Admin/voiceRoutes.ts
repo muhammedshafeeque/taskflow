@@ -30,11 +30,12 @@ export async function voiceTranscribe(req: Request, res: Response) {
 
 /**
  * POST /voice/command
- * Body: { text: string }
+ * Body: { text: string, mode?: 'voice'|'chat' }
  */
 export async function voiceCommand(req: Request, res: Response) {
-  const text = String((req.body as { text?: string })?.text ?? '').trim();
-  const data = await runVoiceCommand(text);
+  const body = (req.body ?? {}) as { text?: string; mode?: string };
+  const text = String(body.text ?? '').trim();
+  const data = await runVoiceCommand(text, body.mode === 'chat' ? 'chat' : 'voice');
   res.json({ success: true, data });
 }
 

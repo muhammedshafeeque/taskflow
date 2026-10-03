@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
-import { FlatList, StyleSheet, Text, View } from 'react-native'
 import { useFocusEffect } from 'expo-router'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { StyleSheet, Text, View } from 'react-native'
 import EventSource from 'react-native-sse'
 import {
   type SupportCaseRow,
@@ -8,39 +8,59 @@ import {
   paAdmin,
   supportEventsUrl,
 } from '../../src/api/paAdmin'
-import { colors, fonts, spacing } from '../../src/theme'
+import { humanize, timeAgo } from '../../src/lib/format'
+import { colors, fonts, spacing, type Tone } from '../../src/theme'
+import { useToast } from '../../src/ui/Toast'
 import {
   Badge,
-  Btn,
+  Card,
   EmptyState,
-  ErrorText,
+  Header,
+  IconTile,
   ListRow,
-  Loading,
-  PageHeader,
-  Panel,
   Screen,
-  SectionLabel,
+  ScreenScroll,
+  Segmented,
+  SkeletonList,
+  StatGrid,
+  StatTile,
+  StatusDot,
+  Wrap,
 } from '../../src/ui/Ui'
 
+function caseTone(status: string): Tone {
+  if (/closed|resolved|done/i.test(status)) return 'ok'
+  if (/escalat|fail|block/i.test(status)) return 'danger'
+  if (/wait|pending|qa/i.test(status)) return 'warn'
+  return 'accent'
+}
+
+function priorityTone(p?: string): Tone {
+  if (!p) return 'neutral'
+  if (/critical|urgent|p0|highest/i.test(p)) return 'danger'
+  if (/high|p1/i.test(p)) return 'warn'
+  return 'neutral'
+}
+
 export default function SupportScreen() {
+  const toast = useToast()
   const [cases, setCases] = useState<SupportCaseRow[]>([])
   const [events, setEvents] = useState<SupportEventRow[]>([])
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [live, setLive] = useState(false)
+  const [tab, setTab] = useState<'feed' | 'open' | 'closed'>('feed')
 
   const load = useCallback(async () => {
-    setError('')
     try {
       const data = await paAdmin.listSupportCases()
       setCases(data.cases || [])
-      setEvents(data.events || [])
+      setEvents((prev) => (prev.length ? prev : data.events || []))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load support')
+      toast.error(err instanceof Error ? err.message : 'Failed to load support')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [toast])
 
   useFocusEffect(
     useCallback(() => {
@@ -52,21 +72,18 @@ export default function SupportScreen() {
     let es: EventSource | null = null
     try {
       es = new EventSource(supportEventsUrl()) as EventSource
-      setLive(true)
+      es.addEventListener('open', () => setLive(true))
       const onSupport = (event: { data?: string | null }) => {
         if (!event.data) return
         try {
           const parsed = JSON.parse(String(event.data)) as SupportEventRow
-          setEvents((prev) => [parsed, ...prev].slice(0, 100))
-          void load()
+          setEvents((prev) => [parsed, ...prev.filter((e) => e.id !== parsed.id)].slice(0, 150))
+          setLive(true)
         } catch {
           // ignore bad payloads
         }
       }
-      ;(es as unknown as { addEventListener: (t: string, cb: typeof onSupport) => void }).addEventListener(
-        'support',
-        onSupport
-      )
+      ;(es as unknown as { addEventListener: (t: string, cb: typeof onSupport) => void }).addEventListener('support', onSupport)
       es.addEventListener('error', () => setLive(false))
     } catch {
       setLive(false)
@@ -75,72 +92,95 @@ export default function SupportScreen() {
       es?.close()
       setLive(false)
     }
-  }, [load])
+  }, [])
 
-  if (loading) return <Loading />
+  const open = useMemo(() => cases.filter((c) => !/closed|resolved/i.test(c.status)), [cases])
+  const closed = useMemo(() => cases.filter((c) => /closed|resolved/i.test(c.status)), [cases])
+  const escalated = open.filter((c) => caseTone(c.status) === 'danger').length
+  const tickets = cases.reduce((n, c) => n + (c.ticketIds?.length || 0), 0)
 
   return (
-    <Screen style={{ paddingTop: spacing.sm }}>
-      <PageHeader
+    <Screen>
+      <Header
         title="Support"
-        subtitle={`Cases and live agent events · ${live ? 'live' : 'offline'}`}
+        subtitle="AI support agents across WhatsApp groups"
+        back
         right={
-          <View style={{ alignItems: 'flex-end', gap: 6 }}>
-            <Badge label={live ? 'Live' : 'Offline'} tone={live ? 'ok' : 'warn'} />
-            <Btn label="Refresh" variant="ghost" compact onPress={() => void load()} />
+          <View style={styles.live}>
+            <StatusDot tone={live ? 'ok' : 'neutral'} pulse={live} />
+            <Text style={[styles.liveText, { color: live ? colors.ok : colors.muted }]}>{live ? 'LIVE' : 'OFFLINE'}</Text>
           </View>
         }
       />
-      <ErrorText>{error}</ErrorText>
-
-      <FlatList
-        data={events}
-        keyExtractor={(item, i) => item.id || `${item.at}-${i}`}
-        contentContainerStyle={{ paddingBottom: 40, gap: spacing.sm }}
-        ListHeaderComponent={
-          <View>
-            <SectionLabel>Cases</SectionLabel>
-            {cases.length === 0 ? (
-              <EmptyState message="No open support cases" />
-            ) : (
-              cases.map((item) => (
-                <ListRow
-                  key={item.id}
-                  title={item.groupName || item.groupId}
-                  meta={`${item.status} · ${item.lastQaStatus || '—'} · tickets ${item.ticketIds?.length || 0}`}
-                />
+      <ScreenScroll onRefresh={load}>
+        <StatGrid>
+          <StatTile label="Open cases" value={open.length} icon="folder-open" tone="accent" />
+          <StatTile label="Escalated" value={escalated} icon="flame" tone={escalated ? 'danger' : 'neutral'} />
+          <StatTile label="Tickets created" value={tickets} icon="ticket" tone="info" />
+          <StatTile label="Resolved" value={closed.length} icon="checkmark-done" tone="ok" />
+        </StatGrid>
+        <Segmented
+          style={{ marginHorizontal: 0, marginTop: spacing.md }}
+          value={tab}
+          onChange={setTab}
+          options={[
+            { id: 'feed', label: 'Live feed' },
+            { id: 'open', label: 'Open', count: open.length },
+            { id: 'closed', label: 'Closed' },
+          ]}
+        />
+        {loading ? <SkeletonList count={5} /> : null}
+        <View style={{ gap: spacing.sm }}>
+          {tab === 'feed'
+            ? events.map((e, i) => (
+                <Card key={e.id || `${e.at}-${i}`} style={{ gap: 6 }}>
+                  <View style={styles.evHead}>
+                    <IconTile icon="pulse" tone="accent" size={30} />
+                    <Text style={styles.evType} numberOfLines={1}>
+                      {humanize(e.type)}
+                    </Text>
+                    <Text style={styles.evTime}>{timeAgo(e.at)}</Text>
+                  </View>
+                  {e.summary ? <Text style={styles.evBody}>{e.summary}</Text> : null}
+                  <Wrap>
+                    {e.groupName || e.groupId ? <Badge label={e.groupName || e.groupId || ''} tone="neutral" icon="people" /> : null}
+                    {e.agent ? <Badge label={humanize(e.agent)} tone="accent" icon="sparkles" /> : null}
+                    {e.ticketId ? <Badge label={e.ticketId} tone="info" icon="ticket" /> : null}
+                    {e.priority ? <Badge label={e.priority} tone={priorityTone(e.priority)} /> : null}
+                    {e.qaStatus ? <Badge label={`QA ${e.qaStatus}`} tone={/pass|ok/i.test(e.qaStatus) ? 'ok' : 'warn'} /> : null}
+                  </Wrap>
+                </Card>
               ))
-            )}
-            <SectionLabel>Live events</SectionLabel>
-          </View>
-        }
-        ListEmptyComponent={<EmptyState message="No events yet" />}
-        renderItem={({ item }) => (
-          <Panel>
-            <Badge label={item.type} tone="accent" />
-            <Text style={styles.meta}>
-              {item.groupName || item.groupId || '—'}
-              {item.agent ? ` · ${item.agent}` : ''}
-              {item.at ? ` · ${item.at}` : ''}
-            </Text>
-            {item.summary ? <Text style={styles.body}>{item.summary}</Text> : null}
-          </Panel>
-        )}
-      />
+            : (tab === 'open' ? open : closed).map((c) => (
+                <ListRow
+                  key={c.id}
+                  leading={<IconTile icon="chatbox-ellipses" tone={caseTone(c.status)} size={38} />}
+                  title={c.groupName || c.groupId}
+                  subtitle={`${humanize(c.latestAgent || 'agent')} · ${humanize(c.latestAgentStatus || c.status)}`}
+                  meta={`${c.ticketIds?.length || 0} tickets · QA ${c.lastQaStatus || '—'} · ${timeAgo(c.updatedAt)}`}
+                  trailing={
+                    <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                      <Badge label={humanize(c.status)} tone={caseTone(c.status)} />
+                      {c.lastPriority ? <Badge label={c.lastPriority} tone={priorityTone(c.lastPriority)} /> : null}
+                    </View>
+                  }
+                />
+              ))}
+          {!loading && tab === 'feed' && !events.length ? <EmptyState icon="pulse-outline" message="No events yet. They stream in live." /> : null}
+          {!loading && tab !== 'feed' && !(tab === 'open' ? open : closed).length ? (
+            <EmptyState icon="folder-open-outline" message={`No ${tab} cases.`} />
+          ) : null}
+        </View>
+      </ScreenScroll>
     </Screen>
   )
 }
 
 const styles = StyleSheet.create({
-  meta: {
-    fontFamily: fonts.regular,
-    color: colors.muted,
-    fontSize: 12,
-  },
-  body: {
-    fontFamily: fonts.regular,
-    color: colors.text,
-    fontSize: 14,
-    lineHeight: 20,
-  },
+  live: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  liveText: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 1 },
+  evHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  evType: { flex: 1, fontFamily: fonts.semiBold, color: colors.text, fontSize: 14 },
+  evTime: { fontFamily: fonts.regular, color: colors.muted, fontSize: 11 },
+  evBody: { fontFamily: fonts.regular, color: colors.textDim, fontSize: 14, lineHeight: 20 },
 })
