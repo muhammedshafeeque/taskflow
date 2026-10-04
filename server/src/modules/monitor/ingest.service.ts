@@ -106,12 +106,15 @@ export async function ingestWithKey(plainKey: string, kind: string, body: Record
           fingerprint: fp,
           type,
           message,
-          sampleStack: stack,
           kind: ev.kind,
           firstSeen: new Date(),
           status: 'open',
         },
-        $set: { lastSeen: new Date(), sampleStack: stack },
+        // sampleStack only in $set — cannot also appear in $setOnInsert (ConflictingUpdateOperators)
+        $set: {
+          lastSeen: new Date(),
+          ...(stack ? { sampleStack: stack } : {}),
+        },
         $inc: { count: 1 },
       },
       { upsert: true, new: true }
