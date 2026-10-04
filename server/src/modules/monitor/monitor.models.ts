@@ -93,7 +93,7 @@ export const MonitorLog = mongoose.model(
       message: { type: String, required: true },
       release: { type: String },
       meta: { type: Schema.Types.Mixed },
-      timestamp: { type: Date, default: Date.now, index: true },
+      timestamp: { type: Date, default: Date.now },
     },
     { timestamps: false }
   ).index({ timestamp: 1 }, { expireAfterSeconds: ttl14 })
@@ -115,7 +115,7 @@ export const MonitorErrorEvent = mongoose.model(
       release: { type: String },
       breadcrumbs: { type: [Schema.Types.Mixed], default: [] },
       userAgent: { type: String },
-      timestamp: { type: Date, default: Date.now, index: true },
+      timestamp: { type: Date, default: Date.now },
     },
     { timestamps: false }
   ).index({ timestamp: 1 }, { expireAfterSeconds: ttl90 })
@@ -155,7 +155,7 @@ export const MonitorPresence = mongoose.model(
       userId: { type: String },
       page: { type: String },
       userAgent: { type: String },
-      lastSeen: { type: Date, default: Date.now, index: true },
+      lastSeen: { type: Date, default: Date.now },
     },
     { timestamps: false }
   )
@@ -175,7 +175,7 @@ export const MonitorTransaction = mongoose.model(
       durationMs: { type: Number, required: true },
       status: { type: String },
       release: { type: String },
-      timestamp: { type: Date, default: Date.now, index: true },
+      timestamp: { type: Date, default: Date.now },
     },
     { timestamps: false }
   ).index({ timestamp: 1 }, { expireAfterSeconds: ttl14 })
@@ -195,7 +195,7 @@ export const MonitorHttpCall = mongoose.model(
       durationMs: { type: Number },
       direction: { type: String, enum: ['in', 'out'], default: 'out' },
       release: { type: String },
-      timestamp: { type: Date, default: Date.now, index: true },
+      timestamp: { type: Date, default: Date.now },
     },
     { timestamps: false }
   ).index({ timestamp: 1 }, { expireAfterSeconds: ttl14 })
@@ -212,7 +212,7 @@ export const MonitorVital = mongoose.model(
       name: { type: String, enum: ['lcp', 'inp', 'cls', 'ttfb'], required: true },
       value: { type: Number, required: true },
       release: { type: String },
-      timestamp: { type: Date, default: Date.now, index: true },
+      timestamp: { type: Date, default: Date.now },
     },
     { timestamps: false }
   ).index({ timestamp: 1 }, { expireAfterSeconds: ttl14 })
@@ -229,7 +229,7 @@ export const MonitorCustomEvent = mongoose.model(
       name: { type: String, required: true },
       props: { type: Schema.Types.Mixed },
       release: { type: String },
-      timestamp: { type: Date, default: Date.now, index: true },
+      timestamp: { type: Date, default: Date.now },
     },
     { timestamps: false }
   ).index({ timestamp: 1 }, { expireAfterSeconds: ttl14 })
@@ -352,7 +352,7 @@ export const MonitorAlertDelivery = mongoose.model(
       summary: { type: String },
       ok: { type: Boolean, default: true },
       error: { type: String },
-      timestamp: { type: Date, default: Date.now, index: true },
+      timestamp: { type: Date, default: Date.now },
     },
     { timestamps: false }
   ).index({ timestamp: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 })
@@ -369,7 +369,7 @@ export const MonitorUptimeSample = mongoose.model(
       status: { type: Number },
       latencyMs: { type: Number },
       error: { type: String },
-      timestamp: { type: Date, default: Date.now, index: true },
+      timestamp: { type: Date, default: Date.now },
     },
     { timestamps: false }
   ).index({ timestamp: 1 }, { expireAfterSeconds: ttl14 })
