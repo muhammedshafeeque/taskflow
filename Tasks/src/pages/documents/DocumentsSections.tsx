@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { documentsApi } from '../../lib/api';
 import type { DocumentRecord } from '../../lib/api';
+import DocumentHistoryModal from '../../components/documents/DocumentHistoryModal';
 import {
   Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, money, nameOf,
 } from '../../components/moduleKit';
@@ -23,6 +24,7 @@ function DocList({ kind, title, subtitle, isTemplate = false }: { kind: string; 
   const { token } = useAuth();
   const [rows, setRows] = useState<DocumentRecord[]>([]);
   const [editing, setEditing] = useState<Partial<DocumentRecord> | null>(null);
+  const [historyFor, setHistoryFor] = useState<DocumentRecord | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
@@ -72,6 +74,7 @@ function DocList({ kind, title, subtitle, isTemplate = false }: { kind: string; 
                       {d.status === 'sent' && <button onClick={() => setStatus(d._id, 'signed')} className="text-emerald-500 hover:underline text-xs mr-3">Mark signed</button>}
                     </>
                   )}
+                  {!isTemplate && <button onClick={() => setHistoryFor(d)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Sign & history</button>}
                   <button onClick={() => setEditing(d)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Edit</button>
                   <button onClick={() => remove(d._id)} className="text-rose-500 hover:underline text-xs">Delete</button>
                 </td>
@@ -108,6 +111,9 @@ function DocList({ kind, title, subtitle, isTemplate = false }: { kind: string; 
           </Field>
           <Field label="Content"><TextArea rows={5} value={editing.content ?? ''} onChange={(e) => setEditing({ ...editing, content: e.target.value })} /></Field>
         </Modal>
+      )}
+      {historyFor && token && (
+        <DocumentHistoryModal doc={historyFor} token={token} canManage onClose={() => setHistoryFor(null)} onChanged={load} />
       )}
     </SectionPage>
   );

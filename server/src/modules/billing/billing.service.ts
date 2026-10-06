@@ -9,6 +9,7 @@ import { BillingSubscription } from './models/billingSubscription.model';
 import { BillingInvoice, type IBillingInvoiceLine, type BillingInvoiceLineType } from './models/billingInvoice.model';
 import { BillingTaxRule } from './models/billingTaxRule.model';
 import { resolveProjectHourlyRate } from '../crm/commercialHandoff.service';
+import { emitWorkspaceEvent } from '../webhooks/workspaceEvents';
 
 function asDate(value: unknown): Date | undefined {
   if (value === null || value === undefined || value === '') return undefined;
@@ -503,6 +504,7 @@ export async function updateInvoice(
     existing.taxTotal = t.taxTotal;
     existing.total = t.total;
   }
+  const previousStatus = existing.status;
   if (input.status != null) existing.status = input.status as typeof existing.status;
   if (input.notes !== undefined) existing.notes = String(input.notes ?? '');
   if (input.taxCode !== undefined) existing.taxCode = String(input.taxCode ?? '');
@@ -537,7 +539,22 @@ export async function updateInvoice(
   }
 
   await existing.save();
+  if (existing.status !== previousStatus && ['sent', 'paid', 'overdue', 'void'].includes(existing.status)) {
+    emitWorkspaceEvent(orgId, `invoice.${existing.status}` as 'invoice.sent', invoicePayload(existing));
+  }
   return populateInvoice(existing._id);
+}
+
+function invoicePayload(inv: { _id: unknown; number: string; status: string; total: number; amountPaid?: number; currency: string; dueDate?: Date }) {
+  return {
+    invoiceId: String(inv._id),
+    number: inv.number,
+    status: inv.status,
+    total: inv.total,
+    amountPaid: inv.amountPaid ?? 0,
+    currency: inv.currency,
+    dueDate: inv.dueDate,
+  };
 }
 
 export async function recordPayment(
@@ -564,6 +581,8 @@ export async function recordPayment(
     invoice.status = 'sent';
   }
   await invoice.save();
+  emitWorkspaceEvent(orgId, 'invoice.payment_recorded', { ...invoicePayload(invoice), amount: applied });
+  if (invoice.status === 'paid') emitWorkspaceEvent(orgId, 'invoice.paid', invoicePayload(invoice));
   return populateInvoice(invoice._id);
 }
 

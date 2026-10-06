@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import { crmApi, type CrmContact } from '../../lib/api';
@@ -157,8 +157,15 @@ export default function CrmContacts() {
   const [rows, setRows] = useState<CrmContact[]>([]);
   const [orgs, setOrgs] = useState<Array<{ _id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
-  const [draft, setDraft] = useState<DraftFilters>(EMPTY_FILTERS);
-  const [applied, setApplied] = useState<DraftFilters>(EMPTY_FILTERS);
+  const [searchParams] = useSearchParams();
+  // Deep links from the command palette (?email= / ?name=) start pre-filtered.
+  const [initialFilters] = useState<DraftFilters>(() => ({
+    ...EMPTY_FILTERS,
+    email: searchParams.get('email') ?? '',
+    name: searchParams.get('name') ?? '',
+  }));
+  const [draft, setDraft] = useState<DraftFilters>(initialFilters);
+  const [applied, setApplied] = useState<DraftFilters>(initialFilters);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [modal, setModal] = useState(false);

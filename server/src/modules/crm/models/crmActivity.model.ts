@@ -37,4 +37,6 @@ const crmActivitySchema = new Schema<ICrmActivity>(
 
 crmActivitySchema.index({ taskflowOrganizationId: 1, relatedType: 1, relatedId: 1, createdAt: -1 });
 
+crmActivitySchema.index({ completedAt: 1, dueAt: 1 });
+
 export const CrmActivity = mongoose.model<ICrmActivity>('CrmActivity', crmActivitySchema);

@@ -8,7 +8,10 @@ import { globalSearch } from './search.service';
 async function search(req: Request & { user?: AuthPayload; activeOrganizationId?: string }, res: Response) {
   if (!req.user?.id) throw new ApiError(401, 'Unauthorized');
   const q = String(req.query.q ?? '');
-  const data = await globalSearch(req.activeOrganizationId, q);
+  const data = await globalSearch(req.activeOrganizationId, q, {
+    userId: req.user.id,
+    permissions: req.user.permissions ?? [],
+  });
   res.json({ success: true, data });
 }
 

@@ -76,6 +76,24 @@ export default function BillingInvoiceDetail() {
   const [actionBusy, setActionBusy] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [payAmount, setPayAmount] = useState(0);
+  const [payments, setPayments] = useState<{ enabled: boolean; provider: string | null } | null>(null);
+  const [payLink, setPayLink] = useState('');
+
+  useEffect(() => {
+    if (token) billingApi.paymentsStatus(token).then((r) => setPayments(r.success && r.data ? r.data : null));
+  }, [token]);
+
+  async function handlePaymentLink() {
+    if (!token || !invoice) return;
+    setActionBusy(true);
+    const res = await billingApi.createPaymentLink(invoice._id, undefined, token);
+    setActionBusy(false);
+    if (res.success && res.data) {
+      setPayLink(res.data.url);
+      void navigator.clipboard?.writeText(res.data.url).catch(() => undefined);
+      setActionMsg('Payment link copied — share it with the customer. The invoice updates automatically when they pay.');
+    } else setActionMsg(res.message ?? 'Could not create payment link');
+  }
 
   const load = () => {
     if (!token || !id) return;
@@ -205,6 +223,17 @@ export default function BillingInvoiceDetail() {
               }}
             >
               Record payment
+            </button>
+          )}
+          {canManage && payments?.enabled && !isDraft && invoice.status !== 'paid' && invoice.status !== 'void' && (
+            <button
+              type="button"
+              disabled={actionBusy}
+              className="px-3 py-1.5 rounded-lg border border-[color:var(--accent)]/40 text-[color:var(--accent)] text-sm"
+              onClick={() => void handlePaymentLink()}
+              title={`Create a ${payments.provider} payment link for the outstanding balance`}
+            >
+              {payLink ? 'Copy payment link' : 'Payment link'}
             </button>
           )}
           {canManage && invoice.status !== 'paid' && (

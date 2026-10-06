@@ -15,6 +15,7 @@ import { BrandMark } from './BrandMark';
 import { userHasPermission } from '../utils/permissions';
 import { PROJECT_PERMISSIONS } from '@shared/constants/permissions';
 import type { NavItem } from './moduleNavigation';
+import { useI18n } from '../i18n/context';
 import {
   DashboardIcon,
   ProjectsIcon,
@@ -117,6 +118,7 @@ export default function Layout({
   showSidebar = true,
 }: LayoutProps) {
   const { user, logout, token } = useAuth();
+  const { t } = useI18n();
   const displayName = useAppDisplayName();
   const {
     latestInboxMessage,
@@ -327,7 +329,7 @@ export default function Layout({
                 }}
               >
                 <span className="w-5 h-5 flex shrink-0 items-center justify-center">{item.icon}</span>
-                {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                {!sidebarCollapsed && <span className="truncate">{t(item.label)}</span>}
                 {item.to === '/inbox' && inboxUnreadCount > 0 && (
                   <span
                     className={`ml-auto min-w-5 h-5 px-1.5 rounded-full text-[10px] font-semibold flex items-center justify-center bg-[color:var(--color-blocked)] text-white ${

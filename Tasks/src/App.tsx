@@ -191,6 +191,8 @@ import MonitorOverview from './pages/monitor/MonitorOverview';
 import MonitorSetup from './pages/monitor/MonitorSetup';
 import MonitorTelemetry from './pages/monitor/MonitorTelemetry';
 import MonitorAlerts from './pages/monitor/MonitorAlerts';
+import PublicSign from './pages/PublicSign';
+import { I18nProvider } from './i18n/I18nProvider';
 
 function PortalResetPasswordRedirect() {
   const [params] = useSearchParams();
@@ -213,6 +215,7 @@ function AppRoutes() {
       <Route path="/auth/error" element={<OAuthError />} />
       <Route path="/auth/ide" element={<IdeLogin />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/sign/:token" element={<PublicSign />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/portal/login" element={<Navigate to="/login" replace />} />
       <Route path="/portal/reset-password" element={<PortalResetPasswordRedirect />} />
@@ -479,11 +482,13 @@ export default function App() {
   return (
     <BrowserRouter>
       <ThemeInit>
+        <I18nProvider>
         <AuthProvider>
           <PlatformModulesProvider>
             <AppWithNotifications />
           </PlatformModulesProvider>
         </AuthProvider>
+        </I18nProvider>
       </ThemeInit>
     </BrowserRouter>
   );

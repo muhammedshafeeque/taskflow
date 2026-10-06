@@ -3,7 +3,24 @@ import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import { crmApi, type CrmPipeline, type CrmWebhook } from '../../lib/api';
 
-const WEBHOOK_EVENTS = ['lead.converted', 'deal.won', 'quote.sent'];
+/** Keep in sync with WORKSPACE_WEBHOOK_EVENTS in server/src/modules/webhooks/workspaceEvents.ts. */
+const WEBHOOK_EVENTS = [
+  'lead.converted',
+  'deal.won',
+  'quote.sent',
+  'issue.created',
+  'issue.updated',
+  'issue.status_changed',
+  'ticket.created',
+  'ticket.updated',
+  'ticket.resolved',
+  'ticket.commented',
+  'invoice.sent',
+  'invoice.paid',
+  'invoice.overdue',
+  'invoice.void',
+  'invoice.payment_recorded',
+];
 
 export default function CrmSettings() {
   const { token, user } = useAuth();

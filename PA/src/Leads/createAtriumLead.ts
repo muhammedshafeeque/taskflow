@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import type { LeadAssessment } from './assessLeadReady';
+import { pushToDevices } from '../Push/expoPush';
 
 const localLeadSchema = new mongoose.Schema(
   {
@@ -183,6 +184,12 @@ export async function createAtriumLead(input: {
       { $set: { crmLeadId } }
     );
   }
+
+  void pushToDevices('lead', {
+    title: `🧲 New lead${input.contactName ? `: ${input.contactName}` : ''}`,
+    body: (input.assessment.summary || contactPhone).slice(0, 180),
+    data: { chatId: input.chatId, leadId: String(local._id) },
+  });
 
   return { localId: String(local._id), crmLeadId };
 }

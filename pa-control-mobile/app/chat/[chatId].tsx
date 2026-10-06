@@ -1,14 +1,28 @@
 import * as Clipboard from 'expo-clipboard'
+import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { type ConversationDetail, paAdmin } from '../../src/api/paAdmin'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
+import { type ConversationDetail, type MessageTemplate, paAdmin } from '../../src/api/paAdmin'
 import { clock, phoneFromChatId } from '../../src/lib/format'
 import { haptic } from '../../src/lib/haptics'
 import { colors, fonts, gradients, radius, spacing } from '../../src/theme'
 import { useToast } from '../../src/ui/Toast'
-import { Avatar, Badge, Btn, Card, Header, IconButton, Loading, Screen } from '../../src/ui/Ui'
+import { Avatar, Badge, Btn, Card, Chip, Header, IconButton, Loading, Screen } from '../../src/ui/Ui'
 
 export default function ChatDetailScreen() {
   const { chatId: raw } = useLocalSearchParams<{ chatId: string }>()
@@ -16,6 +30,16 @@ export default function ChatDetailScreen() {
   const toast = useToast()
   const [detail, setDetail] = useState<ConversationDetail | null>(null)
   const [busy, setBusy] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
+  const [quickReplies, setQuickReplies] = useState<MessageTemplate[]>([])
+  useEffect(() => {
+    paAdmin
+      .templates()
+      .then((t) => setQuickReplies(t.filter((x) => x.usage !== 'broadcast')))
+      .catch(() => undefined)
+  }, [])
+  const insets = useSafeAreaInsets()
   const scroll = useRef<ScrollView>(null)
 
   const load = useCallback(async () => {
@@ -51,6 +75,23 @@ export default function ChatDetailScreen() {
     }
   }
 
+  async function send() {
+    const text = draft.trim()
+    if (!text || sending) return
+    setSending(true)
+    try {
+      const next = await paAdmin.sendMessage(chatId, text)
+      setDraft('')
+      setDetail(next)
+      haptic.success()
+      if (!detail?.autoReplyPaused) toast.success('Sent · bot paused for this chat')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Send failed')
+    } finally {
+      setSending(false)
+    }
+  }
+
   if (!detail) {
     return (
       <Screen>
@@ -65,6 +106,7 @@ export default function ChatDetailScreen() {
 
   return (
     <Screen>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <Header
         title={name}
         subtitle={detail.autoReplyPaused ? 'Auto-reply paused' : 'Bot is replying'}
@@ -126,6 +168,7 @@ export default function ChatDetailScreen() {
         ) : null}
         {detail.messages.map((m, i) => {
           const bot = m.role === 'assistant'
+          const human = bot && m.by === 'human'
           const copy = () => {
             haptic.impact()
             void Clipboard.setStringAsync(m.content).then(() => toast.success('Message copied'))
@@ -133,7 +176,7 @@ export default function ChatDetailScreen() {
           return (
             <Pressable key={`${m.at}-${i}`} onLongPress={copy} style={[styles.bubbleWrap, bot ? styles.left : styles.right]}>
               {bot ? (
-                <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.bubble, styles.botBubble]}>
+                <LinearGradient colors={human ? gradients.ok : gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.bubble, styles.botBubble]}>
                   <Text style={[styles.msg, { color: '#fff' }]}>{m.content}</Text>
                 </LinearGradient>
               ) : (
@@ -142,13 +185,42 @@ export default function ChatDetailScreen() {
                 </View>
               )}
               <Text style={[styles.time, !bot && { textAlign: 'right' }]}>
-                {bot ? 'PA' : 'Customer'}
+                {human ? 'You' : bot ? 'PA' : 'Customer'}
                 {m.at ? ` · ${clock(m.at)}` : ''}
               </Text>
             </Pressable>
           )
         })}
       </ScrollView>
+      {quickReplies.length ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={styles.quick}>
+          {quickReplies.map((t) => (
+            <Chip
+              key={t._id}
+              label={t.name}
+              icon="flash-outline"
+              onPress={() => setDraft(t.body.replace(/\{\{\s*name\s*\}\}/gi, (detail.contactName || '').split(/\s+/)[0] || 'there'))}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+      <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          placeholder={detail.autoReplyPaused ? 'Reply as the business…' : 'Reply — this pauses the bot for this chat'}
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+          multiline
+          maxLength={4000}
+        />
+        <Pressable onPress={() => void send()} disabled={!draft.trim() || sending} style={[styles.sendBtn, !draft.trim() && { opacity: 0.4 }]}>
+          <LinearGradient colors={gradients.brand} style={styles.sendGrad}>
+            {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="send" size={18} color="#fff" />}
+          </LinearGradient>
+        </Pressable>
+      </View>
+      </KeyboardAvoidingView>
     </Screen>
   )
 }
@@ -174,4 +246,31 @@ const styles = StyleSheet.create({
   },
   msg: { fontFamily: fonts.regular, color: colors.text, fontSize: 15, lineHeight: 21 },
   time: { fontFamily: fonts.regular, color: colors.muted, fontSize: 10, paddingHorizontal: 4 },
+  quick: { gap: 8, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  composer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.bgElevated,
+  },
+  input: {
+    flex: 1,
+    maxHeight: 120,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 22,
+    color: colors.text,
+    fontFamily: fonts.regular,
+    fontSize: 15,
+    paddingHorizontal: 16,
+    paddingTop: 11,
+    paddingBottom: 11,
+  },
+  sendBtn: { borderRadius: 22, overflow: 'hidden' },
+  sendGrad: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 })

@@ -24,7 +24,7 @@ export async function createDocument(req: Request & { user?: AuthPayload }, res:
   res.status(201).json({ success: true, data: await docs.createDocument(ws(req), req.body, uid(req)) });
 }
 export async function updateDocument(req: Request & { user?: AuthPayload }, res: Response) {
-  res.json({ success: true, data: await docs.updateDocument(req.params.id, ws(req), req.body) });
+  res.json({ success: true, data: await docs.updateDocument(req.params.id, ws(req), req.body, req.user?.id) });
 }
 export async function cloneTemplate(req: Request & { user?: AuthPayload }, res: Response) {
   res.status(201).json({ success: true, data: await docs.cloneTemplate(req.params.id, ws(req), req.body, uid(req)) });

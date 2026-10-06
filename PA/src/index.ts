@@ -8,6 +8,7 @@ import { connectDB } from './Config/db';
 import mongoose from 'mongoose';
 import { startWhatsApp, stopWhatsApp } from './Whatsap';
 import { startMonitorAlertWatcher, stopMonitorAlertWatcher } from './Admin/monitorAdmin';
+import { resumeBroadcasts } from './Admin/broadcasts';
 
 dotenv.config();
 
@@ -51,6 +52,7 @@ async function main() {
   await Promise.all([connectDB(), verifyGroqModels()]);
   await startWhatsApp();
   startMonitorAlertWatcher();
+  resumeBroadcasts();
 
   const port = Number(process.env.PORT) || 3000;
   const server = app.listen(port, () => {

@@ -11,6 +11,8 @@ import {
   type DashboardStats,
 } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/dateFormat';
+import ApiTokensCard from '../components/profile/ApiTokensCard';
+import LanguageCard from '../components/profile/LanguageCard';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -510,6 +512,10 @@ export default function Profile() {
           </form>
         </div>
       </div>
+
+      <LanguageCard />
+
+      {token && <ApiTokensCard token={token} />}
 
       {/* Security note */}
       <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-6">

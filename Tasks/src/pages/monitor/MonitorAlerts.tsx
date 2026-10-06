@@ -5,6 +5,7 @@ import { monitorApi, type MonitorAlertDelivery, type MonitorAlertRule } from '..
 import { monitorInputClass, useMonitorWorkspace } from './MonitorWorkspace';
 import { ModuleHeader, StatusPill } from '../../components/moduleKit';
 import SectionCard from '../../components/SectionCard';
+import OnCallCard from '../../components/monitor/OnCallCard';
 
 const TRIGGERS: Array<{ id: MonitorAlertRule['trigger']; label: string; hint: string }> = [
   { id: 'error_new', label: 'New error group', hint: 'First time this stack fingerprint is seen' },
@@ -151,6 +152,7 @@ export default function MonitorAlerts() {
         subtitle={`${project?.name ?? ''} · Rules fire automatically from ingest and uptime. Uses workspace email transport.`.trim()}
         accent="#f59e0b"
       />
+      {projectId && <OnCallCard projectId={projectId} canManage={canManage} />}
       {error && <p className="text-sm text-rose-400">{error}</p>}
       {notice && <p className="text-sm text-emerald-400">{notice}</p>}
 

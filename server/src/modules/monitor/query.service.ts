@@ -122,17 +122,55 @@ export async function getErrorGroup(workspaceId: string | null | undefined, proj
   return group;
 }
 
+export type ErrorGroupPatch = {
+  status?: string;
+  /** true = acknowledge (I'm on it), false = clear. */
+  acknowledged?: boolean;
+  /** User id, or '' / null to unassign. */
+  assigneeId?: string | null;
+  /** Mute alerts for N minutes; 0 clears the snooze. */
+  snoozeMinutes?: number;
+};
+
 export async function updateErrorGroup(
   workspaceId: string | null | undefined,
   projectId: string,
   id: string,
-  status: string
+  patch: ErrorGroupPatch,
+  actorId?: string
 ) {
   const orgId = requireWorkspaceId(workspaceId);
-  if (status !== 'open' && status !== 'resolved') throw new ApiError(400, 'Invalid status');
+  const $set: Record<string, unknown> = {};
+  const $unset: Record<string, 1> = {};
+  if (patch.status !== undefined) {
+    if (patch.status !== 'open' && patch.status !== 'resolved') throw new ApiError(400, 'Invalid status');
+    $set.status = patch.status;
+    if (patch.status === 'resolved') $set.resolvedAt = new Date();
+  }
+  if (patch.acknowledged !== undefined) {
+    if (patch.acknowledged) {
+      $set.acknowledgedAt = new Date();
+      if (actorId && mongoose.Types.ObjectId.isValid(actorId)) $set.acknowledgedBy = new mongoose.Types.ObjectId(actorId);
+    } else {
+      $unset.acknowledgedAt = 1;
+      $unset.acknowledgedBy = 1;
+    }
+  }
+  if (patch.assigneeId !== undefined) {
+    if (patch.assigneeId && mongoose.Types.ObjectId.isValid(patch.assigneeId)) {
+      $set.assigneeId = new mongoose.Types.ObjectId(patch.assigneeId);
+    } else $unset.assigneeId = 1;
+  }
+  if (patch.snoozeMinutes !== undefined) {
+    const mins = Number(patch.snoozeMinutes);
+    if (!Number.isFinite(mins) || mins < 0 || mins > 60 * 24 * 30) throw new ApiError(400, 'snoozeMinutes must be 0–43200');
+    if (mins === 0) $unset.snoozedUntil = 1;
+    else $set.snoozedUntil = new Date(Date.now() + mins * 60_000);
+  }
+  if (!Object.keys($set).length && !Object.keys($unset).length) throw new ApiError(400, 'Nothing to update');
   const updated = await MonitorErrorGroup.findOneAndUpdate(
     { _id: id, projectId, taskflowOrganizationId: toOrgOid(orgId) },
-    { $set: { status } },
+    { ...(Object.keys($set).length ? { $set } : {}), ...(Object.keys($unset).length ? { $unset } : {}) },
     { new: true }
   ).lean();
   if (!updated) throw new ApiError(404, 'Error group not found');

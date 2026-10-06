@@ -7,6 +7,8 @@ export interface IMonitorProject extends Document {
   name: string;
   key: string;
   sourceProjectId?: mongoose.Types.ObjectId;
+  /** Rotation: whoever is on call gets paged for new errors, regressions and outages. */
+  onCall?: { userIds: mongoose.Types.ObjectId[]; rotationDays: number; startsAt: Date; enabled: boolean };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,6 +19,12 @@ const monitorProjectSchema = new Schema<IMonitorProject>(
     name: { type: String, required: true, trim: true },
     key: { type: String, required: true, trim: true, uppercase: true },
     sourceProjectId: { type: Schema.Types.ObjectId, ref: 'Project' },
+    onCall: {
+      enabled: { type: Boolean, default: false },
+      userIds: { type: [{ type: Schema.Types.ObjectId, ref: 'User' }], default: [] },
+      rotationDays: { type: Number, default: 7, min: 1, max: 90 },
+      startsAt: { type: Date, default: Date.now },
+    },
   },
   { timestamps: true }
 );
@@ -138,6 +146,18 @@ export const MonitorErrorGroup = mongoose.model(
       status: { type: String, enum: ['open', 'resolved'], default: 'open' },
       firstSeen: { type: Date, default: Date.now },
       lastSeen: { type: Date, default: Date.now, index: true },
+      // Incident workflow
+      assigneeId: { type: Schema.Types.ObjectId, ref: 'User' },
+      acknowledgedAt: { type: Date },
+      acknowledgedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+      /** Alerts for this group are muted until this time. */
+      snoozedUntil: { type: Date },
+      /** Set when a resolved group receives a new event. */
+      regressedAt: { type: Date },
+      resolvedAt: { type: Date },
+      linkedIssueId: { type: Schema.Types.ObjectId, ref: 'Issue' },
+      linkedIssueKey: { type: String },
+      linkedProjectId: { type: Schema.Types.ObjectId, ref: 'Project' },
     },
     { timestamps: true }
   ).index({ appId: 1, fingerprint: 1 }, { unique: true })

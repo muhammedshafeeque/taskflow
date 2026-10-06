@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
+import ErrorIncidents from '../../components/monitor/ErrorIncidents';
 import { monitorApi, WS_URL } from '../../lib/api';
 import { monitorInputClass, useMonitorWorkspace } from './MonitorWorkspace';
 import { ModuleHeader, StatusPill } from '../../components/moduleKit';
@@ -61,6 +62,7 @@ export default function MonitorTelemetry() {
   const { token, user } = useAuth();
   const { projectId, project, envs, apps, filters, setFilters, qparams } = useMonitorWorkspace();
   const canManageUptime = canAny(user, 'taskflow.monitor.uptime.manage');
+  const canUpdateErrors = canAny(user, 'taskflow.monitor.error.update');
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [uptimePack, setUptimePack] = useState<{ checks: Record<string, unknown>[]; samples: Record<string, unknown>[] } | null>(null);
   const [error, setError] = useState('');
@@ -217,6 +219,15 @@ export default function MonitorTelemetry() {
         </SectionCard>
       ) : (
         <SectionCard title={meta.title} description={`${tableRows.length} row${tableRows.length === 1 ? '' : 's'}`}>
+          {kind === 'errors' && token ? (
+            <ErrorIncidents
+              projectId={projectId}
+              rows={rows as Parameters<typeof ErrorIncidents>[0]['rows']}
+              token={token}
+              canUpdate={canUpdateErrors}
+              onChanged={load}
+            />
+          ) : (
           <DataTable
             rows={tableRows}
             cols={cols}
@@ -236,6 +247,7 @@ export default function MonitorTelemetry() {
                   : undefined
             }
           />
+          )}
         </SectionCard>
       )}
     </div>

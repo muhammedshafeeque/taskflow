@@ -11,6 +11,7 @@ import { runDoIssue } from './do/runners';
 import { StatusBarController } from './statusBar';
 import { IssuePanel } from './views/issuePanel';
 import { IssueTreeItem, IssuesTreeProvider } from './views/issuesTree';
+import { AgentJobsTreeProvider, showAgentJob } from './views/agentJobsTree';
 import { clearFolderProjectCancel, pickAndSaveFolderProject } from './workspace/folderProject';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -28,7 +29,17 @@ export function activate(context: vscode.ExtensionContext): void {
     await status.refresh();
   }
 
+  const agentJobs = new AgentJobsTreeProvider(session);
+  // Keep running jobs fresh without hammering the server.
+  const agentTimer = setInterval(() => agentJobs.refresh(), 30_000);
   context.subscriptions.push(
+    { dispose: () => clearInterval(agentTimer) },
+    vscode.window.registerTreeDataProvider('atrium.agentJobs', agentJobs),
+    vscode.commands.registerCommand('atrium.refreshAgentJobs', () => agentJobs.refresh()),
+    vscode.commands.registerCommand('atrium.showAgentJob', (id: string) => showAgentJob(session, id)),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('atrium.paUrl')) agentJobs.refresh();
+    }),
     vscode.window.registerTreeDataProvider('atrium.issues', tree),
     status,
     vscode.commands.registerCommand('atrium.getStarted', async () => {

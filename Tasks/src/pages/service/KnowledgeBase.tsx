@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { serviceApi, type KbArticle } from '../../lib/api';
 
 export default function KnowledgeBase() {
   const { token } = useAuth();
   const [articles, setArticles] = useState<KbArticle[]>([]);
-  const [search, setSearch] = useState('');
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get('q') ?? '');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
 

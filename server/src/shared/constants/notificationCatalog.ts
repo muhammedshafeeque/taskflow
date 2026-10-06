@@ -61,6 +61,16 @@ export const NOTIFICATION_EVENTS = [
   'crm_quote_accepted',
   'crm_deal_won',
   'crm_deal_lost',
+  'crm_follow_up_due',
+  'crm_deal_stale',
+  // Service desk
+  'sla_breach_warning',
+  'sla_breached',
+  // Finance & renewals
+  'invoice_generated',
+  'invoice_overdue',
+  'contract_renewal_due',
+  'license_renewal_due',
   // Documents
   'document_shared',
   // Workspace
@@ -126,6 +136,14 @@ export const NOTIFICATION_EVENT_DESCRIPTORS: NotificationEventDescriptor[] = [
   { key: 'crm_quote_accepted', label: 'Quote accepted', description: 'A CRM quotation is accepted.' },
   { key: 'crm_deal_won', label: 'Deal won', description: 'A CRM deal is marked won.' },
   { key: 'crm_deal_lost', label: 'Deal lost', description: 'A CRM deal is marked lost.' },
+  { key: 'crm_follow_up_due', label: 'Follow-up due', description: 'A CRM follow-up or activity is due.' },
+  { key: 'crm_deal_stale', label: 'Stale deal', description: 'An open deal you own has had no activity for 14+ days.' },
+  { key: 'sla_breach_warning', label: 'SLA at risk', description: 'A ticket is about to breach its SLA.' },
+  { key: 'sla_breached', label: 'SLA breached', description: 'A ticket breached its response or resolution SLA.' },
+  { key: 'invoice_generated', label: 'Invoice generated', description: 'A draft invoice was generated from a subscription.' },
+  { key: 'invoice_overdue', label: 'Invoice overdue', description: 'A sent invoice passed its due date unpaid.' },
+  { key: 'contract_renewal_due', label: 'Contract renewal due', description: 'A contract renews or ends within 30 days.' },
+  { key: 'license_renewal_due', label: 'License renewal due', description: 'A software license renews within 30 days.' },
   { key: 'document_shared', label: 'Document shared', description: 'A document is shared with you.' },
   { key: 'workspace_member_added', label: 'Workspace member added', description: 'Workspace membership changes.' },
   { key: 'workspace_member_role_changed', label: 'Workspace role changed', description: 'Workspace role changes.' },

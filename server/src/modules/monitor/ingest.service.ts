@@ -12,6 +12,7 @@ import {
 } from './monitor.models';
 import { emitLive, rateLimitKey, resolveAppByKey } from './setup.service';
 import { evaluateMonitorAlerts } from './alert.service';
+import { pageOnCall } from './onCall.service';
 import { ApiError } from '../../utils/ApiError';
 
 function fingerprint(type: string, message: string, stack?: string): string {
@@ -120,14 +121,34 @@ export async function ingestWithKey(plainKey: string, kind: string, body: Record
       { upsert: true, new: true }
     );
     emitLive(projectId, envId, 'error', { fingerprint: fp, message });
-    evaluateMonitorAlerts({
+    // A resolved error that happens again is a regression: reopen it.
+    let regressed = false;
+    if (group?.status === 'resolved') {
+      regressed = true;
+      await MonitorErrorGroup.updateOne(
+        { _id: group._id },
+        { $set: { status: 'open', regressedAt: new Date(), acknowledgedAt: null, acknowledgedBy: null } }
+      );
+    }
+    const snoozed = Boolean(!regressed && group?.snoozedUntil && new Date(group.snoozedUntil) > new Date());
+    if (!snoozed && ((group?.count ?? 0) === 1 || regressed)) {
+      void pageOnCall({
+        projectId,
+        title: regressed ? `Regression: ${message}` : `New error: ${message}`,
+        body: `${type || 'Error'} in ${app.name ?? 'app'}`,
+        link: `/monitor/${projectId}/errors?group=${group?._id}`,
+        dedupeKey: `error:${fp}`,
+      });
+    }
+    if (!snoozed) evaluateMonitorAlerts({
       kind: 'errors',
       orgId: String(app.taskflowOrganizationId),
       projectId,
       environmentId: envId,
       appId: String(app._id),
-      isNewErrorGroup: (group?.count ?? 0) === 1,
-      fields: { message, type, release: release || '', fingerprint: fp },
+      // Regressions alert like brand-new errors.
+      isNewErrorGroup: (group?.count ?? 0) === 1 || regressed,
+      fields: { message: regressed ? `[regression] ${message}` : message, type, release: release || '', fingerprint: fp },
     });
     return { ok: true, id: String(ev._id), fingerprint: fp };
   }

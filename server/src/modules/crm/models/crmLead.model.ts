@@ -112,4 +112,6 @@ crmLeadSchema.index({ taskflowOrganizationId: 1, assigneeId: 1, status: 1 });
 crmLeadSchema.index({ taskflowOrganizationId: 1, contactEmail: 1 });
 crmLeadSchema.index({ taskflowOrganizationId: 1, nextFollowUpAt: 1 });
 
+crmLeadSchema.index({ nextFollowUpAt: 1 });
+
 export const CrmLead = mongoose.model<ICrmLead>('CrmLead', crmLeadSchema);

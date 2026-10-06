@@ -1,4 +1,6 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
+import * as payroll from './payroll.service';
+import { CoreCompanySettings } from '../core/models/coreCompanySettings.model';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import { requireAnyPermission } from '../../middleware/requirePermission';
 import { asyncHandler } from '../../utils/asyncHandler';
@@ -40,5 +42,39 @@ router.get('/attendance', requireAnyPermission(attRead), asyncHandler(ctrl.listA
 router.post('/attendance', requireAnyPermission(attManage), asyncHandler(ctrl.markAttendance));
 
 router.get('/payroll', requireAnyPermission(payrollRead), asyncHandler(ctrl.getPayroll));
+
+// Payroll v2: settings, monthly runs, adjustments, payslips
+const payrollManage = [H.PAYROLL.MANAGE];
+type WsReq = Request & { activeOrganizationId?: string; user?: { id: string } };
+router.get('/payroll/settings', requireAnyPermission(payrollRead), asyncHandler(async (req: WsReq, res: Response) => {
+  res.json({ success: true, data: await payroll.getPayrollSettings(req.activeOrganizationId) });
+}));
+router.put('/payroll/settings', requireAnyPermission(payrollManage), asyncHandler(async (req: WsReq, res: Response) => {
+  res.json({ success: true, data: await payroll.updatePayrollSettings(req.activeOrganizationId, req.body ?? {}) });
+}));
+router.get('/payroll/runs', requireAnyPermission(payrollRead), asyncHandler(async (req: WsReq, res: Response) => {
+  res.json({ success: true, data: await payroll.listPayrollRuns(req.activeOrganizationId) });
+}));
+router.post('/payroll/runs', requireAnyPermission(payrollManage), asyncHandler(async (req: WsReq, res: Response) => {
+  res.json({ success: true, data: await payroll.generatePayrollRun(req.activeOrganizationId, String(req.body?.period ?? '')) });
+}));
+router.get('/payroll/runs/:id', requireAnyPermission(payrollRead), asyncHandler(async (req: WsReq, res: Response) => {
+  res.json({ success: true, data: await payroll.getPayrollRunById(req.activeOrganizationId, req.params.id) });
+}));
+router.put('/payroll/runs/:id/payslips/:employeeId/adjustments', requireAnyPermission(payrollManage), asyncHandler(async (req: WsReq, res: Response) => {
+  const data = await payroll.setPayslipAdjustments(req.activeOrganizationId, req.params.id, req.params.employeeId, req.body?.adjustments ?? []);
+  res.json({ success: true, data });
+}));
+router.post('/payroll/runs/:id/finalize', requireAnyPermission(payrollManage), asyncHandler(async (req: WsReq, res: Response) => {
+  res.json({ success: true, data: await payroll.setPayrollRunStatus(req.activeOrganizationId, req.params.id, 'finalized', req.user!.id) });
+}));
+router.post('/payroll/runs/:id/paid', requireAnyPermission(payrollManage), asyncHandler(async (req: WsReq, res: Response) => {
+  res.json({ success: true, data: await payroll.setPayrollRunStatus(req.activeOrganizationId, req.params.id, 'paid', req.user!.id) });
+}));
+router.get('/payroll/runs/:id/payslips/:employeeId', requireAnyPermission(payrollRead), asyncHandler(async (req: WsReq, res: Response) => {
+  const company = await CoreCompanySettings.findOne({ taskflowOrganizationId: req.activeOrganizationId }).select('companyName').lean();
+  const html = await payroll.renderPayslipHtml(req.activeOrganizationId, req.params.id, req.params.employeeId, company?.companyName ?? 'Company');
+  res.json({ success: true, data: { html } });
+}));
 
 export const hrmsRoutes = router;

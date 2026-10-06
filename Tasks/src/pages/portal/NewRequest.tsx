@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { portalApi, uploadFile, type ProjectMapping } from '../../lib/api';
 import { FiArrowLeft, FiSend, FiPaperclip, FiX } from 'react-icons/fi';
+import KbSuggestions from '../../components/portal/KbSuggestions';
 
 const ALL_TYPES = ['bug', 'feature', 'suggestion', 'concern', 'other'];
 const PRIORITIES = ['low', 'medium', 'high', 'critical'];
@@ -164,6 +165,11 @@ export default function NewRequest() {
                 placeholder="Brief summary of your request"
                 className={inputClass}
               />
+              {token && (
+                <div className="mt-2">
+                  <KbSuggestions query={`${title} ${description}`.slice(0, 300)} token={token} />
+                </div>
+              )}
             </div>
 
             {/* Type + Priority */}

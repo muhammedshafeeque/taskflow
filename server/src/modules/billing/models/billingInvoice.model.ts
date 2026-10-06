@@ -51,6 +51,9 @@ export interface IBillingInvoice extends Document {
   servicePeriodStart?: Date;
   servicePeriodEnd?: Date;
   postedToAccounts: boolean;
+  paymentLink?: { provider: 'razorpay' | 'stripe'; id: string; url: string; amount: number; currency: string; createdAt: Date };
+  /** Provider payment ids already applied — makes webhook retries idempotent. */
+  paymentRefs?: string[];
   createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -109,6 +112,15 @@ const billingInvoiceSchema = new Schema<IBillingInvoice>(
     servicePeriodStart: { type: Date },
     servicePeriodEnd: { type: Date },
     postedToAccounts: { type: Boolean, default: false },
+    paymentLink: {
+      provider: { type: String, enum: ['razorpay', 'stripe'] },
+      id: { type: String },
+      url: { type: String },
+      amount: { type: Number },
+      currency: { type: String },
+      createdAt: { type: Date },
+    },
+    paymentRefs: { type: [String], default: undefined },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

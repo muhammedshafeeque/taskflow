@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { hrmsApi } from '../../lib/api';
 import type { HrmsEmployee, HrmsLeaveRequest, HrmsAttendance } from '../../lib/api';
 import {
-  ExportButton, Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, money, nameOf,
+  ExportButton, Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, nameOf,
 } from '../../components/moduleKit';
 
 const statusTone: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = {
@@ -297,48 +297,5 @@ export function HrmsLeave() {
 }
 
 // ── Payroll ──────────────────────────────────────────────────────────────────
-export function HrmsPayroll() {
-  const { token } = useAuth();
-  const [data, setData] = useState<{ rows: Array<{ _id: string; name: string; employeeCode: string; department?: string; designation?: string; currency: string; monthly: number; annualCtc: number }>; total: number; count: number } | null>(null);
-
-  useEffect(() => {
-    if (!token) return;
-    hrmsApi.payroll(token).then((r) => r.success && r.data && setData(r.data as never));
-  }, [token]);
-
-  return (
-    <SectionPage title="Payroll" subtitle="Monthly payroll run derived from active employees' CTC.">
-      {!data ? (
-        <p className="text-sm text-[color:var(--text-muted)]">Loading…</p>
-      ) : (
-        <>
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-5 py-4 flex flex-wrap gap-6">
-            <div><p className="text-xs text-[color:var(--text-muted)]">Monthly total</p><p className="text-2xl font-bold">{money(data.total)}</p></div>
-            <div><p className="text-xs text-[color:var(--text-muted)]">Employees</p><p className="text-2xl font-bold">{data.count}</p></div>
-          </div>
-          {data.rows.length === 0 ? (
-            <p className="text-sm text-[color:var(--text-muted)]">No active employees.</p>
-          ) : (
-            tableWrap(
-              <>
-                <thead className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">
-                  <tr><th className="text-left px-4 py-2.5 font-medium">Employee</th><th className="text-left px-4 py-2.5 font-medium">Department</th><th className="text-right px-4 py-2.5 font-medium">Monthly</th><th className="text-right px-4 py-2.5 font-medium">Annual CTC</th></tr>
-                </thead>
-                <tbody>
-                  {data.rows.map((r) => (
-                    <tr key={r._id} className="border-t border-[color:var(--border-subtle)]">
-                      <td className="px-4 py-2.5"><p className="font-medium">{r.name}</p><p className="text-[11px] text-[color:var(--text-muted)]">{r.employeeCode}</p></td>
-                      <td className="px-4 py-2.5">{r.department || '—'}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{money(r.monthly, r.currency)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-[color:var(--text-muted)]">{money(r.annualCtc, r.currency)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </>
-            )
-          )}
-        </>
-      )}
-    </SectionPage>
-  );
-}
+// Payroll lives in its own file (runs, payslips, components).
+export { HrmsPayroll } from './HrmsPayrollRuns';

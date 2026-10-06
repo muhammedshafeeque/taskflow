@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store'
 import { Platform } from 'react-native'
 import Constants from 'expo-constants'
+import { readCache, saveCache, setOffline } from '../lib/offlineCache'
 
 const SECRET_KEY = 'pa_admin_secret'
 const BASE_KEY = 'pa_api_base'
@@ -99,6 +100,26 @@ export async function clearAuth(): Promise<void> {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const isGet = !init.method || init.method.toUpperCase() === 'GET'
+  if (!isGet) return requestOnline<T>(path, init)
+  try {
+    const data = await requestOnline<T>(path, init)
+    saveCache(path, data)
+    setOffline(false)
+    return data
+  } catch (err) {
+    // Only fall back for network failures — real API errors (4xx/5xx) still surface.
+    if (!(err instanceof NetworkError)) throw err
+    const cached = await readCache<T>(path)
+    if (!cached) throw err
+    setOffline(true, cached.savedAt)
+    return cached.data
+  }
+}
+
+class NetworkError extends Error {}
+
+async function requestOnline<T>(path: string, init: RequestInit = {}): Promise<T> {
   const secret = getStoredSecret()
   if (!secret) throw new Error('Admin secret required')
 
@@ -111,13 +132,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       signal: init.signal ?? controller.signal,
       headers: {
         'Content-Type': 'application/json',
-        'x-pa-admin-secret': secret,
+        // A personal Atrium token (atr_…) signs in as you; anything else is the shared admin secret.
+        ...(secret.startsWith('atr_') ? { Authorization: `Bearer ${secret}` } : { 'x-pa-admin-secret': secret }),
         ...(init.headers || {}),
       },
     })
   } catch (err) {
-    if (controller.signal.aborted) throw new Error('Request timed out — is the PA server reachable?')
-    throw err
+    if (controller.signal.aborted) throw new NetworkError('Request timed out — is the PA server reachable?')
+    throw new NetworkError(err instanceof Error ? err.message : 'Network request failed')
   } finally {
     clearTimeout(timeout)
   }
@@ -138,20 +160,74 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return json.data as T
 }
 
+export type QuietHours = {
+  enabled: boolean
+  start: string
+  end: string
+  timezone: string
+  awayMessage: string
+}
+
 export type BotSettings = {
   key: string
   botPaused: boolean
   voiceRepliesEnabled: boolean
   sttLanguage: 'ml' | 'en' | 'auto'
+  quietHours?: QuietHours
   updatedAt?: string
 }
 
-export type AdminStatus = {
-  whatsapp: {
-    ready: boolean
-    authenticated: boolean
-    lastDisconnectReason: string | null
+export type MessageTemplate = { _id: string; name: string; body: string; usage: 'reply' | 'broadcast' | 'both' }
+
+export type BroadcastAudience = { activeWithinDays?: number; lang?: 'ml' | 'en'; leadsOnly?: boolean; chatIds?: string[] }
+
+export type BroadcastRow = {
+  _id: string
+  name: string
+  message: string
+  audience: BroadcastAudience
+  status: 'draft' | 'sending' | 'paused' | 'done' | 'cancelled'
+  total: number
+  sent: number
+  failed: number
+  skippedOptOut: number
+  createdAt: string
+  startedAt?: string
+  finishedAt?: string
+}
+
+export type ChatAnalytics = {
+  days: number
+  totals: {
+    activeChats: number
+    inbound: number
+    botReplies: number
+    humanReplies: number
+    leads: number
+    leadsInCrm: number
+    pausedChats: number
   }
+  daily: Array<{ date: string; inbound: number; botReplies: number; humanReplies: number; leads: number }>
+  responseTimeSec: { median: number | null; p90: number | null; samples: number }
+  languages: Record<string, number>
+  messageTypes: Record<string, number>
+  humanTakeoverRate: number
+  leadConversionRate: number
+  note: string
+}
+
+export type WhatsAppStatus = {
+  ready: boolean
+  authenticated: boolean
+  qrPending?: boolean
+  reconnecting?: boolean
+  reconnectAttempts?: number
+  lastDisconnectReason: string | null
+  lastReconnectAt?: string | null
+}
+
+export type AdminStatus = {
+  whatsapp: WhatsAppStatus
   settings: BotSettings
   counts: {
     conversations: number
@@ -177,7 +253,7 @@ export type ConversationListItem = {
 
 export type ConversationDetail = {
   chatId: string
-  messages: Array<{ role: 'user' | 'assistant'; content: string; at?: string }>
+  messages: Array<{ role: 'user' | 'assistant'; content: string; at?: string; by?: 'bot' | 'human' }>
   lead?: { summary?: string }
   lastType?: string
   lastLang?: string
@@ -271,8 +347,26 @@ export type SupportEventRow = {
 
 export const paAdmin = {
   status: () => request<AdminStatus>('/api/admin/status'),
+  whatsappStatus: () => request<WhatsAppStatus>('/api/admin/whatsapp/status'),
+  reconnectWhatsApp: () =>
+    request<WhatsAppStatus>('/api/admin/whatsapp/reconnect', { method: 'POST' }),
   getSettings: () => request<BotSettings>('/api/admin/settings'),
-  patchSettings: (body: Partial<BotSettings>) =>
+  templates: () => request<MessageTemplate[]>('/api/admin/templates'),
+  createTemplate: (body: { name: string; body: string; usage?: MessageTemplate['usage'] }) =>
+    request<MessageTemplate>('/api/admin/templates', { method: 'POST', body: JSON.stringify(body) }),
+  deleteTemplate: (id: string) => request<{ ok: true }>(`/api/admin/templates/${id}`, { method: 'DELETE' }),
+  broadcasts: () => request<BroadcastRow[]>('/api/admin/broadcasts'),
+  previewAudience: (audience: BroadcastAudience) =>
+    request<{ count: number; matched: number; optedOut: number; cap: number }>('/api/admin/broadcasts/preview', {
+      method: 'POST',
+      body: JSON.stringify({ audience }),
+    }),
+  createBroadcast: (body: { name: string; message: string; audience: BroadcastAudience }) =>
+    request<BroadcastRow>('/api/admin/broadcasts', { method: 'POST', body: JSON.stringify(body) }),
+  broadcastAction: (id: string, action: 'send' | 'pause' | 'cancel') =>
+    request<{ status: BroadcastRow['status'] }>(`/api/admin/broadcasts/${id}/${action}`, { method: 'POST' }),
+  analytics: (days = 30) => request<ChatAnalytics>(`/api/admin/analytics?days=${days}`),
+  patchSettings: (body: Partial<Omit<BotSettings, 'quietHours'>> & { quietHours?: Partial<QuietHours> }) =>
     request<BotSettings>('/api/admin/settings', {
       method: 'PATCH',
       body: JSON.stringify(body),
@@ -281,6 +375,13 @@ export const paAdmin = {
     request<ConversationListItem[]>(
       `/api/admin/conversations${q ? `?q=${encodeURIComponent(q)}` : ''}`
     ),
+  sendMessage: (chatId: string, text: string, pauseBot = true) =>
+    request<ConversationDetail>(
+      `/api/admin/conversations/${encodeURIComponent(chatId)}/send`,
+      { method: 'POST', body: JSON.stringify({ text, pauseBot }) }
+    ),
+  whatsappQr: () =>
+    request<{ qr: string | null; status: WhatsAppStatus }>('/api/admin/whatsapp/qr'),
   getConversation: (chatId: string) =>
     request<ConversationDetail>(
       `/api/admin/conversations/${encodeURIComponent(chatId)}`
@@ -576,6 +677,11 @@ export type MonitorErrorGroup = {
   lastSeen?: string
   appId?: string
   environmentId?: string
+  acknowledgedAt?: string | null
+  snoozedUntil?: string | null
+  regressedAt?: string | null
+  linkedIssueKey?: string
+  linkedProjectId?: string
 }
 
 export type MonitorLogRow = {
@@ -712,6 +818,13 @@ export const monitorApi = {
     request<MonitorErrorGroup[]>(mp(pid, `/errors${qs(o)}`)),
   errorGroup: (pid: string, id: string) =>
     request<MonitorErrorGroup>(mp(pid, `/errors/${encodeURIComponent(id)}`)),
+  createIssueFromError: (pid: string, id: string, pmProjectId: string) =>
+    request<{ issueId: string; issueKey?: string; projectId: string }>(mp(pid, `/errors/${encodeURIComponent(id)}/issue`), {
+      method: 'POST',
+      body: JSON.stringify({ pmProjectId }),
+    }),
+  patchErrorGroup: (pid: string, id: string, body: { acknowledged?: boolean; snoozeMinutes?: number }) =>
+    request<MonitorErrorGroup>(mp(pid, `/errors/${encodeURIComponent(id)}`), { method: 'PATCH', body: JSON.stringify(body) }),
   setErrorStatus: (pid: string, id: string, status: 'open' | 'resolved') =>
     request<MonitorErrorGroup>(mp(pid, `/errors/${encodeURIComponent(id)}`), {
       method: 'PATCH',

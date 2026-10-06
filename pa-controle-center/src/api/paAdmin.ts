@@ -32,7 +32,8 @@ async function request<T>(
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      'x-pa-admin-secret': secret,
+      // A personal Atrium token (atr_…) signs in as you; anything else is the shared admin secret.
+      ...(secret.startsWith('atr_') ? { Authorization: `Bearer ${secret}` } : { 'x-pa-admin-secret': secret }),
       ...(init.headers || {}),
     },
   })

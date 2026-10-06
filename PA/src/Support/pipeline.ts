@@ -35,6 +35,7 @@ import type { MediaSource } from '../Media/resolveMessageContent';
 import { sendReply } from '../Whatsap/sendReply';
 import { isOfficialSupportGroup } from './supportGroup';
 import { lookupKbForSupport, tryEcosystemReply } from './intentRouter';
+import { pushToDevices } from '../Push/expoPush';
 
 export { isOfficialSupportGroup } from './supportGroup';
 
@@ -264,6 +265,11 @@ export async function runSupportPipeline(input: {
 
   if (seDecision.action === 'ESCALATE_QA') {
     escalated = true;
+    void pushToDevices('escalation', {
+      title: `🚨 Support escalated · ${groupName || 'WhatsApp group'}`,
+      body: (seDecision.escalateReason || analysis.summary || text).slice(0, 180),
+      data: { groupId, screen: 'support' },
+    });
     emitSupportEvent({
       type: 'NEW_ISSUE_DETECTED',
       groupId,

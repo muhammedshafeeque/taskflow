@@ -130,6 +130,14 @@ const updateProjectSchema = z.object({
     projectRules: z.array(projectRuleSchema).optional(),
     estimateApprovalEnabled: z.boolean().optional(),
     rulesEnforcementMode: z.enum(['log', 'enforce']).optional(),
+    /** GitHub "owner/repo" whose commits and PRs link to this project's issues. Empty string clears it. */
+    githubRepo: z
+      .string()
+      .trim()
+      .regex(/^$|^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, 'Use owner/repo')
+      .optional(),
+    /** Status to move linked issues to when their pull request is merged ('' = don't move). */
+    githubMergedStatus: z.string().optional(),
   }),
   params: z.object({
     id: z.string().min(1),

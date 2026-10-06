@@ -5,6 +5,8 @@ import DateInputDDMMYYYY from '../DateInputDDMMYYYY';
 import { useAuth } from '../../contexts/AuthContext';
 import { projectsApi, type Issue, type Project, type User, type Milestone, type Sprint, type ResolvedCustomField } from '../../lib/api';
 import { formatDateDDMMYYYY } from '../../lib/dateFormat';
+import { IssueDraftHelper } from '../ai/AiPanels';
+import { markdownToHtml } from '../ai/markdownToHtml';
 
 export interface IssueForm {
   title: string;
@@ -164,6 +166,27 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
           <div>
             <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Title</label>
             <input type="text" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} required className={inputCls} />
+            {!editingIssueId && token && (form.project || project?._id) && (
+              <div className="mt-2">
+                <IssueDraftHelper
+                  projectId={form.project || project!._id}
+                  token={token}
+                  currentTitle={form.title}
+                  onApply={(d) =>
+                    setForm((f) => ({
+                      ...f,
+                      title: d.title,
+                      description: markdownToHtml(
+                        d.description + (d.checklist.length ? `\n\n## Checklist\n${d.checklist.map((c) => `- ${c}`).join('\n')}` : '')
+                      ),
+                      type: typeList.includes(d.type) ? d.type : f.type,
+                      priority: priorityList.includes(d.priority) ? d.priority : f.priority,
+                      labels: [...new Set([...f.labels, ...d.labels])],
+                    }))
+                  }
+                />
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Description</label>

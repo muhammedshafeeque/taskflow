@@ -4,15 +4,22 @@ import {
   updateBotSettings,
 } from '../Config/botSettings';
 import {
+  appendMessages,
   clearConversationMemory,
   getConversation,
   setAutoReplyPaused,
 } from '../Memory/conversationMemory';
 import { Conversation } from '../Models/Conversation';
-import type { SttLanguage } from '../Models/BotSettings';
 import { LocalWhatsappLead } from '../Leads/createAtriumLead';
-import { getWhatsAppStatus } from '../Whatsap';
+import {
+  getWhatsAppQr,
+  getWhatsAppStatus,
+  reconnectWhatsApp,
+  sendWhatsAppText,
+} from '../Whatsap';
 import { requireAdminSecret } from './auth';
+import { buildChatAnalytics } from './analytics';
+import { broadcastRouter } from './broadcasts';
 import {
   listCustomerOrgsForAdmin,
   listWhatsAppGroups,
@@ -45,6 +52,7 @@ adminRouter.use(requireAdminSecret);
 adminRouter.use('/agent', agentAdminRouter);
 adminRouter.use('/monitor', monitorAdminRouter);
 adminRouter.use('/push', pushAdminRouter);
+adminRouter.use('/', broadcastRouter);
 
 adminRouter.get('/status', async (_req, res) => {
   const settings = await getBotSettings();
@@ -67,19 +75,51 @@ adminRouter.get('/status', async (_req, res) => {
   });
 });
 
+adminRouter.get('/whatsapp/status', (_req, res) => {
+  res.json({ success: true, data: getWhatsAppStatus() });
+});
+
+// Fire-and-forget: a restart can take a minute (Chromium boot + WA Web load),
+// so respond immediately and let clients poll /whatsapp/status.
+adminRouter.post('/whatsapp/reconnect', (_req, res) => {
+  void reconnectWhatsApp().catch(() => undefined);
+  res.status(202).json({ success: true, data: getWhatsAppStatus() });
+});
+
+adminRouter.get('/whatsapp/qr', async (_req, res, next) => {
+  try {
+    const qr = await getWhatsAppQr();
+    res.json({ success: true, data: { qr, status: getWhatsAppStatus() } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.get('/analytics', async (req, res, next) => {
+  try {
+    const days = parseInt(String(req.query.days ?? '30'), 10) || 30;
+    res.json({ success: true, data: await buildChatAnalytics(days) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 adminRouter.get('/settings', async (_req, res) => {
   const settings = await getBotSettings();
   res.json({ success: true, data: settings });
 });
 
 adminRouter.patch('/settings', async (req, res) => {
-  const body = (req.body ?? {}) as {
-    botPaused?: boolean;
-    voiceRepliesEnabled?: boolean;
-    sttLanguage?: SttLanguage;
-  };
-  const settings = await updateBotSettings(body);
-  res.json({ success: true, data: settings });
+  const body = (req.body ?? {}) as Parameters<typeof updateBotSettings>[0];
+  try {
+    const settings = await updateBotSettings(body);
+    res.json({ success: true, data: settings });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Invalid settings',
+    });
+  }
 });
 
 adminRouter.get('/conversations', async (req, res) => {
@@ -149,6 +189,42 @@ adminRouter.post('/conversations/:chatId/pause', async (req, res) => {
 adminRouter.post('/conversations/:chatId/resume', async (req, res) => {
   const chatId = decodeURIComponent(req.params.chatId);
   const data = await setAutoReplyPaused(chatId, false);
+  res.json({ success: true, data });
+});
+
+/**
+ * Human takeover: send a message as the business from the control apps.
+ * Pauses auto-reply for the chat by default so the bot doesn't talk over you.
+ */
+adminRouter.post('/conversations/:chatId/send', async (req, res) => {
+  const chatId = decodeURIComponent(req.params.chatId);
+  const body = (req.body ?? {}) as { text?: string; pauseBot?: boolean };
+  const text = String(body.text ?? '').trim();
+  if (!text) {
+    res.status(400).json({ success: false, error: 'Message text is required' });
+    return;
+  }
+  if (text.length > 4000) {
+    res.status(400).json({ success: false, error: 'Message is too long (max 4000 characters)' });
+    return;
+  }
+  if (!/@(c\.us|g\.us|lid)$/.test(chatId)) {
+    res.status(400).json({ success: false, error: 'Invalid chat id' });
+    return;
+  }
+  try {
+    await sendWhatsAppText(chatId, text);
+  } catch (err) {
+    res.status(503).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Send failed',
+    });
+    return;
+  }
+  if (body.pauseBot !== false) await setAutoReplyPaused(chatId, true);
+  const data = await appendMessages(chatId, [
+    { role: 'assistant', content: text, at: new Date(), by: 'human' },
+  ]);
   res.json({ success: true, data });
 });
 

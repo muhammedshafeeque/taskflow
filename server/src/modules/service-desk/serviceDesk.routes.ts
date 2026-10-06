@@ -7,6 +7,7 @@ import * as sd from './serviceDesk.controller';
 import * as ingest from './serviceIngest.controller';
 import * as requestIngest from '../customer-portal/customer-request/customerRequestIngest.controller';
 import * as ecoIngest from './paEcosystemIngest.controller';
+import { getCsatReport } from './tickets.service';
 
 const T = TASK_FLOW_PERMISSIONS.TASKFLOW.SERVICE;
 const router = Router();
@@ -50,6 +51,14 @@ router.get('/ingest/procurement/pos', asyncHandler(ecoIngest.ingestProcurementPo
 router.use(authMiddleware);
 
 router.get('/dashboard', requirePermission(T.TICKET.LIST), asyncHandler(sd.getDashboard));
+router.get(
+  '/reports/csat',
+  requirePermission(T.TICKET.LIST),
+  asyncHandler(async (req, res) => {
+    const r = req as typeof req & { activeOrganizationId?: string };
+    res.json({ success: true, data: await getCsatReport(r.activeOrganizationId, Number(req.query.days) || 90) });
+  })
+);
 router.get('/tickets', requirePermission(T.TICKET.LIST), asyncHandler(sd.listTickets));
 router.post('/tickets', requirePermission(T.TICKET.CREATE), asyncHandler(sd.createTicket));
 router.get('/tickets/:id', requirePermission(T.TICKET.READ), asyncHandler(sd.getTicket));

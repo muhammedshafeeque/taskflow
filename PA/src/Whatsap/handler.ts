@@ -9,6 +9,8 @@ import {
   type ResolvedContent,
 } from '../Media/resolveMessageContent';
 import {
+  appendMessages,
+  setAutoReplyPaused,
   getConversation,
   isLowQualityTranscript,
   touchContactHints,
@@ -25,6 +27,12 @@ import { createInbox } from './inbox';
 import { startPresence } from './presence';
 import { resolveSenderMobile } from './resolveSenderMobile';
 import { sendReply } from './sendReply';
+import { pushToDevices } from '../Push/expoPush';
+import { isQuietNow } from '../Config/quietHours';
+import { detectHandover, handoverReply } from '../Ai/handoverDetector';
+import { OPT_IN_RX, OPT_OUT_RX } from './optOut';
+import { Conversation } from '../Models/Conversation';
+import { whatsapp } from './client';
 
 /** Message types the bot can understand; everything else (stickers, system notices, reactions) is dropped before any I/O. */
 const HANDLED_TYPES = new Set(['chat', 'ptt', 'audio', 'image', 'video']);
@@ -127,12 +135,27 @@ export function mergeResolvedContents(
  * The bot stays silent when it can't process or understand a message;
  * a human answers those manually.
  */
+const MANUAL_REASON_LABEL: Record<string, string> = {
+  image_without_caption: 'Sent an image without a caption',
+  voice_not_understood: "Voice note the bot couldn't understand",
+  empty_content: 'Sent something the bot cannot read',
+  nothing_to_process: 'Sent something the bot cannot read',
+};
+
 function leaveForManualReply(chatId: string, reason: string, detail?: string) {
   console.warn('No auto-reply — left for manual reply', {
     chatId,
     reason,
     ...(detail ? { detail: detail.slice(0, 200) } : {}),
   });
+  // DMs only: someone has to answer this by hand, so tell the operator.
+  if (!chatId.endsWith('@g.us')) {
+    void pushToDevices('chat', {
+      title: `✋ Needs a manual reply · ${chatId.replace(/@.*/, '')}`,
+      body: MANUAL_REASON_LABEL[reason] ?? reason,
+      data: { chatId },
+    });
+  }
 }
 
 async function processBatch(batch: Message[]): Promise<void> {
@@ -159,6 +182,51 @@ async function resolveAll(msgs: Message[]): Promise<ResolvedContent | null> {
   if (failed && !ok.some(Boolean)) throw failed.reason;
   if (failed) console.warn('Partial batch resolve failure', failed.reason);
   return mergeResolvedContents(ok);
+}
+
+/** Away message once per quiet window (12h guard) so customers aren't spammed. */
+async function sendAwayMessageOnce(chatId: string, message: string | undefined): Promise<void> {
+  const text = message?.trim();
+  if (!text) return;
+  const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000);
+  const claimed = await Conversation.findOneAndUpdate(
+    { chatId, $or: [{ awayNotifiedAt: null }, { awayNotifiedAt: { $lt: cutoff } }] },
+    { $set: { awayNotifiedAt: new Date() } }
+  ).lean();
+  if (!claimed) return;
+  try {
+    await whatsapp.sendMessage(chatId, text);
+    await appendMessages(chatId, [{ role: 'assistant', content: text, at: new Date(), by: 'bot' }]);
+  } catch (err) {
+    console.warn('away message failed', err);
+  }
+}
+
+/** Store messages that arrive while auto-reply is off and alert the operator's phone. */
+async function recordWhilePaused(
+  chatId: string,
+  msgs: Message[],
+  humanTakeover: boolean,
+  contactName?: string
+): Promise<void> {
+  try {
+    const resolved = await resolveAll(msgs).catch(() => null);
+    const text =
+      resolved?.text?.trim() ||
+      msgs
+        .map((m) => String(m.body || '').trim() || `[${m.type}]`)
+        .join('\n');
+    await appendMessages(chatId, [{ role: 'user', content: text, at: new Date() }]);
+    if (humanTakeover) {
+      await pushToDevices('chat', {
+        title: `💬 ${contactName || chatId.replace(/@.*/, '')}`,
+        body: text.slice(0, 180),
+        data: { chatId },
+      });
+    }
+  } catch (err) {
+    console.warn('recordWhilePaused failed', err);
+  }
 }
 
 async function processIncomingMessages(msgs: Message[]) {
@@ -213,12 +281,16 @@ async function processIncomingMessages(msgs: Message[]) {
     getBotSettings(),
     getConversation(chatId),
   ]);
-  if (settings.botPaused) {
-    console.log('Paused — skip auto-reply (global)', { chatId });
+  if (!isGroup && !settings.botPaused && !conv?.autoReplyPaused && isQuietNow(settings.quietHours)) {
+    console.log('Quiet hours — skip auto-reply', { chatId });
+    await recordWhilePaused(chatId, msgs, false, conv?.contactName);
+    await sendAwayMessageOnce(chatId, settings.quietHours?.awayMessage);
     return;
   }
-  if (!isGroup && conv?.autoReplyPaused) {
-    console.log('Paused — skip auto-reply', { chatId });
+  if (settings.botPaused || (!isGroup && conv?.autoReplyPaused)) {
+    console.log(settings.botPaused ? 'Paused — skip auto-reply (global)' : 'Paused — skip auto-reply', { chatId });
+    // Keep the transcript complete so a human can take over from the control apps.
+    if (!isGroup) await recordWhilePaused(chatId, msgs, Boolean(conv?.autoReplyPaused), conv?.contactName);
     return;
   }
 
@@ -313,6 +385,46 @@ async function processIncomingMessages(msgs: Message[]) {
       isLowQualityTranscript(resolved.text)
     ) {
       leaveForManualReply(chatId, 'voice_not_understood', resolved.text);
+      return;
+    }
+
+    if (!isGroup && (OPT_OUT_RX.test(resolved.text) || OPT_IN_RX.test(resolved.text))) {
+      const optOut = OPT_OUT_RX.test(resolved.text);
+      await Conversation.updateOne(
+        { chatId },
+        { $set: { optedOut: optOut, optedOutAt: optOut ? new Date() : null } }
+      );
+      const ack = optOut
+        ? "You've been unsubscribed from updates. You can still message us any time. Reply START to subscribe again."
+        : "You're subscribed to updates again. Reply STOP any time to opt out.";
+      await appendMessages(chatId, [
+        { role: 'user', content: resolved.text, at: new Date() },
+        { role: 'assistant', content: ack, at: new Date(), by: 'bot' },
+      ]);
+      await sendReply(msg, ack, 'text', lang).catch(() => undefined);
+      return;
+    }
+
+    const handover = isGroup ? null : detectHandover(resolved.text);
+    if (handover) {
+      console.log('Handover to human', { chatId, reason: handover });
+      const holding = handoverReply(lang);
+      await setAutoReplyPaused(chatId, true);
+      await appendMessages(chatId, [
+        { role: 'user', content: resolved.text, at: new Date() },
+        { role: 'assistant', content: holding, at: new Date(), by: 'bot' },
+      ]);
+      await sendReply(msg, holding, 'text', lang).catch((err) =>
+        console.warn('handover holding reply failed', err)
+      );
+      await pushToDevices('chat', {
+        title: `🙋 ${handover === 'frustrated' ? 'Upset customer' : 'Customer wants a person'} · ${
+          sender.contactName || sender.phone || chatId.replace(/@.*/, '')
+        }`,
+        body: resolved.text.slice(0, 180),
+        data: { chatId },
+        critical: handover === 'frustrated',
+      });
       return;
     }
 

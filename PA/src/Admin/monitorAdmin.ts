@@ -8,6 +8,7 @@
 import { Router, type Request, type Response } from 'express';
 import { MobilePushToken, MonitorWatchState } from '../Models/MobilePush';
 import { taskflowMonitorRequest } from './taskflowContext';
+import { sendExpoPush } from '../Push/expoPush';
 
 type Json = Record<string, unknown>;
 
@@ -310,49 +311,6 @@ pushAdminRouter.post('/test', async (req, res, next) => {
     next(err);
   }
 });
-
-/* ---------------------------------- push ---------------------------------- */
-
-async function sendExpoPush(
-  tokens: string[],
-  msg: { title: string; body: string; data?: Json }
-): Promise<number> {
-  if (!tokens.length) return 0;
-  let sent = 0;
-  for (let i = 0; i < tokens.length; i += 100) {
-    const chunk = tokens.slice(i, i + 100);
-    try {
-      const res = await fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(
-          chunk.map((to) => ({
-            to,
-            title: msg.title,
-            body: msg.body,
-            data: msg.data ?? {},
-            sound: 'default',
-            priority: 'high',
-            channelId: 'alerts',
-          }))
-        ),
-      });
-      const json = (await res.json().catch(() => ({}))) as {
-        data?: Array<{ status?: string; details?: { error?: string } }>;
-      };
-      const tickets = json.data ?? [];
-      const dead: string[] = [];
-      tickets.forEach((t, idx) => {
-        if (t.status === 'ok') sent += 1;
-        else if (t.details?.error === 'DeviceNotRegistered') dead.push(chunk[idx]);
-      });
-      if (dead.length) await MobilePushToken.deleteMany({ token: { $in: dead } });
-    } catch (err) {
-      console.warn('Expo push failed', err);
-    }
-  }
-  return sent;
-}
 
 /* --------------------------------- watcher -------------------------------- */
 

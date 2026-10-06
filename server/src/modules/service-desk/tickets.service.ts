@@ -8,6 +8,9 @@ import { Issue } from '../issues/issue.model';
 import { ApiError } from '../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { notifyUser } from '../notifications/notificationDispatch.service';
+import { emitWorkspaceEvent } from '../webhooks/workspaceEvents';
+import { emailTicketReply } from './emailInbound';
+import { notifyWhatsappReply, notifyWhatsappStatus } from './whatsappTicketUpdates';
 
 function applySlaTargets(
   ticket: { priority: string; firstResponseDueAt?: Date; resolutionDueAt?: Date },
@@ -112,6 +115,13 @@ export async function createTicket(
       link: `/service/tickets`,
     }).catch(() => undefined);
   }
+  emitWorkspaceEvent(orgId, 'ticket.created', {
+    ticketId: String(doc._id),
+    subject: doc.subject,
+    priority: doc.priority,
+    status: doc.status,
+    source: doc.source,
+  });
   return doc.toObject();
 }
 
@@ -163,6 +173,13 @@ export async function updateTicket(id: string, workspaceId: string | null | unde
     }).catch(() => undefined);
   }
 
+  emitWorkspaceEvent(orgId, 'ticket.updated', { ticketId: id, changes: Object.keys($set), status: $set.status ?? existing.status });
+  if (typeof $set.status === 'string' && $set.status !== existing.status) {
+    notifyWhatsappStatus(existing, $set.status).catch((err) => console.error('[whatsapp] status update failed', err));
+  }
+  if (($set.status === 'resolved' || $set.status === 'closed') && existing.status !== $set.status) {
+    emitWorkspaceEvent(orgId, 'ticket.resolved', { ticketId: id, subject: existing.subject, status: $set.status });
+  }
   return updated;
 }
 
@@ -204,6 +221,11 @@ export async function addComment(
     if (ticket.status === 'open') ticket.status = 'in_progress';
   }
   await ticket.save();
+  if (!input.internal) {
+    emailTicketReply(ticket, body, user.name).catch((err) => console.error('[email→ticket] reply email failed', err));
+    notifyWhatsappReply(ticket, body, user.name).catch((err) => console.error('[whatsapp] reply forward failed', err));
+    emitWorkspaceEvent(orgId, 'ticket.commented', { ticketId: id, subject: ticket.subject, author: user.name, body });
+  }
   return getTicket(id, workspaceId);
 }
 
@@ -395,4 +417,55 @@ export async function checkSlaBreaches(workspaceId: string): Promise<number> {
     }
   }
   return breached.length;
+}
+
+/** Customer satisfaction over a window: average, distribution, per agent, and recent comments. */
+export async function getCsatReport(workspaceId: string | null | undefined, days = 90) {
+  const orgId = requireWorkspaceId(workspaceId);
+  const span = Math.min(Math.max(1, Math.floor(days)), 365);
+  const since = new Date(Date.now() - span * 24 * 60 * 60 * 1000);
+  const rated = await ServiceTicket.find({
+    taskflowOrganizationId: toOrgOid(orgId),
+    csatScore: { $gte: 1 },
+    updatedAt: { $gte: since },
+  })
+    .select('subject csatScore csatComment assigneeId updatedAt')
+    .populate('assigneeId', 'name')
+    .sort({ updatedAt: -1 })
+    .lean();
+  const resolvedCount = await ServiceTicket.countDocuments({
+    taskflowOrganizationId: toOrgOid(orgId),
+    resolvedAt: { $gte: since },
+  });
+
+  const distribution = [1, 2, 3, 4, 5].map((score) => ({ score, count: rated.filter((t) => t.csatScore === score).length }));
+  const avg = rated.length ? rated.reduce((s, t) => s + (t.csatScore ?? 0), 0) / rated.length : null;
+  const satisfied = rated.filter((t) => (t.csatScore ?? 0) >= 4).length;
+
+  const byAgent = new Map<string, { agent: string; count: number; total: number }>();
+  for (const t of rated) {
+    const a = t.assigneeId as { _id?: unknown; name?: string } | null;
+    const key = a?._id ? String(a._id) : 'unassigned';
+    const row = byAgent.get(key) ?? { agent: a?.name ?? 'Unassigned', count: 0, total: 0 };
+    row.count++;
+    row.total += t.csatScore ?? 0;
+    byAgent.set(key, row);
+  }
+
+  return {
+    days: span,
+    responses: rated.length,
+    responseRate: resolvedCount ? rated.length / resolvedCount : null,
+    average: avg === null ? null : Math.round(avg * 100) / 100,
+    /** % of ratings that are 4 or 5 — the usual "CSAT score". */
+    csatPercent: rated.length ? Math.round((satisfied / rated.length) * 100) : null,
+    distribution,
+    byAgent: [...byAgent.values()]
+      .map((r) => ({ agent: r.agent, count: r.count, average: Math.round((r.total / r.count) * 100) / 100 }))
+      .sort((a, b) => b.count - a.count),
+    recentComments: rated
+      .filter((t) => t.csatComment)
+      .slice(0, 10)
+      .map((t) => ({ ticketId: String(t._id), subject: t.subject, score: t.csatScore, comment: t.csatComment, at: t.updatedAt })),
+  };
 }

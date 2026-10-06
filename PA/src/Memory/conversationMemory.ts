@@ -3,6 +3,7 @@ import type { ReplyLang } from '../Media/lang';
 import {
   Conversation,
   type ConversationDoc,
+  type ConversationMessage,
   type LeadMemory,
 } from '../Models/Conversation';
 
@@ -51,6 +52,28 @@ export async function setAutoReplyPaused(
         updatedAt: new Date(),
       },
       $setOnInsert: { chatId, messages: [], lead: {} },
+    },
+    { upsert: true, returnDocument: 'after' }
+  ).lean();
+  return doc as ConversationDoc | null;
+}
+
+/**
+ * Append messages without generating a reply — used for messages that arrive
+ * while the bot is paused and for replies a human sends from the control apps,
+ * so the transcript (and the AI's context once resumed) stays complete.
+ */
+export async function appendMessages(
+  chatId: string,
+  messages: ConversationMessage[]
+): Promise<ConversationDoc | null> {
+  if (!messages.length) return getConversation(chatId);
+  const doc = await Conversation.findOneAndUpdate(
+    { chatId },
+    {
+      $push: { messages: { $each: messages, $slice: -MAX_MESSAGES } },
+      $set: { updatedAt: new Date() },
+      $setOnInsert: { chatId, lead: {} },
     },
     { upsert: true, returnDocument: 'after' }
   ).lean();

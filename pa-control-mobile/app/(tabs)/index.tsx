@@ -1,16 +1,18 @@
 import { Ionicons } from '@expo/vector-icons'
 import { router, useFocusEffect } from 'expo-router'
-import { useCallback, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { type AdminStatus, type BotSettings, paAdmin } from '../../src/api/paAdmin'
 import { compact, ms, pct, timeAgo } from '../../src/lib/format'
 import { haptic } from '../../src/lib/haptics'
 import { useAlerts } from '../../src/state/AlertsContext'
 import { colors, fonts, radius, spacing, toneColors, type Tone } from '../../src/theme'
 import { HeartbeatBar } from '../../src/ui/Charts'
+import { QuietHoursCard } from '../../src/ui/QuietHoursCard'
 import { useToast } from '../../src/ui/Toast'
 import {
   BrandMark,
+  Btn,
   Card,
   Chip,
   GradientCard,
@@ -51,6 +53,32 @@ export default function HomeScreen() {
   const [status, setStatus] = useState<AdminStatus | null>(null)
   const [extras, setExtras] = useState<Extras>({ pendingRequests: 0, jobsToReview: 0, openCases: 0 })
   const [saving, setSaving] = useState(false)
+  const [reconnecting, setReconnecting] = useState(false)
+  const mounted = useRef(true)
+  useEffect(() => () => void (mounted.current = false), [])
+  const [qr, setQr] = useState<string | null>(null)
+  const qrPending = Boolean(status?.whatsapp.qrPending)
+
+  // WhatsApp rotates the pairing code every ~20s; keep it fresh while a scan is needed.
+  useEffect(() => {
+    if (!qrPending) {
+      setQr(null)
+      return
+    }
+    let alive = true
+    const pull = async () => {
+      const res = await paAdmin.whatsappQr().catch(() => null)
+      if (!alive || !res) return
+      setQr(res.qr)
+      setStatus((st) => (st ? { ...st, whatsapp: res.status } : st))
+    }
+    void pull()
+    const t = setInterval(() => void pull(), 15_000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [qrPending])
 
   const load = useCallback(async () => {
     const [st, reqs, jobs, support] = await Promise.allSettled([
@@ -77,7 +105,7 @@ export default function HomeScreen() {
     }, [load])
   )
 
-  async function patch(partial: Partial<BotSettings>, msg: string) {
+  async function patch(partial: Parameters<typeof paAdmin.patchSettings>[0], msg: string) {
     setSaving(true)
     try {
       const settings = await paAdmin.patchSettings(partial)
@@ -90,6 +118,49 @@ export default function HomeScreen() {
     }
   }
 
+  async function reconnectWhatsApp() {
+    setReconnecting(true)
+    try {
+      const wa = await paAdmin.reconnectWhatsApp()
+      setStatus((st) => (st ? { ...st, whatsapp: wa } : st))
+      toast.success('Reconnecting WhatsApp…')
+      // Restart boots Chromium + WhatsApp Web; poll until it settles (max ~2 min).
+      const deadline = Date.now() + 120_000
+      while (mounted.current && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 4000))
+        if (!mounted.current) return
+        const next = await paAdmin.whatsappStatus().catch(() => null)
+        if (!next) continue
+        setStatus((st) => (st ? { ...st, whatsapp: next } : st))
+        if (next.ready) {
+          haptic.success()
+          toast.success('WhatsApp connected')
+          return
+        }
+        if (next.qrPending) {
+          toast.error('Session expired — scan the QR code on the home screen')
+          return
+        }
+      }
+      if (mounted.current) toast.error('Still not ready — check server logs')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Reconnect failed')
+    } finally {
+      if (mounted.current) setReconnecting(false)
+    }
+  }
+
+  function confirmReconnect() {
+    Alert.alert(
+      'Reconnect WhatsApp',
+      'Restart the WhatsApp session on the server? Replies pause for up to a minute.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reconnect', style: 'destructive', onPress: () => void reconnectWhatsApp() },
+      ]
+    )
+  }
+
   const s = status?.settings
   const totals = feed?.totals
   const wa = status?.whatsapp
@@ -100,7 +171,15 @@ export default function HomeScreen() {
     detail: 'WhatsApp connected · monitors healthy',
   }
   if (status && !wa?.ready) {
-    health = { tone: 'danger', title: 'WhatsApp disconnected', detail: wa?.lastDisconnectReason || 'Waiting for session' }
+    health = {
+      tone: 'danger',
+      title: 'WhatsApp disconnected',
+      detail: wa?.qrPending
+        ? 'QR scan needed — scan the code below'
+        : reconnecting || wa?.reconnecting
+          ? 'Reconnecting…'
+          : wa?.lastDisconnectReason || (wa?.authenticated ? 'Authenticated, waiting for ready' : 'Waiting for session'),
+    }
   } else if (totals?.uptimeDown) {
     health = { tone: 'danger', title: `${totals.uptimeDown} service${totals.uptimeDown > 1 ? 's' : ''} down`, detail: 'Uptime checks failing' }
   } else if (s?.botPaused) {
@@ -116,6 +195,12 @@ export default function HomeScreen() {
       tone: s?.botPaused ? 'ok' : 'warn',
       onPress: () =>
         void patch({ botPaused: !s?.botPaused }, s?.botPaused ? 'Auto-replies resumed' : 'Auto-replies paused'),
+    },
+    {
+      icon: 'refresh',
+      label: 'Reconnect WA',
+      tone: wa?.ready ? 'info' : 'danger',
+      onPress: confirmReconnect,
     },
     { icon: 'sparkles', label: 'Ask PA', tone: 'accent', onPress: () => router.push('/assistant') },
     { icon: 'construct', label: 'Fix job', tone: 'info', onPress: () => router.push('/(tabs)/agent') },
@@ -167,6 +252,24 @@ export default function HomeScreen() {
             </View>
           </GradientCard>
         )}
+
+        {qrPending ? (
+          <Card style={styles.qrCard}>
+            <Text style={styles.svcName}>Link WhatsApp</Text>
+            <Text style={styles.qrHint}>
+              On the business phone: WhatsApp → Settings → Linked devices → Link a device, then scan this code. Open this screen on
+              another device (e.g. the web control center) if you're using the same phone.
+            </Text>
+            {qr ? (
+              <View style={styles.qrFrame}>
+                <Image source={{ uri: qr }} style={styles.qrImage} resizeMode="contain" accessibilityLabel="WhatsApp pairing QR code" />
+              </View>
+            ) : (
+              <Skeleton height={240} />
+            )}
+            <Text style={styles.qrHint}>The code refreshes automatically.</Text>
+          </Card>
+        ) : null}
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actions}>
           {actions.map((a) => (
@@ -292,6 +395,33 @@ export default function HomeScreen() {
 
         <Section title="Bot controls">
           <Card>
+            <View style={styles.waRow}>
+              <IconTile icon="logo-whatsapp" tone={wa?.ready ? 'ok' : 'danger'} size={38} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.svcName}>WhatsApp session</Text>
+                <Text style={styles.svcMeta} numberOfLines={1}>
+                  {wa?.ready
+                    ? 'Connected'
+                    : wa?.qrPending
+                      ? 'QR scan needed'
+                      : reconnecting || wa?.reconnecting
+                        ? 'Reconnecting…'
+                        : wa?.authenticated
+                          ? 'Authenticated, not ready'
+                          : 'Offline'}
+                  {wa?.lastReconnectAt ? ` · restarted ${timeAgo(wa.lastReconnectAt)}` : ''}
+                </Text>
+              </View>
+              <Btn
+                label="Reconnect"
+                icon="refresh"
+                compact
+                variant={wa?.ready ? 'secondary' : 'danger'}
+                loading={reconnecting}
+                disabled={reconnecting || !status}
+                onPress={confirmReconnect}
+              />
+            </View>
             <ToggleRow
               icon="flash"
               tone={s?.botPaused ? 'warn' : 'ok'}
@@ -323,6 +453,17 @@ export default function HomeScreen() {
               ))}
             </Wrap>
           </Card>
+          <View style={{ marginTop: spacing.sm }}>
+            <QuietHoursCard
+              value={s?.quietHours}
+              disabled={!s}
+              onSave={async (quietHours) => {
+                const settings = await paAdmin.patchSettings({ quietHours })
+                setStatus((st) => (st ? { ...st, settings } : st))
+                toast.success('Quiet hours saved')
+              }}
+            />
+          </View>
         </Section>
 
         <Pressable onPress={() => router.push('/assistant')} style={{ marginTop: spacing.lg }}>
@@ -352,6 +493,11 @@ function HeroFact({ label, value, tone }: { label: string; value: string; tone: 
 }
 
 const styles = StyleSheet.create({
+  qrCard: { alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },
+  qrHint: { fontFamily: fonts.regular, color: colors.textDim, fontSize: 12, textAlign: 'center', lineHeight: 17 },
+  qrFrame: { backgroundColor: '#fff', padding: 12, borderRadius: radius.md },
+  qrImage: { width: 240, height: 240 },
+  waRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',

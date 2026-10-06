@@ -17,6 +17,8 @@ const messageSchema = new mongoose.Schema(
     role: { type: String, enum: ['user', 'assistant'], required: true },
     content: { type: String, required: true },
     at: { type: Date, default: Date.now },
+    /** Who wrote an assistant message: the bot, or a human operator from the control apps. */
+    by: { type: String, enum: ['bot', 'human'], default: undefined },
   },
   { _id: false }
 );
@@ -45,6 +47,11 @@ const conversationSchema = new mongoose.Schema({
     enum: ['greeting', 'project_lead', 'requirement', 'support', 'random'],
   },
   lastLang: { type: String, enum: ['ml', 'en'] },
+  /** Customer replied STOP — never include in broadcasts. Normal replies still work. */
+  optedOut: { type: Boolean, default: false, index: true },
+  optedOutAt: { type: Date },
+  /** Last time the quiet-hours away message went to this chat (sent once per window). */
+  awayNotifiedAt: { type: Date },
   /** Per-chat mute from control center — skips auto-reply when true. */
   autoReplyPaused: { type: Boolean, default: false, index: true },
   contactName: { type: String },
@@ -63,6 +70,7 @@ export type ConversationMessage = {
   role: 'user' | 'assistant';
   content: string;
   at?: Date;
+  by?: 'bot' | 'human';
 };
 
 export type ConversationDoc = {
@@ -72,6 +80,7 @@ export type ConversationDoc = {
   lastType?: MessageType;
   lastLang?: ReplyLang;
   autoReplyPaused?: boolean;
+  optedOut?: boolean;
   contactName?: string;
   contactPhone?: string;
   handedOff?: boolean;

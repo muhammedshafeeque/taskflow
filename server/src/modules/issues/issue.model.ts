@@ -38,6 +38,16 @@ export interface IIssue extends Document {
   linkedServiceTicketId?: mongoose.Types.ObjectId;
   customerRequestId?: mongoose.Types.ObjectId;
   backlogOrder?: number;
+  /** Commits and pull requests that mention this issue's key (from the GitHub webhook). */
+  devLinks?: Array<{
+    kind: 'commit' | 'pr';
+    ref: string;
+    url: string;
+    title: string;
+    author?: string;
+    state?: 'open' | 'closed' | 'merged';
+    at: Date;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -78,6 +88,7 @@ const issueSchema = new Schema<IIssue>(
     linkedServiceTicketId: { type: Schema.Types.ObjectId, ref: 'ServiceTicket' },
     customerRequestId: { type: Schema.Types.ObjectId, ref: 'CustomerRequest' },
     backlogOrder: { type: Number },
+    devLinks: { type: [Schema.Types.Mixed], default: undefined },
   },
   { timestamps: true }
 );
@@ -91,5 +102,8 @@ issueSchema.index({ parent: 1 });
 issueSchema.index({ project: 1, sprint: 1, backlogOrder: 1 });
 issueSchema.index({ key: 1 }, { unique: true, sparse: true });
 issueSchema.index({ project: 1, 'customFieldValues.adoWorkItemId': 1 }, { sparse: true });
+
+// Due-date reminders scan by assignee + due date.
+issueSchema.index({ assignee: 1, dueDate: 1 });
 
 export const Issue = mongoose.model<IIssue>('Issue', issueSchema);

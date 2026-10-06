@@ -1,6 +1,7 @@
 import { ApiError } from '../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { DocumentRecord } from './models/documentRecord.model';
+import { snapshotBeforeEdit } from './documentSigning.service';
 
 function asDate(value: unknown): Date | undefined {
   if (value === null || value === undefined || value === '') return undefined;
@@ -48,10 +49,20 @@ export async function createDocument(workspaceId: string | null | undefined, inp
   return doc.toObject();
 }
 
-export async function updateDocument(id: string, workspaceId: string | null | undefined, input: Record<string, unknown>) {
+export async function updateDocument(
+  id: string,
+  workspaceId: string | null | undefined,
+  input: Record<string, unknown>,
+  userId?: string
+) {
   const orgId = requireWorkspaceId(workspaceId);
   const doc = await DocumentRecord.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
   if (!doc) throw new ApiError(404, 'Document not found');
+  if (doc.status === 'signed' && ('content' in input || 'title' in input)) {
+    throw new ApiError(409, 'Signed documents cannot be edited — clone it to make a new version');
+  }
+  // Keep history: snapshot the current text before an edit replaces it.
+  if (await snapshotBeforeEdit(doc, input, userId)) doc.version = (doc.version ?? 1) + 1;
   const fields = ['title', 'kind', 'entityType', 'entityId', 'accountId', 'ownerId', 'currency', 'summary', 'content', 'fileUrl'] as const;
   for (const key of fields) if (key in input) (doc as unknown as Record<string, unknown>)[key] = input[key] === '' ? undefined : input[key];
   if ('value' in input) doc.value = Number(input.value);

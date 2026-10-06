@@ -399,6 +399,8 @@ export interface Project {
   estimateApprovalEnabled?: boolean;
   rulesEnforcementMode?: 'log' | 'enforce';
   projectRules?: ProjectRule[];
+  githubRepo?: string | null;
+  githubMergedStatus?: string | null;
   createdAt?: string;
   /** Set on list response: user has project:edit in this project */
   canEdit?: boolean;
@@ -560,6 +562,8 @@ export const projectsApi = {
       projectRules: ProjectRule[];
       estimateApprovalEnabled: boolean;
       rulesEnforcementMode: 'log' | 'enforce';
+      githubRepo: string;
+      githubMergedStatus: string;
     }>,
     token: string
   ) => api.patch<Project>(`/projects/${id}`, body, token),
@@ -1412,9 +1416,20 @@ export interface AdoIntegrationConfig {
   autoSyncIntervalMinutes?: number;
 }
 
+export interface IssueDevLink {
+  kind: 'commit' | 'pr';
+  ref: string;
+  url: string;
+  title: string;
+  author?: string;
+  state?: 'open' | 'closed' | 'merged';
+  at: string;
+}
+
 export interface Issue {
   _id: string;
   key?: string;
+  devLinks?: IssueDevLink[];
   title: string;
   description?: string;
   type: string;
@@ -2753,6 +2768,13 @@ export const billingApi = {
   deleteInvoice: (id: string, token: string) => api.delete(`/billing/invoices/${id}`, token),
   recordPayment: (id: string, data: { amount?: number; markPaid?: boolean }, token: string) =>
     api.post<BillingInvoice>(`/billing/invoices/${id}/pay`, data, token),
+  paymentsStatus: (token: string) => api.get<{ enabled: boolean; provider: 'razorpay' | 'stripe' | null }>('/billing/payments/status', token),
+  createPaymentLink: (id: string, email: string | undefined, token: string) =>
+    api.post<{ provider: string; id: string; url: string; amount: number; currency: string; createdAt: string }>(
+      `/billing/invoices/${id}/payment-link`,
+      { email },
+      token
+    ),
   listTax: (token: string) => api.get<BillingTaxRule[]>('/billing/tax', token),
   createTax: (data: Record<string, unknown>, token: string) => api.post<BillingTaxRule>('/billing/tax', data, token),
   updateTax: (id: string, data: Record<string, unknown>, token: string) =>
@@ -2944,6 +2966,17 @@ export const hrmsApi = {
   },
   markAttendance: (data: Record<string, unknown>, token: string) => api.post<HrmsAttendance>('/hrms/attendance', data, token),
   payroll: (token: string) => api.get('/hrms/payroll', token),
+  payrollSettings: (token: string) => api.get<PayrollSettings>('/hrms/payroll/settings', token),
+  updatePayrollSettings: (body: Partial<PayrollSettings>, token: string) => api.put<PayrollSettings>('/hrms/payroll/settings', body, token),
+  payrollRuns: (token: string) => api.get<PayrollRun[]>('/hrms/payroll/runs', token),
+  payrollRun: (id: string, token: string) => api.get<PayrollRun>(`/hrms/payroll/runs/${id}`, token),
+  generatePayrollRun: (period: string, token: string) => api.post<PayrollRun>('/hrms/payroll/runs', { period }, token),
+  setPayslipAdjustments: (runId: string, employeeId: string, adjustments: PayrollAdjustment[], token: string) =>
+    api.put<PayrollRun>(`/hrms/payroll/runs/${runId}/payslips/${employeeId}/adjustments`, { adjustments }, token),
+  finalizePayrollRun: (id: string, token: string) => api.post<PayrollRun>(`/hrms/payroll/runs/${id}/finalize`, {}, token),
+  markPayrollPaid: (id: string, token: string) => api.post<PayrollRun>(`/hrms/payroll/runs/${id}/paid`, {}, token),
+  payslipHtml: (runId: string, employeeId: string, token: string) =>
+    api.get<{ html: string }>(`/hrms/payroll/runs/${runId}/payslips/${employeeId}`, token),
 };
 
 // ── Assets / CMDB ────────────────────────────────────────────────────────────
@@ -3096,8 +3129,56 @@ export interface DocumentRecord {
   updatedAt?: string;
 }
 
+export interface DocumentVersionRecord {
+  _id: string;
+  version: number;
+  title?: string;
+  summary?: string;
+  content?: string;
+  status?: string;
+  editedBy?: { _id: string; name: string } | null;
+  createdAt: string;
+}
+
+export interface DocumentSignatureRequestRecord {
+  _id: string;
+  version: number;
+  status: 'pending' | 'completed' | 'declined' | 'cancelled';
+  message?: string;
+  createdAt: string;
+  expiresAt?: string;
+  completedAt?: string;
+  signers: Array<{ _id: string; name: string; email: string; signedAt?: string; signatureName?: string; declinedAt?: string; declineReason?: string }>;
+}
+
+export interface SigningView {
+  title: string;
+  content: string;
+  message?: string;
+  signerName: string;
+  status: 'pending' | 'signed' | 'declined' | 'unavailable';
+  reason?: string;
+  signedAt?: string;
+  otherSigners: Array<{ name: string; signed: boolean }>;
+}
+
+export const publicSignApi = {
+  get: (token: string) => api.get<SigningView>(`/public/sign/${encodeURIComponent(token)}`),
+  respond: (token: string, body: { action: 'sign' | 'decline'; signatureName?: string; reason?: string }) =>
+    api.post<{ status: string }>(`/public/sign/${encodeURIComponent(token)}`, body),
+};
+
 export const documentsApi = {
   dashboard: (token: string) => api.get('/documents/dashboard', token),
+  versions: (id: string, token: string) => api.get<DocumentVersionRecord[]>(`/documents/documents/${id}/versions`, token),
+  restoreVersion: (id: string, version: number, token: string) =>
+    api.post<DocumentRecord>(`/documents/documents/${id}/versions/${version}/restore`, {}, token),
+  signatures: (id: string, token: string) => api.get<DocumentSignatureRequestRecord[]>(`/documents/documents/${id}/signatures`, token),
+  requestSignatures: (
+    id: string,
+    body: { signers: Array<{ name: string; email: string }>; message?: string; expiresInDays?: number },
+    token: string
+  ) => api.post<DocumentSignatureRequestRecord>(`/documents/documents/${id}/signatures`, body, token),
   list: (token: string, params?: { kind?: string; status?: string; isTemplate?: boolean; accountId?: string; search?: string }) => {
     const p = new URLSearchParams();
     if (params?.kind) p.set('kind', params.kind);
@@ -3165,6 +3246,110 @@ export interface SearchHit {
   link: string;
 }
 
+export interface AiStatus {
+  enabled: boolean;
+  provider: string | null;
+  model: string | null;
+}
+
+export interface SimilarIssue {
+  _id: string;
+  key?: string;
+  title: string;
+  status: string;
+  score: number;
+}
+
+export interface AiIssueDraft {
+  title: string;
+  description: string;
+  type: string;
+  priority: string;
+  labels: string[];
+  checklist: string[];
+}
+
+export const aiApi = {
+  status: (token: string) => api.get<AiStatus>('/ai/status', token),
+  summarizeIssue: (issueId: string, token: string) =>
+    api.post<{ summary: string }>(`/ai/issues/${issueId}/summary`, {}, token),
+  similarToIssue: (issueId: string, token: string) => api.get<SimilarIssue[]>(`/ai/issues/${issueId}/similar`, token),
+  similarToText: (projectId: string, text: string, token: string) =>
+    api.post<SimilarIssue[]>('/ai/issues/similar', { projectId, text }, token),
+  draftIssue: (projectId: string, text: string, token: string) =>
+    api.post<AiIssueDraft>('/ai/issues/draft', { projectId, text }, token),
+  sprintRetro: (sprintId: string, token: string) =>
+    api.post<{ retro: string; stats: Record<string, number> }>(`/ai/sprints/${sprintId}/retro`, {}, token),
+  suggestTicketReply: (ticketId: string, token: string) =>
+    api.post<{ reply: string; articles: Array<{ _id: string; title: string }> }>(`/ai/tickets/${ticketId}/suggest-reply`, {}, token),
+};
+
+export interface ApiTokenRecord {
+  _id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  expiresAt?: string;
+  lastUsedAt?: string;
+}
+
+export const apiTokensApi = {
+  list: (token: string) => api.get<ApiTokenRecord[]>('/api-tokens', token),
+  create: (body: { name: string; expiresInDays: number }, token: string) =>
+    api.post<{ token: string; record: ApiTokenRecord }>('/api-tokens', body, token),
+  revoke: (id: string, token: string) => api.delete<{ ok: true }>(`/api-tokens/${id}`, token),
+};
+
+export interface PayComponent {
+  name: string;
+  kind: 'earning' | 'deduction';
+  calc: 'fixed' | 'percent_of_ctc' | 'percent_of_basic';
+  value: number;
+}
+export interface PayrollSettings {
+  components: PayComponent[];
+  workingDaysPerMonth: number;
+}
+export interface PayrollAdjustment {
+  name: string;
+  amount: number;
+  kind: 'earning' | 'deduction';
+}
+export interface Payslip {
+  employeeId: string;
+  name: string;
+  employeeCode: string;
+  department?: string;
+  designation?: string;
+  currency: string;
+  monthlyCtc: number;
+  workingDays: number;
+  lopDays: number;
+  earnings: Array<{ name: string; amount: number }>;
+  deductions: Array<{ name: string; amount: number }>;
+  adjustments: PayrollAdjustment[];
+  gross: number;
+  totalDeductions: number;
+  net: number;
+}
+export interface PayrollRun {
+  _id: string;
+  period: string;
+  status: 'draft' | 'finalized' | 'paid';
+  payslips?: Payslip[];
+  totals: { gross: number; deductions: number; net: number; employees: number };
+  finalizedAt?: string;
+  paidAt?: string;
+}
+
+export interface MonitorOnCall {
+  enabled: boolean;
+  rotationDays: number;
+  startsAt: string | null;
+  people: Array<{ _id: string; name: string; email?: string }>;
+  current: { userId: string; until: string } | null;
+}
+
 export const searchApi = {
   query: (q: string, token: string) =>
     api.get<{ query: string; hits: SearchHit[]; groups: Record<string, number> }>(`/search?q=${encodeURIComponent(q)}`, token),
@@ -3188,11 +3373,34 @@ export const serviceApi = {
     api.post(`/service/tickets/${id}/csat`, { score, comment }, token),
   listKb: (token: string) => api.get<KbArticle[]>('/service/kb', token),
   searchKb: (q: string, token: string) => api.get<KbArticle[]>(`/service/kb/search?q=${encodeURIComponent(q)}`, token),
+  csatReport: (days: number, token: string) =>
+    api.get<{
+      days: number;
+      responses: number;
+      responseRate: number | null;
+      average: number | null;
+      csatPercent: number | null;
+      distribution: Array<{ score: number; count: number }>;
+      byAgent: Array<{ agent: string; count: number; average: number }>;
+      recentComments: Array<{ ticketId: string; subject: string; score: number; comment: string; at: string }>;
+    }>(`/service/reports/csat?days=${days}`, token),
   createKb: (data: Partial<KbArticle>, token: string) => api.post('/service/kb', data, token),
   updateKb: (id: string, data: Partial<KbArticle>, token: string) => api.patch(`/service/kb/${id}`, data, token),
 };
 
 // ── Customer Portal API ────────────────────────────────────────────────────
+export interface PortalKbSuggestion {
+  _id: string;
+  title: string;
+  category?: string;
+  excerpt: string;
+}
+
+export const portalKbApi = {
+  search: (q: string, token: string) => api.get<PortalKbSuggestion[]>(`/customer/kb/search?q=${encodeURIComponent(q)}`, token),
+  get: (id: string, token: string) => api.get<{ _id: string; title: string; body: string; category?: string }>(`/customer/kb/${id}`, token),
+};
+
 export const portalApi = {
   // Auth
   me: (token: string) => api.get<{ user: AuthUser }>('/customer/auth/me', token),
@@ -3431,6 +3639,24 @@ export const monitorApi = {
     api.get<unknown[]>(`/monitor/projects/${projectId}/errors${monitorQs(params)}`, token),
   patchError: (projectId: string, groupId: string, status: string, token: string) =>
     api.patch(`/monitor/projects/${projectId}/errors/${groupId}`, { status }, token),
+  updateErrorGroup: (
+    projectId: string,
+    groupId: string,
+    body: { status?: 'open' | 'resolved'; acknowledged?: boolean; assigneeId?: string | null; snoozeMinutes?: number },
+    token: string
+  ) => api.patch(`/monitor/projects/${projectId}/errors/${groupId}`, body, token),
+  getOnCall: (projectId: string, token: string) => api.get<MonitorOnCall>(`/monitor/projects/${projectId}/on-call`, token),
+  setOnCall: (
+    projectId: string,
+    body: { enabled?: boolean; userIds?: string[]; rotationDays?: number; startsAt?: string },
+    token: string
+  ) => api.put<MonitorOnCall>(`/monitor/projects/${projectId}/on-call`, body, token),
+  createIssueFromError: (projectId: string, groupId: string, pmProjectId: string, token: string) =>
+    api.post<{ issueId: string; issueKey?: string; projectId: string }>(
+      `/monitor/projects/${projectId}/errors/${groupId}/issue`,
+      { pmProjectId },
+      token
+    ),
   liveUsers: (projectId: string, token: string, params?: Record<string, string | undefined>) =>
     api.get<unknown[]>(`/monitor/projects/${projectId}/live-users${monitorQs(params)}`, token),
   transactions: (projectId: string, token: string, params?: Record<string, string | undefined>) =>

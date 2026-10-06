@@ -12,6 +12,7 @@ import { asyncHandler } from '../../utils/asyncHandler';
 import type { AuthPayload } from '../../types/express';
 import * as ctrl from './monitor.controller';
 import { monitorSummary } from './pa.service';
+import { createIssueFromErrorGroup } from './errorIssue.service';
 
 function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a);
@@ -62,6 +63,20 @@ pa.get('/projects/:projectId/logs', asyncHandler(ctrl.logs));
 pa.get('/projects/:projectId/errors', asyncHandler(ctrl.errors));
 pa.get('/projects/:projectId/errors/:groupId', asyncHandler(ctrl.errorGroup));
 pa.patch('/projects/:projectId/errors/:groupId', asyncHandler(ctrl.patchErrorGroup));
+pa.post(
+  '/projects/:projectId/errors/:groupId/issue',
+  asyncHandler(async (req, res) => {
+    const r = req as Request & { activeOrganizationId?: string };
+    const data = await createIssueFromErrorGroup({
+      workspaceId: r.activeOrganizationId,
+      monitorProjectId: req.params.projectId,
+      groupId: req.params.groupId,
+      pmProjectId: String(req.body?.pmProjectId ?? ''),
+      user: { id: 'pa-service' },
+    });
+    res.status(201).json({ success: true, data });
+  })
+);
 pa.get('/projects/:projectId/live-users', asyncHandler(ctrl.liveUsers));
 pa.get('/projects/:projectId/transactions', asyncHandler(ctrl.transactions));
 pa.get('/projects/:projectId/http', asyncHandler(ctrl.httpCalls));

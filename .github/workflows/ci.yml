@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: API (server)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: server } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: server/package-lock.json }
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test -- --ci
+
+  web:
+    name: Web app (Tasks)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: Tasks } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: Tasks/package-lock.json }
+      - run: npm ci
+      - run: npx tsc --noEmit -p tsconfig.app.json
+      - run: npm test -- --ci
+      - run: npx vite build
+
+  pa:
+    name: WhatsApp bot (PA)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: PA } }
+    env:
+      # whatsapp-web.js pulls Chromium via puppeteer; tests don't need it.
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: PA/package-lock.json }
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+
+  mobile:
+    name: Mobile app (pa-control-mobile)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: pa-control-mobile } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: pa-control-mobile/package-lock.json }
+      - run: npm ci
+      # Expo normally generates this (it is gitignored).
+      - run: echo '/// <reference types="expo/types" />' > expo-env.d.ts
+      - run: npm run typecheck
+
+  control-center:
+    name: Control center (pa-controle-center)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: pa-controle-center } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: pa-controle-center/package-lock.json }
+      - run: npm ci
+      - run: npm run build
+
+  cli:
+    name: PC agent (ivx-cli)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: ivx-cli } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: ivx-cli/package-lock.json }
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  extension:
+    name: VS Code extension
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: extensions/atrium-workbench } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: extensions/atrium-workbench/package-lock.json }
+      - run: npm ci
+      - run: npm run compile

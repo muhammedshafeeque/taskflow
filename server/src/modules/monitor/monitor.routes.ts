@@ -5,6 +5,8 @@ import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as ctrl from './monitor.controller';
+import { createIssueFromErrorGroup } from './errorIssue.service';
+import { getOnCall, setOnCall } from './onCall.service';
 
 const M = TASK_FLOW_PERMISSIONS.TASKFLOW.MONITOR;
 const read = [M.PROJECT.READ, M.LOG.READ, M.ERROR.READ];
@@ -27,6 +29,22 @@ staff.get('/projects', requireAnyPermission(read), asyncHandler(ctrl.listProject
 staff.get('/pm-suggestions', requireAnyPermission(read), asyncHandler(ctrl.listPmSuggestions));
 staff.post('/projects', requireAnyPermission(manageProject), asyncHandler(ctrl.createProject));
 staff.get('/projects/:projectId', requireAnyPermission(read), asyncHandler(ctrl.getProject));
+staff.get(
+  '/projects/:projectId/on-call',
+  requireAnyPermission(read),
+  asyncHandler(async (req, res) => {
+    const r = req as typeof req & { activeOrganizationId?: string };
+    res.json({ success: true, data: await getOnCall(r.activeOrganizationId, req.params.projectId) });
+  })
+);
+staff.put(
+  '/projects/:projectId/on-call',
+  requireAnyPermission(manageAlert),
+  asyncHandler(async (req, res) => {
+    const r = req as typeof req & { activeOrganizationId?: string };
+    res.json({ success: true, data: await setOnCall(r.activeOrganizationId, req.params.projectId, req.body ?? {}) });
+  })
+);
 staff.delete('/projects/:projectId', requireAnyPermission(manageProject), asyncHandler(ctrl.deleteProject));
 
 staff.get('/projects/:projectId/overview', requireAnyPermission(read), asyncHandler(ctrl.overview));
@@ -43,6 +61,21 @@ staff.get('/projects/:projectId/logs', requireAnyPermission([M.LOG.READ, ...read
 staff.get('/projects/:projectId/errors', requireAnyPermission([M.ERROR.READ, ...read]), asyncHandler(ctrl.errors));
 staff.get('/projects/:projectId/errors/:groupId', requireAnyPermission([M.ERROR.READ, ...read]), asyncHandler(ctrl.errorGroup));
 staff.patch('/projects/:projectId/errors/:groupId', requireAnyPermission([M.ERROR.UPDATE]), asyncHandler(ctrl.patchErrorGroup));
+staff.post(
+  '/projects/:projectId/errors/:groupId/issue',
+  requireAnyPermission([M.ERROR.UPDATE]),
+  asyncHandler(async (req, res) => {
+    const r = req as typeof req & { user?: { id: string; permissions?: string[] }; activeOrganizationId?: string };
+    const data = await createIssueFromErrorGroup({
+      workspaceId: r.activeOrganizationId,
+      monitorProjectId: req.params.projectId,
+      groupId: req.params.groupId,
+      pmProjectId: String(req.body?.pmProjectId ?? ''),
+      user: { id: r.user!.id, permissions: r.user!.permissions },
+    });
+    res.status(201).json({ success: true, data });
+  })
+);
 staff.get('/projects/:projectId/live-users', requireAnyPermission([M.LIVE.READ, ...read]), asyncHandler(ctrl.liveUsers));
 staff.get('/projects/:projectId/transactions', requireAnyPermission([M.PERF.READ, ...read]), asyncHandler(ctrl.transactions));
 staff.get('/projects/:projectId/http', requireAnyPermission([M.HTTP.READ, ...read]), asyncHandler(ctrl.httpCalls));

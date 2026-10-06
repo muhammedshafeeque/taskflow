@@ -1,4 +1,6 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import AutomationRuleBuilder from '../components/project/AutomationRuleBuilder';
+import { describeAutomationRule, isAutomationRule } from '../components/project/automationRules';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DateInputDDMMYYYY from '../components/DateInputDDMMYYYY';
@@ -561,6 +563,9 @@ export default function ProjectSettings() {
   const [estimateApprovalEnabled, setEstimateApprovalEnabled] = useState(false);
   const [rulesEnforcementMode, setRulesEnforcementMode] = useState<'log' | 'enforce'>('enforce');
   const [projectRules, setProjectRules] = useState<ProjectRule[]>([]);
+  const [ruleEditor, setRuleEditor] = useState<ProjectRule | 'new' | null>(null);
+  const [githubRepo, setGithubRepo] = useState('');
+  const [githubMergedStatus, setGithubMergedStatus] = useState('');
   const [automationSaving, setAutomationSaving] = useState(false);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [environmentEdit, setEnvironmentEdit] = useState<ProjectEnvironment | null>(null);
@@ -648,6 +653,8 @@ export default function ProjectSettings() {
         setEstimateApprovalEnabled(p.estimateApprovalEnabled ?? false);
         setRulesEnforcementMode(p.rulesEnforcementMode ?? 'enforce');
         setProjectRules(p.projectRules ?? []);
+        setGithubRepo(p.githubRepo ?? '');
+        setGithubMergedStatus(p.githubMergedStatus ?? '');
       } else setProject(null);
     });
   }, [token, projectId]);
@@ -1175,7 +1182,7 @@ export default function ProjectSettings() {
     setError('');
     const res = await projectsApi.update(
       projectId,
-      { estimateApprovalEnabled, rulesEnforcementMode, projectRules },
+      { estimateApprovalEnabled, rulesEnforcementMode, projectRules, githubRepo: githubRepo.trim(), githubMergedStatus },
       token
     );
     setAutomationSaving(false);
@@ -1200,6 +1207,15 @@ export default function ProjectSettings() {
       setProjectRules(res.data.projectRules ?? []);
       showSaved();
     } else setError((res as { message?: string }).message ?? 'Enable failed');
+  }
+
+  function upsertRule(rule: ProjectRule) {
+    setProjectRules((prev) => (prev.some((r) => r.id === rule.id) ? prev.map((r) => (r.id === rule.id ? rule : r)) : [...prev, rule]));
+    setRuleEditor(null);
+  }
+
+  function removeRule(ruleId: string) {
+    setProjectRules((prev) => prev.filter((r) => r.id !== ruleId));
   }
 
   function toggleRuleEnabled(ruleId: string) {
@@ -2618,6 +2634,36 @@ export default function ProjectSettings() {
                       </button>
                     </div>
                   )}
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-[color:var(--text-primary)]">Automations</p>
+                      <p className="text-[11px] text-[color:var(--text-muted)]">
+                        Auto-assign, change status or priority, add labels, notify people or call a webhook when issues are created or updated.
+                      </p>
+                    </div>
+                    {!ruleEditor && (
+                      <button
+                        type="button"
+                        onClick={() => setRuleEditor('new')}
+                        className="shrink-0 px-3 py-1.5 rounded-md bg-[color:var(--accent)] text-white text-xs font-medium hover:opacity-90"
+                      >
+                        + New automation
+                      </button>
+                    )}
+                  </div>
+                  {ruleEditor && (
+                    <AutomationRuleBuilder
+                      key={ruleEditor === 'new' ? 'new' : ruleEditor.id}
+                      initial={ruleEditor === 'new' ? null : ruleEditor}
+                      statuses={statuses.map((s) => s.name)}
+                      priorities={priorities.map((p) => p.name)}
+                      issueTypes={issueTypes.map((t) => t.name)}
+                      members={members}
+                      nextOrder={projectRules.reduce((m, r) => Math.max(m, r.order), 0) + 1}
+                      onSave={upsertRule}
+                      onCancel={() => setRuleEditor(null)}
+                    />
+                  )}
                   {projectRules.length > 0 && (
                     <div>
                       <div className="flex items-center justify-between mb-3">
@@ -2630,9 +2676,19 @@ export default function ProjectSettings() {
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-[color:var(--text-primary)] truncate">{rule.name}</p>
                               <p className="text-[10px] text-[color:var(--text-muted)]">
-                                {rule.trigger} · {rule.mode ?? 'enforce'}
+                                {isAutomationRule(rule) ? describeAutomationRule(rule, members) : rule.trigger} · {rule.mode ?? 'enforce'}
                               </p>
                             </div>
+                            {isAutomationRule(rule) && (
+                              <div className="flex gap-1.5 shrink-0">
+                                <button type="button" onClick={() => setRuleEditor(rule)} className="text-xs text-[color:var(--accent)] hover:underline">
+                                  Edit
+                                </button>
+                                <button type="button" onClick={() => removeRule(rule.id)} className="text-xs text-red-500 hover:underline">
+                                  Delete
+                                </button>
+                              </div>
+                            )}
                             <label className="flex items-center gap-2 text-xs text-[color:var(--text-muted)] shrink-0">
                               <input
                                 type="checkbox"
@@ -2647,6 +2703,30 @@ export default function ProjectSettings() {
                       </ul>
                     </div>
                   )}
+                  <div className="rounded-xl border border-[color:var(--border-subtle)] p-4 space-y-3">
+                    <div>
+                      <p className="text-sm font-medium text-[color:var(--text-primary)]">GitHub</p>
+                      <p className="text-[11px] text-[color:var(--text-muted)]">
+                        Commits and pull requests that mention an issue key (e.g. {project?.key ?? 'KEY'}-12) appear on that issue. Add a repository webhook
+                        (content type JSON, events: push + pull requests) pointing at <code>/api/webhooks/github</code> with the server&apos;s GITHUB_WEBHOOK_SECRET.
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="text-xs text-[color:var(--text-muted)] space-y-1">
+                        <span>Repository (owner/repo)</span>
+                        <input className={inputClass} value={githubRepo} onChange={(e) => setGithubRepo(e.target.value)} placeholder="acme/web-app" />
+                      </label>
+                      <label className="text-xs text-[color:var(--text-muted)] space-y-1">
+                        <span>When a linked PR is merged, move issue to</span>
+                        <select className={inputClass} value={githubMergedStatus} onChange={(e) => setGithubMergedStatus(e.target.value)}>
+                          <option value="">Don&apos;t change status</option>
+                          {statuses.map((st) => (
+                            <option key={st.name} value={st.name}>{st.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  </div>
                   <button
                     type="button"
                     onClick={saveAutomation}

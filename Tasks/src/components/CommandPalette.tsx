@@ -2,20 +2,25 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { searchApi, type SearchHit } from '../lib/api';
+import { useI18n } from '../i18n/context';
 
 const TYPE_LABELS: Record<string, string> = {
-  account: 'Account', contact: 'Contact', deal: 'Deal', contract: 'Contract',
-  invoice: 'Invoice', ticket: 'Ticket', project: 'Project',
+  issue: 'Issue', project: 'Project', account: 'Account', contact: 'Contact', lead: 'Lead', deal: 'Deal',
+  quote: 'Quote', contract: 'Contract', invoice: 'Invoice', ticket: 'Ticket', kb: 'Article',
+  employee: 'Employee', document: 'Document',
 };
 
 const TYPE_TONES: Record<string, string> = {
-  account: 'text-sky-500', contact: 'text-violet-500', deal: 'text-emerald-500',
-  contract: 'text-amber-500', invoice: 'text-indigo-500', ticket: 'text-rose-500', project: 'text-teal-500',
+  issue: 'text-blue-500', project: 'text-teal-500', account: 'text-sky-500', contact: 'text-violet-500',
+  lead: 'text-fuchsia-500', deal: 'text-emerald-500', quote: 'text-lime-600', contract: 'text-amber-500',
+  invoice: 'text-indigo-500', ticket: 'text-rose-500', kb: 'text-cyan-500', employee: 'text-orange-500',
+  document: 'text-slate-500',
 };
 
 /** Workspace-wide command palette (⌘K / Ctrl+K) that searches across every module. */
 export default function CommandPalette() {
   const { token } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -91,18 +96,18 @@ export default function CommandPalette() {
               if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
               if (e.key === 'Enter' && hits[active]) go(hits[active]);
             }}
-            placeholder="Search accounts, deals, contracts, invoices, tickets, projects…"
+            placeholder={t('Search issues (APP-12), projects, CRM, invoices, tickets, KB, people…')}
             className="w-full bg-transparent py-3.5 text-sm outline-none placeholder-[color:var(--text-muted)]"
           />
           <kbd className="text-[10px] text-[color:var(--text-muted)] border border-[color:var(--border-subtle)] rounded px-1.5 py-0.5">ESC</kbd>
         </div>
         <div className="max-h-[50vh] overflow-y-auto">
-          {loading && <p className="px-4 py-6 text-center text-sm text-[color:var(--text-muted)]">Searching…</p>}
+          {loading && <p className="px-4 py-6 text-center text-sm text-[color:var(--text-muted)]">{t('Searching…')}</p>}
           {!loading && query.trim().length >= 2 && hits.length === 0 && (
-            <p className="px-4 py-6 text-center text-sm text-[color:var(--text-muted)]">No matches for “{query}”.</p>
+            <p className="px-4 py-6 text-center text-sm text-[color:var(--text-muted)]">{t('No matches for “{q}”.', { q: query })}</p>
           )}
           {!loading && query.trim().length < 2 && (
-            <p className="px-4 py-6 text-center text-sm text-[color:var(--text-muted)]">Type at least 2 characters to search across all modules.</p>
+            <p className="px-4 py-6 text-center text-sm text-[color:var(--text-muted)]">{t('Type at least 2 characters to search across all modules.')}</p>
           )}
           {hits.map((h, i) => (
             <button

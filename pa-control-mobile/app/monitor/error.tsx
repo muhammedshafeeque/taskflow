@@ -1,8 +1,9 @@
 import * as Clipboard from 'expo-clipboard'
-import { useLocalSearchParams } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { ScrollView, Share, StyleSheet, Text, View } from 'react-native'
-import { monitorApi, type MonitorErrorGroup } from '../../src/api/paAdmin'
+import { monitorApi, paAdmin, type MonitorErrorGroup } from '../../src/api/paAdmin'
+import { PickerSheet } from '../../src/ui/PickerSheet'
 import { compact, timeAgo } from '../../src/lib/format'
 import { useAlerts } from '../../src/state/AlertsContext'
 import { colors, fonts, radius, spacing } from '../../src/theme'
@@ -55,6 +56,66 @@ export default function ErrorDetailScreen() {
     }
   }
 
+  async function patchGroup(body: { acknowledged?: boolean; snoozeMinutes?: number }, msg: string) {
+    setBusy(true)
+    try {
+      setGroup(await monitorApi.patchErrorGroup(projectId, groupId, body))
+      toast.success(msg)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Update failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const [picker, setPicker] = useState<
+    { kind: 'project' | 'device'; options: Array<{ id: string; label: string; hint?: string }> } | null
+  >(null)
+
+  async function startCreateIssue() {
+    try {
+      const res = await paAdmin.listAtriumProjects()
+      if (!res.available) return toast.error(res.reason || 'Atrium is not connected to PA')
+      setPicker({ kind: 'project', options: res.projects.map((p) => ({ id: p.id, label: p.name, hint: p.key })) })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not load projects')
+    }
+  }
+
+  async function startFix() {
+    try {
+      const devices = (await paAdmin.listAgentDevices()).filter((d) => d.online)
+      if (!devices.length) return toast.error('No PC agent is online — run `ivx agent run` on your machine')
+      setPicker({ kind: 'device', options: devices.map((d) => ({ id: d.deviceId, label: d.name, hint: d.userLabel })) })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not load devices')
+    }
+  }
+
+  async function onPick(id: string) {
+    const kind = picker?.kind
+    setPicker(null)
+    if (!group) return
+    setBusy(true)
+    try {
+      if (kind === 'project') {
+        const r = await monitorApi.createIssueFromError(projectId, groupId, id)
+        toast.success(`Created ${r.issueKey ?? 'issue'}`)
+        setGroup(await monitorApi.errorGroup(projectId, groupId))
+      } else if (kind === 'device' && group.linkedIssueKey && group.linkedProjectId) {
+        await paAdmin.createAgentJob({ type: 'fix_issue', deviceId: id, issueKey: group.linkedIssueKey, projectId: group.linkedProjectId })
+        toast.success(`Fix job for ${group.linkedIssueKey} sent to your PC`)
+        router.push('/(tabs)/agent')
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Action failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const snoozed = Boolean(group?.snoozedUntil && new Date(group.snoozedUntil) > new Date())
+
   const report = group
     ? `${group.type || 'Error'}: ${group.message}\nProject: ${projectName || projectId}\nCount: ${group.count}\nFirst: ${group.firstSeen}\nLast: ${group.lastSeen}\n\n${group.sampleStack || ''}`
     : ''
@@ -103,6 +164,45 @@ export default function ErrorDetailScreen() {
             <Mono style={{ color: colors.textDim, lineHeight: 18 }}>{group.sampleStack || 'No stack captured.'}</Mono>
           </ScrollView>
         </View>
+
+        {group.status === 'open' ? (
+          <View style={styles.actions}>
+            {!group.acknowledgedAt ? (
+              <Btn label="I'm on it" icon="hand-left" variant="secondary" loading={busy} onPress={() => void patchGroup({ acknowledged: true }, 'Acknowledged')} style={{ flex: 1 }} />
+            ) : null}
+            <Btn
+              label={snoozed ? 'Unsnooze' : 'Snooze 1h'}
+              icon="notifications-off"
+              variant="secondary"
+              loading={busy}
+              onPress={() => void patchGroup({ snoozeMinutes: snoozed ? 0 : 60 }, snoozed ? 'Alerts back on' : 'Alerts muted for 1 hour')}
+              style={{ flex: 1 }}
+            />
+            {!snoozed ? (
+              <Btn label="Snooze 24h" icon="moon" variant="secondary" loading={busy} onPress={() => void patchGroup({ snoozeMinutes: 1440 }, 'Alerts muted for 24 hours')} style={{ flex: 1 }} />
+            ) : null}
+          </View>
+        ) : null}
+        <View style={styles.actions}>
+          {group.linkedIssueKey ? (
+            <Btn label={`Fix ${group.linkedIssueKey} on my PC`} icon="desktop" variant="primary" loading={busy} onPress={() => void startFix()} style={{ flex: 1 }} />
+          ) : (
+            <Btn label="Create issue" icon="bug" variant="primary" loading={busy} onPress={() => void startCreateIssue()} style={{ flex: 1 }} />
+          )}
+        </View>
+        <PickerSheet
+          title={picker?.kind === 'device' ? 'Send fix job to' : 'Create the issue in'}
+          options={picker?.options ?? null}
+          onPick={(id) => void onPick(id)}
+          onClose={() => setPicker(null)}
+        />
+        {group.regressedAt || group.linkedIssueKey || group.acknowledgedAt ? (
+          <Text style={styles.label}>
+            {[group.regressedAt && group.status === 'open' ? 'Regression' : null, group.acknowledgedAt ? 'Acknowledged' : null, group.linkedIssueKey ? `Tracked in ${group.linkedIssueKey}` : null]
+              .filter(Boolean)
+              .join(' · ')}
+          </Text>
+        ) : null}
 
         <View style={styles.actions}>
           {group.status === 'open' ? (

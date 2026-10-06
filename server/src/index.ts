@@ -5,6 +5,8 @@ import { env, validateRuntimeConfig } from "./config/env";
 import { initWebSocket } from "./websocket";
 import { startAdoAutoSyncScheduler } from "./modules/integrations/ado/adoAutoSync.scheduler";
 import { startMonitorUptimeScheduler } from "./modules/monitor/uptime.scheduler";
+import { startReminderScheduler } from "./modules/reminders/reminders.scheduler";
+import { startSupportMailPoller } from "./modules/service-desk/emailInbound";
 import { monitorError, monitorLog } from "./shared/monitorClient";
 
 async function startServer() {
@@ -17,6 +19,8 @@ async function startServer() {
     initWebSocket(server);
     startAdoAutoSyncScheduler();
     startMonitorUptimeScheduler();
+    startReminderScheduler();
+    startSupportMailPoller();
 
     process.on("uncaughtException", (err) => {
       monitorError(err, "crash");

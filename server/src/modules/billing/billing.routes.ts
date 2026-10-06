@@ -4,6 +4,7 @@ import { requireAnyPermission } from '../../middleware/requirePermission';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as ctrl from './billing.controller';
+import { createPaymentLink, paymentsStatus } from './payments.service';
 
 const B = TASK_FLOW_PERMISSIONS.TASKFLOW.BILLING;
 
@@ -39,6 +40,18 @@ router.get('/invoices/:id', requireAnyPermission(invList), asyncHandler(ctrl.get
 router.post('/invoices', requireAnyPermission(invManage), asyncHandler(ctrl.createInvoice));
 router.patch('/invoices/:id', requireAnyPermission([B.INVOICE.MANAGE]), asyncHandler(ctrl.updateInvoice));
 router.post('/invoices/:id/pay', requireAnyPermission([B.INVOICE.MANAGE]), asyncHandler(ctrl.recordPayment));
+router.get('/payments/status', requireAnyPermission(invList), (_req, res) => {
+  res.json({ success: true, data: paymentsStatus() });
+});
+router.post(
+  '/invoices/:id/payment-link',
+  requireAnyPermission([B.INVOICE.MANAGE]),
+  asyncHandler(async (req, res) => {
+    const email = typeof req.body?.email === 'string' && req.body.email.includes('@') ? req.body.email.trim() : undefined;
+    const data = await createPaymentLink(req.params.id, (req as { activeOrganizationId?: string }).activeOrganizationId, email);
+    res.json({ success: true, data });
+  })
+);
 router.delete('/invoices/:id', requireAnyPermission([B.INVOICE.MANAGE]), asyncHandler(ctrl.deleteInvoice));
 
 router.get('/tax', requireAnyPermission(taxRead), asyncHandler(ctrl.listTax));

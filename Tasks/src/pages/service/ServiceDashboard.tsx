@@ -8,6 +8,7 @@ import MetricCard from '../../components/MetricCard';
 import SectionCard from '../../components/SectionCard';
 import { chartTooltipProps, getChartColor } from '../../lib/chartTheme';
 import { EmptyChart, LoadingCard, ModuleHeader, StatusPill } from '../../components/moduleKit';
+import CsatReportCard from '../../components/service/CsatReportCard';
 
 type Dash = {
   counts: { total: number; open: number; resolved: number; breached: number; unassigned: number };
@@ -58,6 +59,8 @@ export default function ServiceDashboard() {
         <MetricCard title="CSAT" value={data.csatAvg ? `${data.csatAvg}/5` : '—'} helperText={`${data.csatResponses} responses`} />
         <MetricCard title="Resolved" value={data.counts.resolved} helperText={`${data.counts.total} total`} />
       </div>
+
+      {token && <CsatReportCard token={token} />}
 
       <SectionCard title="Ticket trend" description="Created vs resolved over the last 6 months.">
         {data.trend.every((r) => r.created === 0 && r.resolved === 0) ? <EmptyChart label="No tickets yet." /> : (

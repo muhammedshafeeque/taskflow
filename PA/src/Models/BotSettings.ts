@@ -2,11 +2,22 @@ import mongoose from 'mongoose';
 
 export type SttLanguage = 'ml' | 'en' | 'auto';
 
+export type QuietHours = {
+  enabled: boolean;
+  /** 24h "HH:MM" in `timezone`. A window may cross midnight (22:00 → 08:00). */
+  start: string;
+  end: string;
+  timezone: string;
+  /** Sent once per quiet window to a customer who messages during it. Empty = stay silent. */
+  awayMessage: string;
+};
+
 export type BotSettingsDoc = {
   key: string;
   botPaused: boolean;
   voiceRepliesEnabled: boolean;
   sttLanguage: SttLanguage;
+  quietHours?: QuietHours;
   updatedAt?: Date;
 };
 
@@ -18,6 +29,13 @@ const botSettingsSchema = new mongoose.Schema({
     type: String,
     enum: ['ml', 'en', 'auto'],
     default: 'ml',
+  },
+  quietHours: {
+    enabled: { type: Boolean, default: false },
+    start: { type: String, default: '22:00' },
+    end: { type: String, default: '08:00' },
+    timezone: { type: String, default: 'Asia/Kolkata' },
+    awayMessage: { type: String, default: '' },
   },
   updatedAt: { type: Date, default: Date.now },
 });

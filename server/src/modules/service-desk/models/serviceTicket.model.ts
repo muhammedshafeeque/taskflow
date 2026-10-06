@@ -34,6 +34,9 @@ export interface IServiceTicket extends Document {
   workClassification?: 'billable_change' | 'fix';
   /** Origin channel — e.g. whatsapp_pa for Ivorix PA bot */
   source?: string;
+  requesterEmail?: string;
+  requesterName?: string;
+  emailRef?: string;
   whatsappGroupId?: string;
   whatsappMessageId?: string;
   supportConversationId?: string;
@@ -81,6 +84,10 @@ const serviceTicketSchema = new Schema<IServiceTicket>(
     linkedIssueId: { type: Schema.Types.ObjectId, ref: 'Issue' },
     workClassification: { type: String, enum: ['billable_change', 'fix'] },
     source: { type: String, default: undefined, index: true },
+    /** Email-sourced tickets: who to reply to, and the token that threads replies (`[TKT-xxxxxxxx]`). */
+    requesterEmail: { type: String, lowercase: true, trim: true },
+    requesterName: { type: String, trim: true },
+    emailRef: { type: String, index: true, sparse: true },
     whatsappGroupId: { type: String, default: undefined, index: true },
     whatsappMessageId: { type: String, default: undefined },
     supportConversationId: { type: String, default: undefined, index: true },
@@ -95,5 +102,9 @@ const serviceTicketSchema = new Schema<IServiceTicket>(
 );
 
 serviceTicketSchema.index({ taskflowOrganizationId: 1, status: 1, queue: 1 });
+
+// SLA reminders scan open tickets by due times.
+serviceTicketSchema.index({ status: 1, firstResponseDueAt: 1 });
+serviceTicketSchema.index({ status: 1, resolutionDueAt: 1 });
 
 export const ServiceTicket = mongoose.model<IServiceTicket>('ServiceTicket', serviceTicketSchema);

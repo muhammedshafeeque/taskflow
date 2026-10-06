@@ -13,6 +13,7 @@ import {
 import { getPrefs, savePrefs, subscribePrefs, type AlertKindPref, type Prefs } from '../../src/lib/prefs'
 import { colors, fonts, spacing } from '../../src/theme'
 import { useToast } from '../../src/ui/Toast'
+import { AtriumAccountCard } from '../../src/ui/AtriumAccountCard'
 import {
   Banner,
   Btn,
@@ -31,6 +32,10 @@ const KINDS: Array<{ id: AlertKindPref; label: string }> = [
   { id: 'uptime', label: 'Outages' },
   { id: 'error', label: 'Errors' },
   { id: 'delivery', label: 'Rule alerts' },
+  { id: 'whatsapp', label: 'WhatsApp status' },
+  { id: 'chat', label: 'Messages (paused chats)' },
+  { id: 'lead', label: 'New leads' },
+  { id: 'escalation', label: 'Support escalations' },
 ]
 
 export default function SettingsScreen() {
@@ -196,6 +201,10 @@ export default function SettingsScreen() {
               onChange={(v) => void update({ haptics: v })}
             />
           </Card>
+        </Section>
+
+        <Section title="Atrium account">
+          <AtriumAccountCard />
         </Section>
 
         <Section title="Connection">

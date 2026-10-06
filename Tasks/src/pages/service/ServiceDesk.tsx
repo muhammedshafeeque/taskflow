@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { serviceApi, usersApi, type ServiceTicket, type User } from '../../lib/api';
 import { StatusPill } from '../../components/moduleKit';
+import { TicketReplySuggest } from '../../components/ai/AiPanels';
 
 const PRIORITY_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = {
   urgent: 'red', high: 'amber', medium: 'blue', low: 'slate',
@@ -351,6 +352,11 @@ function TicketDetail({ id, onClose, onChanged }: { id: string; onClose: () => v
               </div>
 
               <div className="mt-4">
+                {token && (
+                  <div className="mb-2">
+                    <TicketReplySuggest key={id} ticketId={id} token={token} onUse={(text) => { setInternal(false); setComment(text); }} />
+                  </div>
+                )}
                 <textarea
                   className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
                   rows={3}

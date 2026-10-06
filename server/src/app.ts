@@ -45,7 +45,16 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Organization-Id', 'X-Monitor-Key'],
   })
 );
-app.use(express.json());
+app.use(
+  express.json({
+    // Payment and GitHub webhooks verify an HMAC over the exact bytes received.
+    verify: (req, _res, buf) => {
+      if (/^\/api\/webhooks\/(payments|github)/.test((req as { url?: string }).url ?? '')) {
+        (req as unknown as { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+      }
+    },
+  })
+);
 app.use((req, res, next) => {
   if (shouldSkipMonitorHttp(req.originalUrl)) return next();
   const started = Date.now();

@@ -23,6 +23,7 @@ import { colors } from '../src/theme'
 import { BiometricGate } from '../src/ui/BiometricGate'
 import { ToastProvider } from '../src/ui/Toast'
 import { Loading } from '../src/ui/Ui'
+import { OfflineBanner } from '../src/ui/OfflineBanner'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
 configureNotifications()
@@ -43,8 +44,17 @@ function NotificationBridge() {
       const kind = String(data?.kind || '')
       const projectId = String(data?.projectId || '')
       const ref = String(data?.ref || '')
+      const chatId = String(data?.chatId || '')
       if (kind === 'error' && projectId && ref) {
         router.push({ pathname: '/monitor/error', params: { projectId, groupId: ref } })
+      } else if (kind === 'chat' && chatId) {
+        router.push({ pathname: '/chat/[chatId]', params: { chatId } })
+      } else if (kind === 'lead') {
+        router.push('/(tabs)/leads')
+      } else if (kind === 'escalation') {
+        router.push('/(tabs)/support')
+      } else if (kind === 'whatsapp') {
+        router.push('/(tabs)')
       } else {
         router.push('/(tabs)/alerts')
       }
@@ -95,7 +105,13 @@ export default function RootLayout() {
               <Stack.Screen name="chat/[chatId]" />
               <Stack.Screen name="monitor/error" />
               <Stack.Screen name="assistant" options={{ animation: 'slide_from_bottom' }} />
+              <Stack.Screen name="insights" />
+              <Stack.Screen name="broadcasts" />
+              <Stack.Screen name="mywork" />
+              <Stack.Screen name="agenda" />
+              <Stack.Screen name="pipeline" />
             </Stack>
+            <OfflineBanner />
             <BiometricGate />
           </AlertsProvider>
         </ToastProvider>

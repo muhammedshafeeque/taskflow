@@ -24,6 +24,7 @@
   "author": "",
   "license": "GPL-3.0",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@react-email/components": "^1.0.8",
     "@react-email/render": "^2.0.4",
     "bcryptjs": "^2.4.3",

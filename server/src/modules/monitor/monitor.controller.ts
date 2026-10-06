@@ -150,7 +150,14 @@ export async function errorGroup(req: Request & { user?: AuthPayload }, res: Res
 
 export async function patchErrorGroup(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const data = await query.updateErrorGroup(ws(req), req.params.projectId, req.params.groupId, String(req.body?.status));
+  const body = (req.body ?? {}) as query.ErrorGroupPatch;
+  const data = await query.updateErrorGroup(
+    ws(req),
+    req.params.projectId,
+    req.params.groupId,
+    { status: body.status, acknowledged: body.acknowledged, assigneeId: body.assigneeId, snoozeMinutes: body.snoozeMinutes },
+    req.user?.id
+  );
   res.json({ success: true, data });
 }
 

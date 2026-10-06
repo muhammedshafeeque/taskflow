@@ -45,6 +45,9 @@ const EMAIL_ON_BY_DEFAULT_EVENTS: NotificationEventKey[] = [
   'qa_test_failed',
   'crm_quote_accepted',
   'timesheet_rejected',
+  'sla_breached',
+  'invoice_overdue',
+  'contract_renewal_due',
 ];
 
 function defaultPreferences(): Record<NotificationEventKey, NotificationMethodState> {

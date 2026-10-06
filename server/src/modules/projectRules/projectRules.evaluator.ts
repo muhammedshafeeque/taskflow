@@ -96,6 +96,12 @@ function matchCondition(ctx: RuleEvaluationContext, cond: { field: string; op: s
   }
 }
 
+/** True when every condition of the rule holds (no conditions = always). */
+export function ruleConditionsMatch(rule: IProjectRule, ctx: RuleEvaluationContext): boolean {
+  const conditions = rule.conditions ?? [];
+  return conditions.every((c) => matchCondition(ctx, c));
+}
+
 function ruleMatchesTrigger(rule: IProjectRule, action: RuleActionType): boolean {
   const map: Record<RuleActionType, RuleTrigger[]> = {
     'issue.create': ['issue.created'],

@@ -10,6 +10,7 @@ import { resolveEffectiveGlobalPermissions } from '../modules/auth/effectivePerm
 import { mergeTaskflowPermissionFloor } from '../modules/auth/permissionMerge';
 import { mapLegacyCustomerPermissions } from '../shared/constants/legacyPermissionMap';
 import { OrganizationMember } from '../modules/organizations/organizationMember.model';
+import { API_TOKEN_PREFIX, resolveApiToken } from '../modules/apiTokens/apiToken.service';
 
 export async function authMiddleware(
   req: Request,
@@ -21,6 +22,22 @@ export async function authMiddleware(
 
   if (!token) {
     next(new ApiError(401, 'Authentication required'));
+    return;
+  }
+
+  if (token.startsWith(API_TOKEN_PREFIX)) {
+    try {
+      const apiToken = await resolveApiToken(token);
+      if (!apiToken) {
+        next(new ApiError(401, 'Invalid, expired or revoked API token'));
+        return;
+      }
+      (req as Request & { viaApiToken?: boolean }).viaApiToken = true;
+      const err = await authenticateStaffUser(req, String(apiToken.userId), apiToken.organizationId ? String(apiToken.organizationId) : undefined);
+      next(err ?? undefined);
+    } catch {
+      next(new ApiError(401, 'Invalid API token'));
+    }
     return;
   }
 
@@ -90,15 +107,22 @@ export async function authMiddleware(
       return;
     }
 
-    const user = await User.findById(decoded.sub).populate('roleId', 'permissions').lean();
+    const err = await authenticateStaffUser(req, decoded.sub, decoded.activeOrganizationId);
+    next(err ?? undefined);
+  } catch {
+    next(new ApiError(401, 'Invalid or expired token'));
+  }
+}
+
+/** Load a staff user, resolve permissions and the active workspace onto `req`. Returns an error instead of throwing. */
+async function authenticateStaffUser(req: Request, userId: string, tokenOrgId?: string): Promise<ApiError | null> {
+    const user = await User.findById(userId).populate('roleId', 'permissions').lean();
     if (!user) {
-      next(new ApiError(401, 'User not found'));
-      return;
+      return new ApiError(401, 'User not found');
     }
     const u = user as { enabled?: boolean };
     if (u.enabled === false) {
-      next(new ApiError(401, 'Account is disabled'));
-      return;
+      return new ApiError(401, 'Account is disabled');
     }
     const role = user.roleId as { _id?: { toString(): string }; permissions?: string[] } | null | undefined;
     const overrides = (user as { permissionOverrides?: { granted?: string[]; revoked?: string[] } })
@@ -140,13 +164,13 @@ export async function authMiddleware(
       });
       if (ok) activeOrganizationId = headerOrg;
     }
-    if (!activeOrganizationId && decoded.activeOrganizationId && mongoose.Types.ObjectId.isValid(decoded.activeOrganizationId)) {
+    if (!activeOrganizationId && tokenOrgId && mongoose.Types.ObjectId.isValid(tokenOrgId)) {
       const ok = await OrganizationMember.exists({
-        organization: decoded.activeOrganizationId,
+        organization: tokenOrgId,
         user: userOid,
         status: 'active',
       });
-      if (ok) activeOrganizationId = decoded.activeOrganizationId;
+      if (ok) activeOrganizationId = tokenOrgId;
     }
     if (!activeOrganizationId) {
       const m = await OrganizationMember.findOne({ user: userOid, status: 'active' })
@@ -156,9 +180,5 @@ export async function authMiddleware(
       if (m?.organization) activeOrganizationId = String(m.organization);
     }
     req.activeOrganizationId = activeOrganizationId;
-
-    next();
-  } catch {
-    next(new ApiError(401, 'Invalid or expired token'));
-  }
+    return null;
 }

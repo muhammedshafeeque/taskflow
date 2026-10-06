@@ -74,7 +74,14 @@ export type IProjectRuleAction =
   | { type: 'deny'; message: string; unlessPermission?: string }
   | { type: 'require_approval'; permission: string }
   | { type: 'require_field'; field: string }
-  | { type: 'notify'; eventKey: string };
+  | { type: 'notify'; eventKey: string }
+  // Automation actions: applied after the issue is saved (issue.created / issue.updated only).
+  | { type: 'assign'; to: string }
+  | { type: 'set_status'; status: string }
+  | { type: 'set_priority'; priority: string }
+  | { type: 'add_label'; label: string }
+  | { type: 'notify_users'; to: string[]; message?: string }
+  | { type: 'webhook'; url: string; secret?: string };
 
 export interface IProjectRule {
   id: string;
@@ -134,6 +141,8 @@ export interface IProject extends Document {
   /** Optional link to CRM account */
   crmAccountId?: mongoose.Types.ObjectId;
   nextIssueNumber: number;
+  githubRepo?: string | null;
+  githubMergedStatus?: string | null;
   statuses: IProjectStatus[];
   issueTypes: IProjectIssueType[];
   priorities: IProjectPriority[];
@@ -285,6 +294,8 @@ const projectSchema = new Schema<IProject>(
     orgId: { type: Schema.Types.ObjectId, ref: 'CustomerOrg', default: null },
     crmAccountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount', default: null, index: true },
     nextIssueNumber: { type: Number, default: 1 },
+    githubRepo: { type: String, lowercase: true, trim: true, default: null, index: true },
+    githubMergedStatus: { type: String, default: null },
     statuses: { type: [projectStatusSchema], default: undefined },
     issueTypes: { type: [projectIssueTypeSchema], default: undefined },
     priorities: { type: [projectPrioritySchema], default: undefined },

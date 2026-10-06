@@ -66,13 +66,13 @@ export default function UnlockScreen() {
             ) : null}
             <View>
               <Input
-                label="Admin secret"
+                label="Admin secret or Atrium API token"
                 autoCapitalize="none"
                 autoCorrect={false}
                 secureTextEntry={!show}
                 value={secret}
                 onChangeText={setSecret}
-                placeholder="PA_ADMIN_SECRET"
+                placeholder="PA_ADMIN_SECRET or atr_…"
                 onSubmitEditing={() => void onSubmit()}
                 style={{ paddingRight: 46 }}
               />

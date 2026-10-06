@@ -11,6 +11,7 @@ import { notifyProjectRefresh } from '../../websocket';
 import * as watchersService from '../watchers/watchers.service';
 import { getClosedStatusNamesForProject, getClosedStatusNamesFromStatuses } from '../projects/statusClassification';
 import * as issueNotification from './issueNotification.service';
+import { emitIssueEvent } from '../webhooks/workspaceEvents';
 import {
   normalizeFixVersionsInput,
   withNormalizedFixVersion,
@@ -165,6 +166,18 @@ export async function create(
       .then((m) => m.syncIssueToAdo(String(doc._id), { syncOrigin: 'taskflow' }))
       .catch((err) => console.error('[ado] outbound sync on create failed:', err));
   }
+
+  emitIssueEvent(String(projectId), 'issue.created', {
+    issueId: String(doc._id),
+    key: issueKey,
+    title: input.title,
+    type: input.type ?? 'Task',
+    status: input.status ?? DEFAULT_STATUS,
+    priority: input.priority,
+  });
+  import('../projectRules/projectRules.automation')
+    .then((m) => m.runIssueAutomations({ trigger: 'issue.created', issueId: String(doc._id), actorId: effectiveReporter }))
+    .catch((err) => console.error('[automation] issue.created failed:', err));
 
   return enrichIssueRecord(withNormalizedFixVersion(doc.toObject() as unknown as Record<string, unknown>));
 }
@@ -763,6 +776,36 @@ export async function update(
     import('../integrations/ado/adoSync.service')
       .then((m) => m.syncIssueToAdo(id, { syncOrigin: 'taskflow' }))
       .catch((err) => console.error('[ado] outbound sync on update failed:', err));
+  }
+
+  if (issue) {
+    const proj = issue.project as { _id?: unknown } | unknown;
+    const pid = proj && typeof proj === 'object' && '_id' in (proj as object) ? String((proj as { _id: unknown })._id) : String(proj);
+    const payload = {
+      issueId: id,
+      key: issue.key,
+      title: issue.title,
+      status: issue.status,
+      priority: issue.priority,
+      changedFields: Object.keys(updateData),
+    };
+    emitIssueEvent(pid, 'issue.updated', payload);
+    if (input.status !== undefined && String(oldDoc.status) !== String(issue.status)) {
+      emitIssueEvent(pid, 'issue.status_changed', { ...payload, fromStatus: oldDoc.status });
+    }
+  }
+
+  if (issue && authorId) {
+    import('../projectRules/projectRules.automation')
+      .then((m) =>
+        m.runIssueAutomations({
+          trigger: 'issue.updated',
+          issueId: id,
+          actorId: authorId,
+          oldIssue: oldDoc as unknown as Record<string, unknown>,
+        })
+      )
+      .catch((err) => console.error('[automation] issue.updated failed:', err));
   }
 
   return issue ? enrichIssueRecord(issue as Record<string, unknown>) : null;

@@ -54,11 +54,16 @@ export default function MoreScreen() {
             <NavRow icon="people" title="Groups" subtitle="Auto-reply, projects, capabilities" badge={counts.groups ? `${counts.groups} active` : undefined} onPress={() => router.push('/(tabs)/groups')} />
             <NavRow icon="headset" tone="info" title="Support" subtitle="Cases and live agent feed" onPress={() => router.push('/(tabs)/support')} />
             <NavRow icon="person-add" tone="ok" title="Leads" subtitle="WhatsApp → CRM leads" badge={counts.leads || undefined} onPress={() => router.push('/(tabs)/leads')} />
+            <NavRow icon="stats-chart" tone="accent" title="Insights" subtitle="Volume, reply time, languages, leads" onPress={() => router.push('/insights')} />
+            <NavRow icon="megaphone" tone="warn" title="Broadcasts" subtitle="Updates to many chats, with opt-out" onPress={() => router.push('/broadcasts')} />
           </View>
         </Section>
 
         <Section title="Atrium">
           <View style={styles.list}>
+            <NavRow icon="checkbox" tone="accent" title="My work" subtitle="Your issues — change status, log time" onPress={() => router.push('/mywork')} />
+            <NavRow icon="calendar" tone="info" title="Agenda" subtitle="Your meetings, next 2 weeks" onPress={() => router.push('/agenda')} />
+            <NavRow icon="briefcase" tone="ok" title="Pipeline" subtitle="Open deals by stage" onPress={() => router.push('/pipeline')} />
             <NavRow icon="document-text" tone="warn" title="Requests & tickets" subtitle="Approve portal requests, update tickets" badge={counts.requests || undefined} onPress={() => router.push('/(tabs)/requests')} />
             <NavRow
               icon="pulse"

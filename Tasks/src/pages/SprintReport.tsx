@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import { sprintsApi, projectsApi, type Sprint, type Project } from '../lib/api';
+import { SprintRetroPanel } from '../components/ai/AiPanels';
 
 export default function SprintReport() {
   const { projectId, sprintId } = useParams<{ projectId: string; sprintId: string }>();
@@ -95,6 +96,12 @@ export default function SprintReport() {
           {project?.name}
         </p>
       </div>
+
+      {token && sprintId && (
+        <div className="mb-6">
+          <SprintRetroPanel sprintId={sprintId} token={token} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-4">

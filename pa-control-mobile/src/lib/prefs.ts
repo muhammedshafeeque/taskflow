@@ -1,7 +1,10 @@
 import * as SecureStore from 'expo-secure-store'
 import { Platform } from 'react-native'
 
-export type AlertKindPref = 'delivery' | 'error' | 'uptime'
+export type AlertKindPref = 'delivery' | 'error' | 'uptime' | 'whatsapp' | 'chat' | 'lead' | 'escalation'
+
+/** Kinds added after v1 — switched on once for existing installs so nobody silently misses them. */
+const KINDS_V2: AlertKindPref[] = ['whatsapp', 'chat', 'lead', 'escalation']
 
 export type Prefs = {
   haptics: boolean
@@ -13,6 +16,7 @@ export type Prefs = {
   criticalOnly: boolean
   pollSeconds: number
   monitorProjectId: string
+  kindsVersion?: number
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -20,10 +24,11 @@ export const DEFAULT_PREFS: Prefs = {
   biometricLock: false,
   relockMinutes: 5,
   notifications: true,
-  notifyKinds: ['delivery', 'error', 'uptime'],
+  notifyKinds: ['delivery', 'error', 'uptime', ...KINDS_V2],
   criticalOnly: false,
   pollSeconds: 60,
   monitorProjectId: '',
+  kindsVersion: 2,
 }
 
 const KEY = 'pa_mobile_prefs_v1'
@@ -58,6 +63,14 @@ export async function loadPrefs(): Promise<Prefs> {
   try {
     const raw = await read(KEY)
     cache = raw ? { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<Prefs>) } : { ...DEFAULT_PREFS }
+    if ((cache.kindsVersion ?? 1) < 2) {
+      cache = {
+        ...cache,
+        kindsVersion: 2,
+        notifyKinds: [...new Set([...cache.notifyKinds, ...KINDS_V2])],
+      }
+      await write(KEY, JSON.stringify(cache))
+    }
   } catch {
     cache = { ...DEFAULT_PREFS }
   }

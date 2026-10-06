@@ -412,6 +412,8 @@ export async function update(
   if (input.environments !== undefined) updateData.environments = input.environments;
   if (input.releaseRules !== undefined) updateData.releaseRules = input.releaseRules;
   if (input.projectRules !== undefined) updateData.projectRules = input.projectRules;
+  if (input.githubRepo !== undefined) updateData.githubRepo = input.githubRepo.toLowerCase() || null;
+  if (input.githubMergedStatus !== undefined) updateData.githubMergedStatus = input.githubMergedStatus || null;
   if (input.estimateApprovalEnabled !== undefined) {
     updateData.estimateApprovalEnabled = input.estimateApprovalEnabled;
     if (input.estimateApprovalEnabled) {

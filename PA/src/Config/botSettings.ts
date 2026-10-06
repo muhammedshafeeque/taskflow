@@ -1,8 +1,10 @@
 import {
   BotSettings,
   type BotSettingsDoc,
+  type QuietHours,
   type SttLanguage,
 } from '../Models/BotSettings';
+import { DEFAULT_QUIET_HOURS, isValidHhmm, isValidTimezone } from './quietHours';
 
 const CACHE_MS = 3000;
 
@@ -20,6 +22,7 @@ function defaults(): BotSettingsDoc {
     botPaused: false,
     voiceRepliesEnabled: true,
     sttLanguage: envSttDefault(),
+    quietHours: { ...DEFAULT_QUIET_HOURS },
     updatedAt: new Date(),
   };
 }
@@ -39,9 +42,13 @@ export async function getBotSettings(): Promise<BotSettingsDoc> {
     doc = await BotSettings.findOne({ key: 'default' }).lean();
   }
 
-  const value = (doc as BotSettingsDoc | null) ?? defaults();
+  const value = withQuietDefaults((doc as BotSettingsDoc | null) ?? defaults());
   cache = { at: Date.now(), value };
   return value;
+}
+
+function withQuietDefaults(doc: BotSettingsDoc): BotSettingsDoc {
+  return { ...doc, quietHours: { ...DEFAULT_QUIET_HOURS, ...(doc.quietHours ?? {}) } };
 }
 
 export async function updateBotSettings(
@@ -49,6 +56,7 @@ export async function updateBotSettings(
     botPaused: boolean;
     voiceRepliesEnabled: boolean;
     sttLanguage: SttLanguage;
+    quietHours: Partial<QuietHours>;
   }>
 ): Promise<BotSettingsDoc> {
   const $set: Record<string, unknown> = { updatedAt: new Date() };
@@ -64,13 +72,31 @@ export async function updateBotSettings(
     $set.sttLanguage = patch.sttLanguage;
   }
 
+  const qh = patch.quietHours;
+  if (qh && typeof qh === 'object') {
+    if (typeof qh.enabled === 'boolean') $set['quietHours.enabled'] = qh.enabled;
+    if (qh.start !== undefined) {
+      if (!isValidHhmm(qh.start)) throw new Error('quietHours.start must be HH:MM (24h)');
+      $set['quietHours.start'] = qh.start;
+    }
+    if (qh.end !== undefined) {
+      if (!isValidHhmm(qh.end)) throw new Error('quietHours.end must be HH:MM (24h)');
+      $set['quietHours.end'] = qh.end;
+    }
+    if (qh.timezone !== undefined) {
+      if (!isValidTimezone(qh.timezone)) throw new Error('quietHours.timezone must be an IANA timezone, e.g. Asia/Kolkata');
+      $set['quietHours.timezone'] = qh.timezone;
+    }
+    if (typeof qh.awayMessage === 'string') $set['quietHours.awayMessage'] = qh.awayMessage.trim().slice(0, 1000);
+  }
+
   const doc = await BotSettings.findOneAndUpdate(
     { key: 'default' },
     { $set, $setOnInsert: { key: 'default' } },
     { upsert: true, returnDocument: 'after' }
   ).lean();
 
-  const value = (doc as BotSettingsDoc | null) ?? defaults();
+  const value = withQuietDefaults((doc as BotSettingsDoc | null) ?? defaults());
   cache = { at: Date.now(), value };
   return value;
 }

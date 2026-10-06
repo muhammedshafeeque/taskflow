@@ -1,5 +1,6 @@
 import { MonitorUptimeCheck, MonitorUptimeSample } from './monitor.models';
 import { evaluateMonitorAlerts } from './alert.service';
+import { pageOnCall } from './onCall.service';
 import { assertSafeOutboundUrl } from '../../utils/safeUrl';
 
 async function runCheck(check: {
@@ -44,6 +45,13 @@ async function runCheck(check: {
     { $set: { nextRunAt: new Date(Date.now() + interval * 60 * 1000) } }
   );
   if (!ok) {
+    void pageOnCall({
+      projectId: String(check.projectId),
+      title: `Down: ${check.url}`,
+      body: error || `HTTP ${status ?? '?'}`,
+      link: `/monitor/${check.projectId}/uptime`,
+      dedupeKey: `uptime:${check._id}`,
+    });
     evaluateMonitorAlerts({
       kind: 'uptime',
       orgId: String(check.taskflowOrganizationId),
