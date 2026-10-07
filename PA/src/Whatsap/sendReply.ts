@@ -12,7 +12,7 @@ import { synthesizeSpeech } from '../Media/tts';
 const execFileAsync = promisify(execFile);
 
 async function toOggOpus(mp3Buffer: Buffer): Promise<Buffer> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ivorix-voice-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pa-voice-'));
   const mp3Path = path.join(dir, 'in.mp3');
   const oggPath = path.join(dir, 'out.ogg');
   try {
@@ -47,7 +47,7 @@ async function sendVoiceNote(
   const media = new MessageMedia(
     'audio/ogg; codecs=opus',
     ogg.toString('base64'),
-    `ivorix-reply-${Date.now()}.ogg`
+    `reply-${Date.now()}.ogg`
   );
 
   try {

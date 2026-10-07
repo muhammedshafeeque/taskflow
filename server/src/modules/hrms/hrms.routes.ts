@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import * as payroll from './payroll.service';
+import { hrPeopleRouter } from './hrPeople.routes';
 import { CoreCompanySettings } from '../core/models/coreCompanySettings.model';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import { requireAnyPermission } from '../../middleware/requirePermission';
@@ -41,6 +42,7 @@ router.patch('/leave/:id/decision', requireAnyPermission(leaveManage), asyncHand
 router.get('/attendance', requireAnyPermission(attRead), asyncHandler(ctrl.listAttendance));
 router.post('/attendance', requireAnyPermission(attManage), asyncHandler(ctrl.markAttendance));
 
+router.use('/', hrPeopleRouter);
 router.get('/payroll', requireAnyPermission(payrollRead), asyncHandler(ctrl.getPayroll));
 
 // Payroll v2: settings, monthly runs, adjustments, payslips

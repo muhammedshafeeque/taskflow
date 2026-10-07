@@ -1,3 +1,5 @@
+import { issueChallenge } from './twoFactor.service';
+import { defaultRoleAssignment, getPlatformSettings } from '../platformSettings/platformSettings.service';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -60,6 +62,9 @@ export interface AuthUser {
   roleName?: string;
   permissions: string[];
   mustChangePassword: boolean;
+  twoFactorEnabled?: boolean;
+  /** Workspace requires 2FA and this user hasn't set it up yet. */
+  mustSetupTwoFactor?: boolean;
   createdAt?: string;
 }
 
@@ -188,6 +193,8 @@ async function toAuthUser(user: IUser & { roleId?: unknown; mustChangePassword?:
     roleName,
     permissions,
     mustChangePassword: mustChange,
+    twoFactorEnabled: Boolean((user as { twoFactorEnabled?: boolean }).twoFactorEnabled),
+    mustSetupTwoFactor: (await getPlatformSettings()).requireTwoFactor && !(user as { twoFactorEnabled?: boolean }).twoFactorEnabled,
     createdAt: u.createdAt ? u.createdAt.toISOString() : undefined,
   };
 }
@@ -201,18 +208,30 @@ export async function register(input: RegisterInput): Promise<{ user: AuthUser; 
     throw new ApiError(409, 'Email already registered');
   }
 
+  const assignment = await defaultRoleAssignment();
   const user = await User.create({
     email: input.email,
     // User model hashes password in pre-save hook.
     password: input.password,
     name: input.name,
     role: 'user',
-    permissions: mergeTaskflowPermissionFloor([]),
+    roleId: assignment.roleId,
+    permissions: assignment.permissions,
   });
 
   const tokens = signTokens(user._id.toString(), 'taskflow');
   const authUser = await toAuthUser(user);
   return { user: authUser, tokens };
+}
+
+/** Final step of staff sign-in (after password, and 2FA when enabled). */
+export async function completeTaskflowLogin(userId: string): Promise<{ user: AuthUser | Record<string, unknown>; tokens: AuthTokens }> {
+  const tfUser = await User.findById(userId).lean();
+  if (!tfUser) throw new ApiError(401, 'User not found');
+  const authUser = await toAuthUser(tfUser as unknown as IUser & { roleId?: unknown; mustChangePassword?: boolean });
+  const { activeOrganizationId, organizations } = await buildTaskflowSession(userId);
+  const tokens = signTokens(userId, 'taskflow', { activeOrganizationId });
+  return { user: { ...authUser, userType: 'taskflow', activeOrganizationId, organizations }, tokens };
 }
 
 export async function login(input: LoginInput): Promise<{ user: AuthUser | Record<string, unknown>; tokens: AuthTokens }> {
@@ -234,10 +253,14 @@ export async function login(input: LoginInput): Promise<{ user: AuthUser | Recor
     if (!match) {
       throw new ApiError(401, 'Invalid email or password');
     }
-    const authUser = await toAuthUser(tfUser as unknown as IUser & { roleId?: unknown; mustChangePassword?: boolean });
-    const { activeOrganizationId, organizations } = await buildTaskflowSession(tfUser._id.toString());
-    const tokens = signTokens(tfUser._id.toString(), 'taskflow', { activeOrganizationId });
-    return { user: { ...authUser, userType: 'taskflow', activeOrganizationId, organizations }, tokens };
+    if ((tfUser as { twoFactorEnabled?: boolean }).twoFactorEnabled) {
+      // Password OK — the client must now send an authenticator code.
+      return {
+        user: { twoFactorRequired: true, challengeToken: issueChallenge(tfUser._id.toString()) },
+        tokens: undefined as unknown as AuthTokens,
+      };
+    }
+    return completeTaskflowLogin(tfUser._id.toString());
   }
 
   // Second, try CustomerUser collection
@@ -591,8 +614,11 @@ export async function microsoftSso(input: MicrosoftSsoInput): Promise<{ user: Au
       rawEmail.split('@')[0];
 
     const randomPassword = crypto.randomBytes(32).toString('hex');
+    const assignment = await defaultRoleAssignment();
 
     const created = await User.create({
+      roleId: assignment.roleId,
+      permissions: assignment.permissions,
       email: rawEmail,
       // User model hashes password in pre-save hook.
       password: randomPassword,
@@ -687,7 +713,9 @@ export async function findOrCreateOAuthUser(dto: {
     throw new ApiError(403, 'Account does not exist. Contact an administrator for access.');
   }
 
+  const ssoAssignment = await defaultRoleAssignment();
   const created = await User.create({
+    roleId: ssoAssignment.roleId,
     email: emailNorm,
     name: dto.name?.trim() || emailNorm.split('@')[0],
     password: null,
@@ -697,7 +725,7 @@ export async function findOrCreateOAuthUser(dto: {
     avatarUrl: dto.avatarUrl ?? null,
     role: 'user',
     userType: UserType.TASKFLOW,
-    permissions: [...DEFAULT_USER_PERMISSIONS],
+    permissions: ssoAssignment.permissions,
     mustChangePassword: false,
   });
   return created;

@@ -29,7 +29,7 @@ export function configPath(): string {
 export function loadConfig(): IvxConfig {
   if (!fs.existsSync(FILE)) {
     return {
-      apiBase: 'https://pa.repod.online',
+      apiBase: '',
       workspaces: [],
       allowCommands: [],
       aiProviders: ['claude', 'gemini'],
@@ -37,7 +37,7 @@ export function loadConfig(): IvxConfig {
   }
   const raw = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Partial<IvxConfig>;
   return {
-    apiBase: (raw.apiBase || 'https://pa.repod.online').replace(/\/$/, ''),
+    apiBase: (raw.apiBase || '').replace(/\/$/, ''),
     deviceId: raw.deviceId,
     deviceToken: raw.deviceToken,
     name: raw.name,

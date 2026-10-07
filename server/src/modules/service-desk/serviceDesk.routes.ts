@@ -1,6 +1,9 @@
+import type { Request, Response } from 'express';
+import * as desk from './desk.service';
+import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware';
-import { requirePermission } from '../../middleware/requirePermission';
+import { requireAnyPermission, requirePermission } from '../../middleware/requirePermission';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as sd from './serviceDesk.controller';
@@ -51,6 +54,30 @@ router.get('/ingest/procurement/pos', asyncHandler(ecoIngest.ingestProcurementPo
 router.use(authMiddleware);
 
 router.get('/dashboard', requirePermission(T.TICKET.LIST), asyncHandler(sd.getDashboard));
+
+type DR = Request & { activeOrganizationId?: string; user?: { id: string; name?: string; permissions?: string[] } };
+const canShared = (req: DR) => userHasPermission(req.user?.permissions ?? [], T.SETTINGS.MANAGE);
+router.get('/settings', requireAnyPermission([T.SETTINGS.MANAGE, T.SLA.MANAGE, T.TICKET.LIST]), asyncHandler(async (req: DR, res: Response) => {
+  res.json({ success: true, data: await desk.getServiceSettings(req.activeOrganizationId) });
+}));
+router.put('/settings', requirePermission(T.SETTINGS.MANAGE), asyncHandler(async (req: DR, res: Response) => {
+  res.json({ success: true, data: await desk.updateServiceSettings(req.activeOrganizationId, req.body ?? {}) });
+}));
+router.get('/saved-replies', requireAnyPermission([T.TICKET.UPDATE, T.SETTINGS.MANAGE]), asyncHandler(async (req: DR, res: Response) => {
+  res.json({ success: true, data: await desk.listSavedReplies(req.activeOrganizationId, req.user!.id) });
+}));
+router.post('/saved-replies', requireAnyPermission([T.TICKET.UPDATE, T.SETTINGS.MANAGE]), asyncHandler(async (req: DR, res: Response) => {
+  res.json({ success: true, data: await desk.saveSavedReply(req.activeOrganizationId, req.body ?? {}, { id: req.user!.id, canManageShared: canShared(req) }) });
+}));
+router.patch('/saved-replies/:id', requireAnyPermission([T.TICKET.UPDATE, T.SETTINGS.MANAGE]), asyncHandler(async (req: DR, res: Response) => {
+  res.json({ success: true, data: await desk.saveSavedReply(req.activeOrganizationId, req.body ?? {}, { id: req.user!.id, canManageShared: canShared(req) }, req.params.id) });
+}));
+router.delete('/saved-replies/:id', requireAnyPermission([T.TICKET.UPDATE, T.SETTINGS.MANAGE]), asyncHandler(async (req: DR, res: Response) => {
+  res.json({ success: true, data: await desk.deleteSavedReply(req.activeOrganizationId, req.params.id, { id: req.user!.id, canManageShared: canShared(req) }) });
+}));
+router.post('/tickets/:id/merge', requirePermission(T.TICKET.UPDATE), asyncHandler(async (req: DR, res: Response) => {
+  res.json({ success: true, data: await desk.mergeTickets(req.activeOrganizationId, req.params.id, String(req.body?.intoId ?? ''), { id: req.user!.id, name: req.user?.name }) });
+}));
 router.get(
   '/reports/csat',
   requirePermission(T.TICKET.LIST),

@@ -44,6 +44,15 @@ import ProjectTemplates from './pages/ProjectTemplates';
 import Inbox from './pages/Inbox';
 import Profile from './pages/Profile';
 import NotificationPreferences from './pages/NotificationPreferences';
+import SelfService from './pages/me/SelfService';
+import ProjectGovernance, { PortalStatusReports } from './pages/ProjectGovernance';
+import { PublicRate, PublicStatus } from './pages/PublicPages';
+import { HrSettingsPage, HrLeaveTypesPage, HrHolidaysPage, HrOnboardingPage, HrRecruitmentPage, HrAppraisalsPage } from './pages/hrms/HrPeople';
+import { BooksSettings, ChartOfAccounts, Journals, FinancialReports, VendorBills, CreditNotes, Banking } from './pages/accounts/Books';
+import { CorePreferences, AnnouncementsAdmin, ManagementInsights } from './pages/core/CoreAdmin';
+import { ServiceSettingsPage, SavedRepliesPage } from './pages/service/ServiceSettings';
+import { CrmCommissions, MailboxSettings } from './pages/crm/CrmSalesTools';
+import { MonitorStatusPages, MonitorPostmortems } from './pages/monitor/MonitorStatusAndPostmortems';
 import Issues from './pages/Issues';
 import GlobalIssues from './pages/GlobalIssues';
 import Workload from './pages/Workload';
@@ -216,6 +225,8 @@ function AppRoutes() {
       <Route path="/auth/ide" element={<IdeLogin />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/sign/:token" element={<PublicSign />} />
+      <Route path="/rate/:token" element={<PublicRate />} />
+      <Route path="/status/:slug" element={<PublicStatus />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/portal/login" element={<Navigate to="/login" replace />} />
       <Route path="/portal/reset-password" element={<PortalResetPasswordRedirect />} />
@@ -234,6 +245,7 @@ function AppRoutes() {
         <Route path="/portal/tickets" element={<PortalTickets />} />
         <Route path="/portal/tickets/:id" element={<PortalTicketDetail />} />
         <Route path="/portal/approval-queue" element={<PortalApprovalQueue />} />
+        <Route path="/portal/status-reports" element={<PortalStatusReports />} />
       </Route>
 
       {/* Atrium internal routes: auth guard, then standalone workspace hub or Project Manager shell */}
@@ -282,6 +294,7 @@ function AppRoutes() {
           <Route path="test-plans" element={<TestPlans />} />
           <Route path="test-plans/:planId/cycles/:cycleId/run" element={<TestCycleRun />} />
           <Route path="traceability" element={<Traceability />} />
+          <Route path="governance" element={<ProjectGovernance />} />
           <Route path="defect-metrics" element={<DefectMetrics />} />
           <Route path="timesheet" element={<Timesheet />} />
         </Route>
@@ -316,6 +329,8 @@ function AppRoutes() {
         <Route path="/crm/campaigns/:id" element={<CrmCampaignDetail />} />
         <Route path="/crm/contracts" element={<CrmContracts />} />
         <Route path="/crm/settings" element={<CrmSettings />} />
+        <Route path="/crm/commissions" element={<CrmCommissions />} />
+        <Route path="/crm/email-sync" element={<MailboxSettings />} />
         </Route>
 
         {/* Service desk module */}
@@ -324,6 +339,8 @@ function AppRoutes() {
         <Route path="/service/tickets" element={<ServiceDesk />} />
         <Route path="/service/sla" element={<ServiceSla />} />
         <Route path="/service/kb" element={<KnowledgeBase />} />
+        <Route path="/service/settings" element={<ServiceSettingsPage />} />
+        <Route path="/service/saved-replies" element={<SavedRepliesPage />} />
         </Route>
 
         {/* HRMS module */}
@@ -333,6 +350,12 @@ function AppRoutes() {
           <Route path="/hrms/attendance" element={<HrmsAttendance />} />
           <Route path="/hrms/leave" element={<HrmsLeave />} />
           <Route path="/hrms/payroll" element={<HrmsPayroll />} />
+          <Route path="/hrms/settings" element={<HrSettingsPage />} />
+          <Route path="/hrms/leave-types" element={<HrLeaveTypesPage />} />
+          <Route path="/hrms/holidays" element={<HrHolidaysPage />} />
+          <Route path="/hrms/onboarding" element={<HrOnboardingPage />} />
+          <Route path="/hrms/recruitment" element={<HrRecruitmentPage />} />
+          <Route path="/hrms/appraisals" element={<HrAppraisalsPage />} />
         </Route>
 
         {/* Accounts (finance) module */}
@@ -342,6 +365,13 @@ function AppRoutes() {
           <Route path="/accounts/invoices" element={<AccountsInvoices />} />
           <Route path="/accounts/expenses" element={<AccountsExpenses />} />
           <Route path="/accounts/reports" element={<AccountsReports />} />
+          <Route path="/accounts/statements" element={<FinancialReports />} />
+          <Route path="/accounts/journals" element={<Journals />} />
+          <Route path="/accounts/bills" element={<VendorBills />} />
+          <Route path="/accounts/credit-notes" element={<CreditNotes />} />
+          <Route path="/accounts/banking" element={<Banking />} />
+          <Route path="/accounts/chart" element={<ChartOfAccounts />} />
+          <Route path="/accounts/books-settings" element={<BooksSettings />} />
           <Route path="/cost-usage" element={<CostUsage />} />
         </Route>
 
@@ -375,6 +405,9 @@ function AppRoutes() {
           <Route path="/core/currencies" element={<CoreCurrencies />} />
           <Route path="/core/exchange-rates" element={<CoreExchangeRates />} />
           <Route path="/core/modules" element={<CoreModules />} />
+          <Route path="/core/preferences" element={<CorePreferences />} />
+          <Route path="/core/announcements" element={<AnnouncementsAdmin />} />
+          <Route path="/core/insights" element={<ManagementInsights />} />
         </Route>
 
         {/* Assets / CMDB */}
@@ -426,6 +459,8 @@ function AppRoutes() {
         {/* Project Monitor */}
         <Route element={<MonitorModuleLayout />}>
           <Route path="/monitor" element={<MonitorProjects />} />
+          <Route path="/monitor/status-pages" element={<MonitorStatusPages />} />
+          <Route path="/monitor/postmortems" element={<MonitorPostmortems />} />
           <Route path="/monitor/:monitorProjectId" element={<MonitorWorkspace />}>
             <Route index element={<MonitorOverview />} />
             <Route path="setup" element={<MonitorSetup />} />
@@ -455,6 +490,7 @@ function AppRoutes() {
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/profile/notifications" element={<NotificationPreferences />} />
+        <Route path="/me" element={<SelfService />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

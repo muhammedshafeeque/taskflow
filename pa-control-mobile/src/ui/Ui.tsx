@@ -36,6 +36,10 @@ import {
   typography,
   type Tone,
 } from '../theme'
+import Constants from 'expo-constants'
+
+/** Display name comes from app config (APP_BRAND_NAME), never hard-coded. */
+const BRAND_NAME = String((Constants.expoConfig?.extra as { brandName?: string } | undefined)?.brandName || Constants.expoConfig?.name || 'PA Control')
 
 export type IconName = React.ComponentProps<typeof Ionicons>['name']
 
@@ -346,7 +350,7 @@ export function BrandMark({ subtitle, large }: { subtitle?: string; large?: bool
         <Text style={[styles.brandMarkText, large && { fontSize: 19 }]}>PA</Text>
       </LinearGradient>
       <View style={{ flex: 1 }}>
-        <Text style={[styles.brandName, large && { fontSize: 24 }]}>Ivorix</Text>
+        <Text style={[styles.brandName, large && { fontSize: 24 }]}>{BRAND_NAME}</Text>
         {subtitle ? <Text style={styles.brandSub}>{subtitle}</Text> : null}
       </View>
     </View>

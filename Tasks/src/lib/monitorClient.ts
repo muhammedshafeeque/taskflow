@@ -7,7 +7,7 @@ import { APP_VERSION } from '../appVersion';
  */
 const MONITOR_ENABLED = String(import.meta.env.VITE_MONITOR_ENABLED || '').toLowerCase() === 'true';
 const MONITOR_BASE = String(
-  import.meta.env.VITE_MONITOR_BASE_URL || 'https://taskflow.repod.online/api'
+  import.meta.env.VITE_MONITOR_BASE_URL || ''
 ).replace(/\/+$/, '');
 const MONITOR_KEY = String(import.meta.env.VITE_MONITOR_KEY || '').trim();
 const RELEASE = String(import.meta.env.VITE_MONITOR_RELEASE || APP_VERSION || '').trim();

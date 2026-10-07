@@ -11,6 +11,10 @@ export interface IWorkLog extends Document {
   stageEstimateId?: mongoose.Types.ObjectId;
   invoiceId?: mongoose.Types.ObjectId;
   billedAt?: Date;
+  /** Counts towards client billing (time-to-invoice). */
+  billable: boolean;
+  /** Timesheet approval state; approved logs are locked. */
+  approvalStatus: 'draft' | 'submitted' | 'approved' | 'rejected';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,6 +28,8 @@ const workLogSchema = new Schema<IWorkLog>(
     description: { type: String, default: '' },
     laneId: { type: String, default: undefined },
     overrunReason: { type: String, default: undefined },
+    billable: { type: Boolean, default: true },
+    approvalStatus: { type: String, enum: ['draft', 'submitted', 'approved', 'rejected'], default: 'draft', index: true },
     stageEstimateId: { type: Schema.Types.ObjectId, ref: 'StageEstimate', default: undefined },
     invoiceId: { type: Schema.Types.ObjectId, ref: 'BillingInvoice', default: null, index: true },
     billedAt: { type: Date, default: null },

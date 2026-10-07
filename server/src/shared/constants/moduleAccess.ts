@@ -99,6 +99,8 @@ export const MODULE_ACCESS: Record<ModuleId, readonly string[]> = {
     'taskflow.crm.campaign.list',
     'taskflow.crm.contract.list',
     'taskflow.crm.settings.manage',
+    'taskflow.crm.commission.read',
+    'taskflow.mail.mailbox.read',
   ],
   contracts: [
     'taskflow.contracts.dashboard.read',
@@ -122,6 +124,10 @@ export const MODULE_ACCESS: Record<ModuleId, readonly string[]> = {
     'taskflow.accounts.expense.list',
     'taskflow.accounts.report.read',
     'taskflow.cost_report.view',
+    'taskflow.accounts.journal.read',
+    'taskflow.accounts.bill.list',
+    'taskflow.accounts.bank.read',
+    'taskflow.accounts.chart.manage',
   ],
   hrms: [
     'taskflow.hr.dashboard.read',
@@ -130,6 +136,10 @@ export const MODULE_ACCESS: Record<ModuleId, readonly string[]> = {
     'taskflow.hr.attendance.read',
     'taskflow.hr.leave.read',
     'taskflow.hr.payroll.read',
+    'taskflow.hr.policy.manage',
+    'taskflow.hr.onboarding.read',
+    'taskflow.hr.recruitment.read',
+    'taskflow.hr.appraisal.read',
   ],
   auth: [
     'auth.user.list',
@@ -183,6 +193,8 @@ export const MODULE_ACCESS: Record<ModuleId, readonly string[]> = {
     'taskflow.monitor.error.read',
     'taskflow.monitor.alert.read',
     'taskflow.monitor.alert.manage',
+    'taskflow.monitor.status_page.manage',
+    'taskflow.monitor.postmortem.read',
   ],
   inbox: ['inbox.inbox.read', 'inbox.inbox.list', 'inbox:read'],
   core: [
@@ -193,6 +205,9 @@ export const MODULE_ACCESS: Record<ModuleId, readonly string[]> = {
     'taskflow.core.exchange_rate.read',
     'taskflow.core.exchange_rate.manage',
     'taskflow.core.modules.manage',
+    'taskflow.platform.settings.manage',
+    'taskflow.platform.announcement.manage',
+    'taskflow.platform.profitability.read',
   ],
 };
 
@@ -212,6 +227,7 @@ export const MODULE_PERMISSION_PREFIXES: Record<ModuleId, readonly string[]> = {
     'milestone.',
     'work_log.',
     'timesheet.',
+    'taskflow.timesheet.',
     'setting.',
     'report.',
     'taskflow.project',
@@ -220,7 +236,7 @@ export const MODULE_PERMISSION_PREFIXES: Record<ModuleId, readonly string[]> = {
     'projects:',
   ],
   resources: ['taskflow.resources.', 'taskflow.analytics.'],
-  crm: ['taskflow.crm.'],
+  crm: ['taskflow.crm.', 'taskflow.mail.'],
   contracts: ['taskflow.contracts.'],
   billing: ['taskflow.billing.'],
   accounts: ['taskflow.accounts.', 'taskflow.cost_report'],

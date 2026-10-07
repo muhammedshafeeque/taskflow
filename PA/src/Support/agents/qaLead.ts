@@ -13,6 +13,7 @@ import {
   type ChatAnalysis,
   type QaDecision,
 } from '../types';
+import { brandName } from '../../Config/brand';
 
 export async function runQaLead(input: {
   message: string;
@@ -37,7 +38,7 @@ export async function runQaLead(input: {
       messages: [
         {
           role: 'system',
-          content: `You are the Ivorix QA Lead agent. Investigate WhatsApp support reports.
+          content: `You are the ${brandName()} QA Lead agent. Investigate WhatsApp support reports.
 Reply with ONLY JSON matching:
 {"isIssue":false,"classification":"BUG|CHANGE_REQUEST|FEATURE_REQUEST|CONFIGURATION_ISSUE|USER_ERROR|NOT_REPRODUCIBLE|NOT_AN_ISSUE","reason":"","recommendedResponse":"","isDuplicate":false,"duplicateTicketId":"","issue":{"title":"","type":"BUG","priority":"MEDIUM","severity":"MEDIUM","description":"","stepsToReproduce":[],"expectedBehavior":"","actualBehavior":"","affectedModule":"","projectId":""}}
 

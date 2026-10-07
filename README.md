@@ -313,7 +313,7 @@ Telegram, Teams, Slack, Discord, WhatsApp, S3, Azure Blob, SMS (Twilio / Fast2SM
 |----------|-------------|
 | `VITE_API_URL` | REST base including `/api` |
 | `VITE_WS_URL` | Socket.IO origin |
-| `VITE_MONITOR_BASE_URL` | Monitor ingest API base (default `https://taskflow.repod.online/api`) |
+| `VITE_MONITOR_BASE_URL` | Monitor ingest API base (empty = self-telemetry off) |
 | `VITE_MONITOR_KEY` | Web app ingest key (`X-Monitor-Key`) |
 | `VITE_MONITOR_RELEASE` | Optional release label sent with ingest |
 

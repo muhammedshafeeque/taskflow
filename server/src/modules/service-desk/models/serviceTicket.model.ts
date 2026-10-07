@@ -32,11 +32,12 @@ export interface IServiceTicket extends Document {
   customerRequestId?: mongoose.Types.ObjectId;
   linkedIssueId?: mongoose.Types.ObjectId;
   workClassification?: 'billable_change' | 'fix';
-  /** Origin channel — e.g. whatsapp_pa for Ivorix PA bot */
+  /** Origin channel — e.g. whatsapp_pa for the PA WhatsApp bot */
   source?: string;
   requesterEmail?: string;
   requesterName?: string;
   emailRef?: string;
+  mergedIntoId?: mongoose.Types.ObjectId;
   whatsappGroupId?: string;
   whatsappMessageId?: string;
   supportConversationId?: string;
@@ -88,6 +89,7 @@ const serviceTicketSchema = new Schema<IServiceTicket>(
     requesterEmail: { type: String, lowercase: true, trim: true },
     requesterName: { type: String, trim: true },
     emailRef: { type: String, index: true, sparse: true },
+    mergedIntoId: { type: Schema.Types.ObjectId, ref: 'ServiceTicket' },
     whatsappGroupId: { type: String, default: undefined, index: true },
     whatsappMessageId: { type: String, default: undefined },
     supportConversationId: { type: String, default: undefined, index: true },

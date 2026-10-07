@@ -1,3 +1,6 @@
+import { sendCustomerEmail } from '../../services/email.service';
+import { autoPost, postInvoice, postPayment } from '../ledger/ledger.service';
+import { JournalEntry } from '../ledger/ledger.models';
 import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
@@ -539,6 +542,12 @@ export async function updateInvoice(
   }
 
   await existing.save();
+  if (existing.status !== previousStatus && previousStatus === 'draft' && existing.status !== 'void') {
+    autoPost(() => postInvoice(orgId, String(existing._id)), `invoice ${existing.number}`);
+  }
+  if (existing.status === 'void' && previousStatus !== 'void') {
+    void JournalEntry.updateMany({ taskflowOrganizationId: orgOid, sourceType: 'invoice', sourceId: String(existing._id) }, { $set: { status: 'void' } });
+  }
   if (existing.status !== previousStatus && ['sent', 'paid', 'overdue', 'void'].includes(existing.status)) {
     emitWorkspaceEvent(orgId, `invoice.${existing.status}` as 'invoice.sent', invoicePayload(existing));
   }
@@ -568,7 +577,7 @@ export async function recordPayment(
   if (!invoice) throw new ApiError(404, 'Invoice not found');
   if (invoice.status === 'void') throw new ApiError(400, 'Cannot record payment on a void invoice');
 
-  const outstanding = Math.round((invoice.total - (invoice.amountPaid ?? 0)) * 100) / 100;
+  const outstanding = Math.round((invoice.total - (invoice.amountPaid ?? 0) - (invoice.amountCredited ?? 0)) * 100) / 100;
   const requested = input.markPaid ? outstanding : Number(input.amount ?? 0);
   if (!(requested > 0)) throw new ApiError(400, 'Payment amount must be greater than zero');
   const applied = Math.min(requested, outstanding);
@@ -581,6 +590,11 @@ export async function recordPayment(
     invoice.status = 'sent';
   }
   await invoice.save();
+  autoPost(async () => {
+    // A payment on an invoice that was never posted (e.g. paid straight from draft) posts it first.
+    await postInvoice(orgId, String(invoice._id));
+    return postPayment(orgId, String(invoice._id), applied, `${invoice._id}:${Date.now()}`);
+  }, `payment ${invoice.number}`);
   emitWorkspaceEvent(orgId, 'invoice.payment_recorded', { ...invoicePayload(invoice), amount: applied });
   if (invoice.status === 'paid') emitWorkspaceEvent(orgId, 'invoice.paid', invoicePayload(invoice));
   return populateInvoice(invoice._id);
@@ -664,6 +678,8 @@ async function unbilledWorkLogFilter(issueIds: mongoose.Types.ObjectId[], from: 
   return {
     issue: { $in: issueIds },
     date: { $gte: from, $lte: to },
+    // Non-billable time (internal work) never reaches an invoice.
+    billable: { $ne: false },
     $or: [{ invoiceId: null }, { invoiceId: { $exists: false } }],
   };
 }
@@ -857,4 +873,39 @@ export async function createInvoiceFromTime(
   }
 
   return populateInvoice(doc._id);
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** Email an invoice (PDF from the browser) and mark it sent; includes the online payment link when one exists. */
+export async function emailInvoice(
+  id: string,
+  workspaceId: string | null | undefined,
+  input: { toEmail?: string; message?: string; pdfBase64?: string; companyName?: string }
+) {
+  const orgId = requireWorkspaceId(workspaceId);
+  const orgOid = toOrgOid(orgId);
+  const inv = await BillingInvoice.findOne({ _id: id, taskflowOrganizationId: orgOid });
+  if (!inv) throw new ApiError(404, 'Invoice not found');
+  if (inv.status === 'void') throw new ApiError(400, 'Cannot send a void invoice');
+  const to = String(input.toEmail ?? '').trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new ApiError(400, 'A valid recipient email is required');
+  const outstanding = Math.round((inv.total - (inv.amountPaid ?? 0) - (inv.amountCredited ?? 0)) * 100) / 100;
+  const payLink = inv.paymentLink?.url;
+  const html = `<div style="font-family:Arial,sans-serif;font-size:14px">
+${input.message ? `<p style="white-space:pre-wrap">${escapeHtml(String(input.message).slice(0, 3000))}</p>` : '<p>Please find your invoice attached.</p>'}
+<p><strong>Invoice ${escapeHtml(inv.number)}</strong><br>Amount due: ${escapeHtml(inv.currency)} ${outstanding.toFixed(2)}${inv.dueDate ? `<br>Due: ${inv.dueDate.toDateString()}` : ''}</p>
+${payLink ? `<p><a href="${escapeHtml(payLink)}" style="display:inline-block;padding:10px 16px;background:#4f46e5;color:#fff;border-radius:6px;text-decoration:none">Pay online</a></p>` : ''}
+</div>`;
+  const pdf = input.pdfBase64?.replace(/^data:application\/pdf;base64,/, '').trim();
+  await sendCustomerEmail(
+    to,
+    `Invoice ${inv.number}${input.companyName ? ` from ${input.companyName}` : ''}`,
+    html,
+    pdf ? [{ filename: `invoice-${inv.number}.pdf`, content: pdf, contentType: 'application/pdf', encoding: 'base64' }] : undefined
+  );
+  if (inv.status === 'draft') return updateInvoice(id, orgId, { status: 'sent' });
+  return populateInvoice(inv._id);
 }

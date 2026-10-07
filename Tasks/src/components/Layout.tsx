@@ -76,6 +76,7 @@ const PROJECT_NAV_ITEMS: { to: string; label: string; icon: ReactNode; permissio
     permission: PROJECT_PERMISSIONS.TEST_MANAGEMENT.SUITE.READ,
   },
   { to: '/defect-metrics', label: 'Defect Metrics', icon: <TimesheetIcon />, permission: 'issue.issue.read' },
+  { to: '/governance', label: 'Risks & reports', icon: <VersionsIcon />, permission: 'project.risk.read' },
   { to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon />, permission: 'issue.issue.read' },
   {
     to: '/estimate-approvals',

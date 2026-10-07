@@ -3,6 +3,7 @@ import { REMINDER_JOBS, type ReminderJobName } from './reminders.service';
 /** How often each job runs. SLA needs to be tight; renewals can be lazy. */
 const INTERVALS_MS: Record<ReminderJobName, number> = {
   sla: 5 * 60 * 1000,
+  timesheets: 60 * 60 * 1000,
   crmFollowUps: 10 * 60 * 1000,
   issueDueDates: 15 * 60 * 1000,
   milestones: 60 * 60 * 1000,
@@ -10,6 +11,7 @@ const INTERVALS_MS: Record<ReminderJobName, number> = {
   renewals: 6 * 60 * 60 * 1000,
   subscriptionInvoices: 60 * 60 * 1000,
   overdueInvoices: 60 * 60 * 1000,
+  mailSync: (Number(process.env.MAIL_SYNC_INTERVAL_MINUTES) || 5) * 60 * 1000,
 };
 
 const lastRun = new Map<ReminderJobName, number>();

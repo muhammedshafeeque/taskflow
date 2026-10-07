@@ -6,6 +6,7 @@ import { useNotifications } from '../contexts/NotificationsContext';
 import { canAccessModule, canAny } from '../utils/moduleAccess';
 import { useAppDisplayName } from '../hooks/useAppDisplayName';
 import { BrandMark } from '../components/BrandMark';
+import { AnnouncementsWidget } from './core/CoreAdmin';
 import { HubModuleVisual } from '../components/HubModuleVisual';
 import {
   InboxIcon,
@@ -523,6 +524,10 @@ export default function Home() {
                 {dateLabel} · {timeLabel}
               </p>
             </div>
+          </div>
+
+          <div className="mb-5">
+            <AnnouncementsWidget />
           </div>
 
           {preview && previewDetail ? (

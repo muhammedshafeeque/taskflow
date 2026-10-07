@@ -14,6 +14,7 @@ import * as issuesService from '../issues/issues.service';
 import * as workLogsService from '../workLogs/workLogs.service';
 import { getProjectPermissionsForUser } from '../../middleware/requireProjectPermission';
 import { PROJECT_PERMISSIONS } from '../../shared/constants/permissions';
+import { selfServiceRouter } from './selfService.routes';
 
 /**
  * Compact, phone-friendly endpoints for the signed-in user (used by the mobile
@@ -148,5 +149,8 @@ router.get(
     res.json({ success: true, data: events });
   })
 );
+
+// Employee self-service (leave, attendance, payslips, expenses, assets, directory)
+router.use('/hr', selfServiceRouter);
 
 export const meRoutes = router;

@@ -104,6 +104,9 @@ function legacyLabelForDot(code: string): string | undefined {
 }
 
 export function permissionGroup(code: string): string {
+  if (code.startsWith('taskflow.self.')) return 'Self-service';
+  if (code.startsWith('taskflow.timesheet.')) return 'Timesheets';
+  if (code.startsWith('taskflow.monitor.')) return 'Monitor';
   if (code.startsWith('taskflow.crm.')) return 'CRM';
   if (code.startsWith('taskflow.hr.')) return 'HRMS';
   if (code.startsWith('taskflow.accounts.')) return 'Accounts';

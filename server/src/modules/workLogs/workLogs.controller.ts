@@ -24,12 +24,13 @@ function parseDateOrToday(raw?: string): Date {
 export async function createWorkLog(req: Request, res: Response): Promise<void> {
   const authorId = req.user?.id;
   if (!authorId) throw new ApiError(401, 'Unauthorized');
-  const { minutesSpent, date, description, laneId, overrunReason } = req.body as {
+  const { minutesSpent, date, description, laneId, overrunReason, billable } = req.body as {
     minutesSpent: number;
     date: string;
     description?: string;
     laneId?: string;
     overrunReason?: string;
+    billable?: boolean;
   };
   const doc = await workLogsService.create(
     req.params.issueId,
@@ -40,6 +41,7 @@ export async function createWorkLog(req: Request, res: Response): Promise<void> 
     {
       laneId,
       overrunReason,
+      billable,
       memberPermissions: (req as Request & { projectPermissions?: string[] }).projectPermissions,
       userGlobalPermissions: req.user?.permissions,
       activeOrganizationId: (req as Request & { activeOrganizationId?: string }).activeOrganizationId,
@@ -58,16 +60,19 @@ export async function getWorkLogs(req: Request, res: Response): Promise<void> {
 export async function updateWorkLog(req: Request, res: Response): Promise<void> {
   const authorId = req.user?.id;
   if (!authorId) throw new ApiError(401, 'Unauthorized');
-  const { minutesSpent, date, description } = req.body as {
+  const { minutesSpent, date, description, billable } = req.body as {
     minutesSpent?: number;
     date?: string;
     description?: string;
+    billable?: boolean;
   };
   const update: {
     minutesSpent?: number;
     date?: Date;
     description?: string;
+    billable?: boolean;
   } = {};
+  if (typeof billable === 'boolean') update.billable = billable;
   if (typeof minutesSpent === 'number') update.minutesSpent = minutesSpent;
   if (typeof date === 'string') update.date = parseDateOrToday(date);
   if (typeof description === 'string') update.description = description;

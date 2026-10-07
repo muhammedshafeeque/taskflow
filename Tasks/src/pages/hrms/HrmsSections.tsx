@@ -131,6 +131,7 @@ export function HrmsEmployees() {
             </Field>
             <Field label="Joined date"><TextInput type="date" value={(editing.joinedDate ?? '').slice(0, 10)} onChange={(e) => setEditing({ ...editing, joinedDate: e.target.value })} /></Field>
             <Field label="Annual CTC"><TextInput type="number" value={editing.annualCtc ?? 0} onChange={(e) => setEditing({ ...editing, annualCtc: Number(e.target.value) })} /></Field>
+            <Field label="Hourly cost (blank = from CTC)"><TextInput type="number" step="any" value={editing.hourlyCostRate ?? ''} onChange={(e) => setEditing({ ...editing, hourlyCostRate: e.target.value === '' ? null : Number(e.target.value) })} /></Field>
             <Field label="Leave balance (days)"><TextInput type="number" value={editing.leaveBalanceDays ?? 20} onChange={(e) => setEditing({ ...editing, leaveBalanceDays: Number(e.target.value) })} /></Field>
             <Field label="Location"><TextInput value={editing.location ?? ''} onChange={(e) => setEditing({ ...editing, location: e.target.value })} /></Field>
           </div>

@@ -1,3 +1,5 @@
+import * as twoFactor from './twoFactor.service';
+import { getPlatformSettings } from '../platformSettings/platformSettings.service';
 import { Request, Response } from 'express';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { validate } from '../../middleware/validate';
@@ -42,6 +44,10 @@ export async function login(req: Request, res: Response): Promise<void> {
     throw new ApiError(403, 'Email/password authentication is disabled. Use single sign-on.');
   }
   const result = await authService.login(req.body);
+  if ((result.user as { twoFactorRequired?: boolean }).twoFactorRequired) {
+    res.status(200).json({ success: true, data: result.user });
+    return;
+  }
   const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress;
   const userId = (result.user as { id?: string }).id ?? '';
   logAudit({
@@ -294,4 +300,36 @@ export const ideAuthApproveHandler = [
 export const ideAuthExchangeHandler = [
   validate(ideAuthExchangeSchema.shape.body, 'body'),
   asyncHandler(ideAuthExchange),
+];
+
+/** 2FA: exchange the challenge from /login plus an authenticator (or recovery) code for tokens. */
+export const twoFactorVerifyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { challengeToken, code } = (req.body ?? {}) as { challengeToken?: string; code?: string };
+  if (!challengeToken || !code) throw new ApiError(400, 'challengeToken and code are required');
+  const userId = await twoFactor.verifyChallenge(challengeToken, code);
+  const result = await authService.completeTaskflowLogin(userId);
+  logAudit({ userId, action: 'login', resourceType: 'auth', meta: { twoFactor: true } });
+  res.json({ success: true, data: result });
+});
+
+export const twoFactorSetupHandler = [
+  authMiddleware,
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await twoFactor.beginSetup(req.user!.id) });
+  }),
+];
+
+export const twoFactorConfirmHandler = [
+  authMiddleware,
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await twoFactor.confirmSetup(req.user!.id, String(req.body?.code ?? '')) });
+  }),
+];
+
+export const twoFactorDisableHandler = [
+  authMiddleware,
+  asyncHandler(async (req: Request, res: Response) => {
+    if ((await getPlatformSettings()).requireTwoFactor) throw new ApiError(403, 'Your organisation requires two-factor authentication');
+    res.json({ success: true, data: await twoFactor.disable(req.user!.id, String(req.body?.code ?? '')) });
+  }),
 ];

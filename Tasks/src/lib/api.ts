@@ -1,7 +1,8 @@
 import { monitorHttp, skipClientHttp } from './monitorClient';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-export const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:5000';
+// Same origin by default (works behind the bundled nginx); override with VITE_WS_URL.
+export const WS_URL = import.meta.env.VITE_WS_URL || (import.meta.env.DEV ? 'http://localhost:5000' : window.location.origin);
 
 /** Persisted active Atrium workspace; sent as `X-Organization-Id` on API requests. */
 export const TASKFLOW_ACTIVE_ORG_STORAGE_KEY = 'taskflow_active_organization_id';
@@ -139,6 +140,9 @@ export interface AuthUser {
   roleName?: string;
   permissions?: string[];
   mustChangePassword?: boolean;
+  twoFactorEnabled?: boolean;
+  /** Workspace requires 2FA and it isn't set up yet. */
+  mustSetupTwoFactor?: boolean;
   createdAt?: string;
   /** Active Atrium workspace (JWT + UI). */
   activeOrganizationId?: string;
@@ -165,7 +169,13 @@ export const authApi = {
   register: (name: string, email: string, password: string) =>
     api.post<AuthData>('/auth/register', { name, email, password }),
   login: (email: string, password: string) =>
-    api.post<AuthData>('/auth/login', { email, password }),
+    api.post<AuthData | { twoFactorRequired: true; challengeToken: string }>('/auth/login', { email, password }),
+  verifyTwoFactor: (challengeToken: string, code: string) => api.post<AuthData>('/auth/2fa/verify', { challengeToken, code }),
+  twoFactorSetup: (token: string) =>
+    api.post<{ secret: string; otpauthUrl: string; qrDataUrl: string }>('/auth/2fa/setup', {}, token),
+  twoFactorConfirm: (code: string, token: string) =>
+    api.post<{ enabled: boolean; recoveryCodes: string[] }>('/auth/2fa/confirm', { code }, token),
+  twoFactorDisable: (code: string, token: string) => api.post<{ enabled: boolean }>('/auth/2fa/disable', { code }, token),
 
   microsoftSso: (code: string, redirectUri?: string) =>
     api.post<AuthData>('/auth/sso/microsoft', { code, redirectUri }),
@@ -1773,7 +1783,7 @@ export const workLogsApi = {
   update: (
     issueId: string,
     workLogId: string,
-    body: Partial<{ minutesSpent: number; date: string; description?: string }>,
+    body: Partial<{ minutesSpent: number; date: string; description?: string; billable?: boolean }>,
     token: string
   ) => api.patch<WorkLog>(`/issues/${issueId}/work-logs/${workLogId}`, body, token),
   delete: (issueId: string, workLogId: string, token: string) =>
@@ -1790,6 +1800,8 @@ export interface TimesheetDetailItem {
   minutesSpent: number;
   date: string;
   description?: string;
+  billable?: boolean;
+  approvalStatus?: string;
   authorId: string;
   authorName: string;
   createdAt: string;
@@ -2920,6 +2932,8 @@ export interface HrmsEmployee {
   exitDate?: string;
   location?: string;
   annualCtc?: number;
+  /** Optional explicit cost per hour; otherwise derived from CTC and HR settings. */
+  hourlyCostRate?: number | null;
   currency: string;
   leaveBalanceDays: number;
   notes?: string;

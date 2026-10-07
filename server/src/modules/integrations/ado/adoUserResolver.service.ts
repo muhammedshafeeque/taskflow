@@ -1,3 +1,4 @@
+import { defaultRoleAssignment } from '../../platformSettings/platformSettings.service';
 import mongoose from 'mongoose';
 import { User } from '../../auth/user.model';
 import { Role } from '../../roles/role.model';
@@ -6,12 +7,10 @@ import { resolveEffectiveGlobalPermissions } from '../../auth/effectivePermissio
 import { parseIdentityDisplayName, parseIdentityEmail } from './adoClient.service';
 import * as projectInvitationsService from '../../projects/projectInvitations.service';
 
+/** Configured default role (Core → Preferences); no role name is assumed. */
 async function defaultRoleId(): Promise<mongoose.Types.ObjectId | undefined> {
-  const role =
-    (await Role.findOne({ code: 'developer' }).select('_id').lean()) ||
-    (await Role.findOne({ code: 'viewer' }).select('_id').lean()) ||
-    (await Role.findOne({ name: 'Developer' }).select('_id').lean());
-  return role?._id as mongoose.Types.ObjectId | undefined;
+  const { roleId } = await defaultRoleAssignment();
+  return roleId ?? undefined;
 }
 
 function nameFromEmail(email: string): string {

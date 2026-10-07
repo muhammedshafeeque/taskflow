@@ -7,6 +7,7 @@ import {
   pushAgentCall,
 } from '../../Ai/models';
 import { extractJsonObject } from '../types';
+import { brandName } from '../../Config/brand';
 
 const TICKET_CLAIM =
   /\b([A-Z][A-Z0-9]+-\d+|ticket\s*#?\s*\w+|issue\s*#?\s*\w+)\b/i;
@@ -119,7 +120,7 @@ export async function runReplyCritic(input: {
       messages: [
         {
           role: 'system',
-          content: `You are a reply critic for Ivorix WhatsApp support.
+          content: `You are a reply critic for ${brandName()} WhatsApp support.
 Reply ONLY JSON: {"ok":true,"issues":[],"revisedReply":""}
 Rules:
 - ok=false if reply invents ticket IDs not in knownTicketKeys, invents fixes/ETAs, is empty, or is off-policy (slang/emoji/internal jargon).

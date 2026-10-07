@@ -1,3 +1,4 @@
+import { autoPost, postExpense, postExpensePayment } from '../ledger/ledger.service';
 import { ApiError } from '../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { BillingInvoice } from '../billing/models/billingInvoice.model';
@@ -57,6 +58,8 @@ export async function createExpense(workspaceId: string | null | undefined, inpu
       expenseDate: asDate(input.expenseDate) ?? new Date(),
       submittedBy: userId,
       notes: input.notes,
+      receiptUrls: Array.isArray(input.receiptUrls) ? input.receiptUrls.map(String).filter((u) => u.startsWith('/api/uploads/') || /^https:\/\//.test(u)).slice(0, 10) : [],
+      reimbursable: Boolean(input.reimbursable),
     });
     return doc.toObject();
   } catch (err) {
@@ -80,6 +83,8 @@ export async function updateExpense(id: string, workspaceId: string | null | und
     if (exp.status === 'paid' && !exp.paidDate) exp.paidDate = new Date();
   }
   await exp.save();
+  if (exp.status === 'approved' || exp.status === 'paid') autoPost(() => postExpense(orgId, String(exp._id)), `expense ${exp.reference}`);
+  if (exp.status === 'paid') autoPost(() => postExpensePayment(orgId, String(exp._id)), `expense payment ${exp.reference}`);
   return exp.toObject();
 }
 

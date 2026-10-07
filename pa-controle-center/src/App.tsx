@@ -9,6 +9,7 @@ import { LeadsPage } from './pages/LeadsPage'
 import { RequestsPage } from './pages/RequestsPage'
 import { SupportPage } from './pages/SupportPage'
 import { UnlockPage } from './pages/UnlockPage'
+import { BrandPage } from './pages/BrandPage'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/requests" element={<RequestsPage />} />
           <Route path="/leads" element={<LeadsPage />} />
           <Route path="/atrium" element={<AtriumPage />} />
+          <Route path="/brand" element={<BrandPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

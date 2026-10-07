@@ -18,6 +18,7 @@ export type BotSettingsDoc = {
   voiceRepliesEnabled: boolean;
   sttLanguage: SttLanguage;
   quietHours?: QuietHours;
+  brand?: Partial<import('../Config/brand').BrandProfile>;
   updatedAt?: Date;
 };
 
@@ -30,6 +31,7 @@ const botSettingsSchema = new mongoose.Schema({
     enum: ['ml', 'en', 'auto'],
     default: 'ml',
   },
+  brand: { type: mongoose.Schema.Types.Mixed, default: undefined },
   quietHours: {
     enabled: { type: Boolean, default: false },
     start: { type: String, default: '22:00' },

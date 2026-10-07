@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { portalApi, type LinkedServiceTicket } from '../../lib/api';
+import { api, portalApi, type LinkedServiceTicket } from '../../lib/api';
+import { Stars } from '../PublicPages';
 import { FiArrowLeft, FiSend } from 'react-icons/fi';
 
 export default function PortalTicketDetail() {
@@ -11,6 +12,16 @@ export default function PortalTicketDetail() {
   const [error, setError] = useState('');
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
+  const [rated, setRated] = useState(false);
+
+  async function rate() {
+    if (!token || !id || !rating) return;
+    const r = await api.post(`/customer/tickets/${id}/csat`, { score: rating, comment: ratingComment || undefined }, token);
+    if (r.success) setRated(true);
+    else setError(r.message ?? 'Could not save rating');
+  }
 
   function load() {
     if (!token || !id) return;
@@ -60,6 +71,30 @@ export default function PortalTicketDetail() {
           </div>
           {ticket.description && (
             <p className="mt-4 text-sm whitespace-pre-wrap text-[color:var(--text-muted)]">{ticket.description}</p>
+          )}
+          {(ticket.status === 'resolved' || ticket.status === 'closed') && (
+            <div className="mt-6 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-4 space-y-2">
+              {(ticket as { csatScore?: number }).csatScore || rated ? (
+                <div className="flex items-center gap-3 text-sm">
+                  <Stars value={rated ? rating : Number((ticket as { csatScore?: number }).csatScore)} size="text-xl" /> Thanks for your feedback.
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm font-medium">How satisfied are you with how we handled this?</p>
+                  <Stars value={rating} onPick={setRating} />
+                  <textarea
+                    rows={2}
+                    value={ratingComment}
+                    onChange={(e) => setRatingComment(e.target.value)}
+                    placeholder="Comment (optional)"
+                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
+                  />
+                  <button type="button" onClick={rate} disabled={!rating} className="btn-primary px-4 py-2 rounded-lg text-sm disabled:opacity-50">
+                    Submit rating
+                  </button>
+                </>
+              )}
+            </div>
           )}
           <h2 className="mt-8 text-sm font-semibold">Public thread</h2>
           <p className="text-xs text-[color:var(--text-muted)] mt-1">Your comments are visible to the support team. Internal staff notes are not shown here.</p>

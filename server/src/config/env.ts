@@ -36,9 +36,7 @@ export const env = {
   sendgridFromEmail: cleanEnvValue(process.env.SENDGRID_FROM_EMAIL),
   isBytemailEnabled: bool(process.env.IS_BYTEMAIL_ENABLED),
   bytemailApiKey: cleanEnvValue(process.env.BYTEMAIL_API_KEY),
-  bytemailApiUrl:
-    cleanEnvValue(process.env.BYTEMAIL_API_URL) ||
-    'https://bytemail.repod.online/api/v1/mail/send',
+  bytemailApiUrl: cleanEnvValue(process.env.BYTEMAIL_API_URL),
   bytemailFromEmail: cleanEnvValue(process.env.BYTEMAIL_FROM_EMAIL),
   vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? '',
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? '',
@@ -180,9 +178,8 @@ export const env = {
   mistralApiKey: cleanEnvValue(process.env.MISTRAL_API_KEY),
   mistralModel: cleanEnvValue(process.env.MISTRAL_MODEL),
 
-  monitorBaseUrl: (
-    cleanEnvValue(process.env.MONITOR_BASE_URL) || 'https://taskflow.repod.online/api'
-  ).replace(/\/+$/, ''),
+  // Self-telemetry is off unless both MONITOR_BASE_URL and MONITOR_KEY are set.
+  monitorBaseUrl: (cleanEnvValue(process.env.MONITOR_BASE_URL) || '').replace(/\/+$/, ''),
   monitorKey: cleanEnvValue(process.env.MONITOR_KEY),
   monitorRelease: cleanEnvValue(process.env.MONITOR_RELEASE) || '1.0.1',
 

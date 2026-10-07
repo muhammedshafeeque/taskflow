@@ -1,3 +1,5 @@
+import { notifyIssuePeople, notifyProjectMembers } from '../notifications/domainNotify';
+import { claimReminder } from '../reminders/reminderLog.model';
 import mongoose from 'mongoose';
 import { TestPlan } from './testPlan.model';
 import { TestCycle } from './testCycle.model';
@@ -217,8 +219,40 @@ export async function updateRunStatus(
     { new: true, upsert: true }
   )
     .populate('assignee', 'name email')
-    .populate('testCase', 'title steps expectedResult')
+    .populate('testCase', 'title steps expectedResult linkedIssueId')
     .lean();
 
+  void notifyQaOutcome(projectId, plan, cycle, testCaseIds.length, input.status, doc, userId);
   return doc;
+}
+
+/** QA notifications: a failed test pings the linked issue (or the plan's project); a finished cycle tells the project once. */
+async function notifyQaOutcome(
+  projectId: string,
+  plan: { _id: unknown; name?: string },
+  cycle: { _id: unknown; name?: string },
+  totalCases: number,
+  status: string,
+  run: unknown,
+  userId: string
+) {
+  try {
+    const tc = (run as { testCase?: { title?: string; linkedIssueId?: unknown } } | null)?.testCase;
+    if (status === 'failed') {
+      const payload = { title: `Test failed: ${tc?.title ?? 'test case'}`, body: `${plan.name ?? 'Plan'} · ${cycle.name ?? 'cycle'}`, link: `/projects/${projectId}/test-plans` };
+      if (tc?.linkedIssueId) notifyIssuePeople(String(tc.linkedIssueId), 'qa_test_failed', payload, userId);
+      else notifyProjectMembers(projectId, 'qa_test_failed', payload, userId);
+    }
+    const done = await TestRun.countDocuments({ testCycle: cycle._id, status: { $ne: 'pending' } });
+    if (totalCases > 0 && done >= totalCases && (await claimReminder('qa_cycle_completed', String(cycle._id)))) {
+      const failed = await TestRun.countDocuments({ testCycle: cycle._id, status: 'failed' });
+      notifyProjectMembers(projectId, 'qa_cycle_completed', {
+        title: `Test cycle complete: ${cycle.name ?? ''}`,
+        body: `${totalCases} tests · ${failed} failed`,
+        link: `/projects/${projectId}/test-plans`,
+      });
+    }
+  } catch (err) {
+    console.error('[qa] notify failed', err);
+  }
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { CrmEmailPanel } from './CrmSalesTools';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import { crmApi, projectsApi, type CrmContract, type CrmQuote, type Project } from '../../lib/api';
@@ -336,6 +337,11 @@ export default function CrmAccountDetail() {
           </ul>
         </section>
       </div>
+      {id && (
+        <div className="mt-6">
+          <CrmEmailPanel relatedType="account" relatedId={id} />
+        </div>
+      )}
     </div>
   );
 }

@@ -88,7 +88,7 @@ export default function UnlockScreen() {
                 keyboardType="url"
                 value={baseUrl}
                 onChangeText={setBaseUrl}
-                placeholder="https://pa.repod.online"
+                placeholder="https://pa.example.com"
               />
             ) : (
               <Pressable onPress={() => setAdvanced(true)}>

@@ -1,4 +1,4 @@
-# Ivorix WhatsApp PA
+# WhatsApp PA
 
 ## Project support groups
 

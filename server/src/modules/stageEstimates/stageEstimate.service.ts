@@ -105,7 +105,7 @@ async function notifyApprovers(projectId: string, issueId: string, issueKey: str
         eventKey: 'approval_requested',
         title: `Estimate approval: ${issueKey}`,
         body: `Lane "${laneId}" estimate submitted for approval`,
-        link: appUrl(`/issues/${issueId}`),
+        link: appUrl(`/projects/${projectId}/issues/${encodeURIComponent(issueKey)}`),
         metadata: { issueId, projectId, laneId },
       }).catch(() => {});
     }
@@ -140,7 +140,7 @@ export async function approveStageEstimate(
   if (force && note) est.forceApproveNote = note;
   await est.save();
 
-  const issue = await Issue.findById(issueId).select('key').lean();
+  const issue = await Issue.findById(issueId).select('key project').lean();
   await issueHistoryService.recordFieldChanges(issueId, userId, [
     { field: 'stageEstimate', fromValue: 'pending', toValue: `approved:${est.laneId}:${est.minutes}m` },
   ]);
@@ -152,7 +152,7 @@ export async function approveStageEstimate(
       eventKey: 'approval_decided',
       title: `Estimate approved: ${issue?.key ?? issueId}`,
       body: `Lane "${est.laneId}" approved (${est.minutes}m)`,
-      link: appUrl(`/issues/${issueId}`),
+      link: appUrl(`/projects/${issue?.project}/issues/${encodeURIComponent(issue?.key ?? issueId)}`),
       metadata: { issueId, laneId: est.laneId, decision: 'approved' },
     }).catch(() => {});
   } catch {

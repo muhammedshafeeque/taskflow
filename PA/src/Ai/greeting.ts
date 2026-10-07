@@ -1,9 +1,13 @@
 import type { ReplyLang } from '../Media/lang';
+import { brand, brandName, fillBrand } from '../Config/brand';
 
 /** Fixed first-contact greeting — no LLM. */
 export function greetingIntro(lang: ReplyLang): string {
+  const b = brand();
   if (lang === 'ml') {
-    return 'ഹായ്, ഇത് ഐവോറിക്സ് ഹെൽപ്പ് ഡെസ്ക് ആണ്. ഇന്ന് ഞങ്ങൾക്ക് നിങ്ങളെ എങ്ങനെ സഹായിക്കാം? വെബ്സൈറ്റുകൾ, മൊബൈൽ ആപ്പുകൾ, കസ്റ്റം സോഫ്റ്റ്‌വെയർ തുടങ്ങിയ ഡിജിറ്റൽ സൊല്യൂഷനുകൾ ഞങ്ങൾ നൽകുന്നു.';
+    if (b.greetingMl) return fillBrand(b.greetingMl, 'ml');
+    return `ഹായ്, ഇത് ${brandName('ml')} ഹെൽപ്പ് ഡെസ്ക് ആണ്. ഇന്ന് ഞങ്ങൾക്ക് നിങ്ങളെ എങ്ങനെ സഹായിക്കാം?`;
   }
-  return 'Hi, this is Ivorix Help Desk. How can I help you today? We provide digital solutions like websites, mobile apps, and custom software.';
+  if (b.greetingEn) return fillBrand(b.greetingEn, 'en');
+  return `Hi, this is ${brandName('en')} Help Desk. How can I help you today?${b.servicesSummary ? ` We provide ${b.servicesSummary}.` : ''}`;
 }

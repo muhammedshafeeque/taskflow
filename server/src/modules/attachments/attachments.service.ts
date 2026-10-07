@@ -1,3 +1,4 @@
+import { notifyIssuePeople } from '../notifications/domainNotify';
 import mongoose from 'mongoose';
 import { Attachment } from './attachment.model';
 import { Issue } from '../issues/issue.model';
@@ -38,6 +39,7 @@ export async function create(
     size: data.size,
     uploadedBy: userId,
   });
+  notifyIssuePeople(issueId, 'task_attachment_added', { title: 'Attachment added', body: data.originalName }, userId);
   const populated = await Attachment.findById(doc._id)
     .populate('uploadedBy', 'name')
     .lean();

@@ -20,6 +20,11 @@ export function TaskflowAuthGuard() {
 
   if (user?.userType === 'customer') return <Navigate to="/portal" replace />;
 
+  // Workspace policy requires 2FA: send the user to set it up first.
+  if (user?.mustSetupTwoFactor && location.pathname !== '/profile') {
+    return <Navigate to="/profile?setup2fa=1" replace />;
+  }
+
   return <Outlet />;
 }
 

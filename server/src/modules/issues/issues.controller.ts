@@ -1,3 +1,4 @@
+import { notifyIssuePeople } from '../notifications/domainNotify';
 import { Request, Response } from 'express';
 import type { AuthPayload } from '../../types/express';
 import { asyncHandler } from '../../utils/asyncHandler';
@@ -259,6 +260,8 @@ export async function addIssueLink(req: Request & { user?: AuthPayload }, res: R
   if (!userId) throw new ApiError(401, 'Unauthorized');
   const { targetIssueId, linkType } = req.body as { targetIssueId: string; linkType: string };
   const doc = await issueLinksService.create(req.params.id, targetIssueId, linkType as import('./issueLink.model').IssueLinkType, userId);
+  notifyIssuePeople(req.params.id, 'task_linked', { title: 'Issue linked', body: String(linkType).replace(/_/g, ' ') }, userId);
+  notifyIssuePeople(targetIssueId, 'task_linked', { title: 'Issue linked', body: String(linkType).replace(/_/g, ' ') }, userId);
   res.status(201).json({ success: true, data: doc });
 }
 

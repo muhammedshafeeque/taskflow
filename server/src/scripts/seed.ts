@@ -371,8 +371,14 @@ async function main() {
   const json = await seedCurrencies();
   const xlsxRows = await seedCountries();
   await linkCountriesAndCurrencies(json, xlsxRows);
-  await seedTaskflowRoles();
-  await seedOrgCustomerRoles();
+  // Roles are company data: create them in Auth → Roles. Starter templates are opt-in.
+  const withTemplates = process.argv.includes('--role-templates') || process.env.SEED_ROLE_TEMPLATES === 'true';
+  if (withTemplates) {
+    await seedTaskflowRoles();
+    await seedOrgCustomerRoles();
+  } else {
+    console.log('Skipping role templates (run with --role-templates to add starter roles).');
+  }
   await disconnectDb();
 }
 

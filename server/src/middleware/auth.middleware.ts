@@ -1,3 +1,4 @@
+import { getPlatformSettings } from '../modules/platformSettings/platformSettings.service';
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
@@ -180,5 +181,13 @@ async function authenticateStaffUser(req: Request, userId: string, tokenOrgId?: 
       if (m?.organization) activeOrganizationId = String(m.organization);
     }
     req.activeOrganizationId = activeOrganizationId;
+
+    // Workspace policy: no 2FA yet → only the auth endpoints (to set it up) are allowed.
+    if (!(user as { twoFactorEnabled?: boolean }).twoFactorEnabled && !req.originalUrl.startsWith('/api/auth/')) {
+      const { requireTwoFactor } = await getPlatformSettings();
+      if (requireTwoFactor) {
+        return new ApiError(403, 'Two-factor authentication must be set up before continuing', { code: 'TWO_FACTOR_SETUP_REQUIRED' });
+      }
+    }
     return null;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { serviceApi, usersApi, type ServiceTicket, type User } from '../../lib/api';
+import { api, serviceApi, type ServiceTicket, type User } from '../../lib/api';
 import { StatusPill } from '../../components/moduleKit';
 import { TicketReplySuggest } from '../../components/ai/AiPanels';
 
@@ -157,7 +157,7 @@ export default function ServiceDesk() {
                 <button type="button" onClick={() => updateStatus(t._id, 'resolved')} className="text-xs text-emerald-400">Resolve</button>
               )}
               {t.status === 'resolved' && (
-                <button type="button" onClick={() => serviceApi.submitCsat(t._id, 5, undefined, token!)} className="text-xs text-amber-400">Close + CSAT</button>
+                <button type="button" onClick={() => updateStatus(t._id, 'closed')} className="text-xs text-amber-400" title="Closing sends the satisfaction survey if CSAT is enabled in Service settings">Close</button>
               )}
             </div>
           </div>
@@ -172,19 +172,35 @@ export default function ServiceDesk() {
           id={selectedId}
           onClose={() => setSelectedId(null)}
           onChanged={load}
+          others={tickets.filter((x) => x._id !== selectedId && x.status !== 'closed')}
         />
       )}
     </div>
   );
 }
 
-function TicketDetail({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
+function TicketDetail({ id, onClose, onChanged, others }: { id: string; onClose: () => void; onChanged: () => void; others: ServiceTicket[] }) {
   const { token } = useAuth();
   const [ticket, setTicket] = useState<ServiceTicket | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [comment, setComment] = useState('');
   const [internal, setInternal] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [savedReplies, setSavedReplies] = useState<{ _id: string; title: string; body: string }[]>([]);
+  const [mergeInto, setMergeInto] = useState('');
+
+  useEffect(() => {
+    if (!token) return;
+    api.get<{ _id: string; title: string; body: string }[]>('/service/saved-replies', token).then((r) => setSavedReplies(Array.isArray(r.data) ? r.data : []));
+  }, [token]);
+
+  const merge = async () => {
+    if (!token || !mergeInto || !confirm('Merge this ticket into the selected one? This ticket will be closed.')) return;
+    const r = await api.post(`/service/tickets/${id}/merge`, { intoId: mergeInto }, token);
+    if (!r.success) return alert(r.message);
+    onChanged();
+    onClose();
+  };
 
   const reload = () => {
     if (!token) return;
@@ -194,8 +210,9 @@ function TicketDetail({ id, onClose, onChanged }: { id: string; onClose: () => v
 
   useEffect(() => {
     if (!token) return;
-    usersApi.list(1, 200, token).then((res) => {
-      if (res.success && res.data) setUsers((res.data as { data?: User[] }).data ?? []);
+    // Workspace members (no user-admin permission needed to assign tickets).
+    api.get<User[]>('/core/people', token).then((res) => {
+      if (res.success && Array.isArray(res.data)) setUsers(res.data);
     });
   }, [token]);
 
@@ -237,6 +254,17 @@ function TicketDetail({ id, onClose, onChanged }: { id: string; onClose: () => v
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">Fix</span>
               )}
               <span className="text-[11px] text-[color:var(--text-muted)]">{ticket.queue}</span>
+              {others.length > 0 && ticket.status !== 'closed' && (
+                <span className="ml-auto flex items-center gap-1 text-[11px]">
+                  <select value={mergeInto} onChange={(e) => setMergeInto(e.target.value)} className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-1 py-0.5 max-w-[12rem]">
+                    <option value="">Merge into…</option>
+                    {others.map((o) => (
+                      <option key={o._id} value={o._id}>{o.subject}</option>
+                    ))}
+                  </select>
+                  {mergeInto && <button type="button" onClick={merge} className="text-[color:var(--accent)]">Merge</button>}
+                </span>
+              )}
             </div>
             {ticket.description && <p className="mt-3 text-sm text-[color:var(--text-muted)] whitespace-pre-wrap">{ticket.description}</p>}
 
@@ -356,6 +384,21 @@ function TicketDetail({ id, onClose, onChanged }: { id: string; onClose: () => v
                   <div className="mb-2">
                     <TicketReplySuggest key={id} ticketId={id} token={token} onUse={(text) => { setInternal(false); setComment(text); }} />
                   </div>
+                )}
+                {savedReplies.length > 0 && (
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const r = savedReplies.find((x) => x._id === e.target.value);
+                      if (r) setComment((c) => (c ? `${c}\n\n${r.body}` : r.body));
+                    }}
+                    className="mb-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-2 py-1 text-xs"
+                  >
+                    <option value="">Insert saved reply…</option>
+                    {savedReplies.map((r) => (
+                      <option key={r._id} value={r._id}>{r.title}</option>
+                    ))}
+                  </select>
                 )}
                 <textarea
                   className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"

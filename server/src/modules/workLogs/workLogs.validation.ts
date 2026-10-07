@@ -7,6 +7,7 @@ export const createWorkLogSchema = z.object({
     description: z.string().max(2000).optional(),
     laneId: z.string().max(64).optional(),
     overrunReason: z.string().max(2000).optional(),
+    billable: z.boolean().optional(),
   }),
   params: z.object({
     issueId: z.string().min(1),
@@ -18,6 +19,7 @@ export const updateWorkLogSchema = z.object({
     minutesSpent: z.number().int().positive().optional(),
     date: z.string().min(1).optional(),
     description: z.string().max(2000).optional(),
+    billable: z.boolean().optional(),
   }),
   params: z.object({
     issueId: z.string().min(1),

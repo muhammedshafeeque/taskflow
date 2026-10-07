@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useState } from 'react';
+import TimesheetSubmissions from '../components/TimesheetSubmissions';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { EditIcon } from '../components/icons/NavigationIcons';
@@ -59,6 +60,7 @@ function TimesheetDetailsModal({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editMinutes, setEditMinutes] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editBillable, setEditBillable] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -76,6 +78,7 @@ function TimesheetDetailsModal({
   const canEdit = currentUserId === userId;
 
   function startEdit(item: TimesheetDetailItem) {
+    setEditBillable(item.billable !== false);
     setEditingId(item._id);
     setEditMinutes(formatMinutes(item.minutesSpent));
     setEditDescription(item.description ?? '');
@@ -95,7 +98,7 @@ function TimesheetDetailsModal({
     const res = await workLogsApi.update(
       item.issueId,
       editingId,
-      { minutesSpent: minutes, description: editDescription.trim() || undefined },
+      { minutesSpent: minutes, description: editDescription.trim() || undefined, billable: editBillable },
       token
     );
     setSaving(false);
@@ -107,6 +110,7 @@ function TimesheetDetailsModal({
                 ...i,
                 minutesSpent: minutes,
                 description: editDescription.trim() || undefined,
+                billable: editBillable,
               }
             : i
         )
@@ -175,6 +179,9 @@ function TimesheetDetailsModal({
                         rows={2}
                         className="w-full px-2 py-1.5 rounded text-xs bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] resize-none"
                       />
+                      <label className="flex items-center gap-1.5 text-[11px] text-[color:var(--text-muted)]">
+                        <input type="checkbox" checked={editBillable} onChange={(e) => setEditBillable(e.target.checked)} /> Billable
+                      </label>
                       <div className="flex gap-2">
                         <button
                           type="button"
@@ -217,7 +224,11 @@ function TimesheetDetailsModal({
                           {item.description}
                         </p>
                       )}
-                      {canEdit && (
+                      <div className="mt-1 flex gap-1.5 text-[10px]">
+                        {item.billable === false && <span className="rounded bg-slate-500/15 px-1.5 py-0.5">non-billable</span>}
+                        {item.approvalStatus && item.approvalStatus !== 'draft' && <span className="rounded bg-[color:var(--accent)]/15 px-1.5 py-0.5">{item.approvalStatus}</span>}
+                      </div>
+                      {canEdit && (item.approvalStatus === 'draft' || item.approvalStatus === 'rejected' || !item.approvalStatus) && (
                         <button
                           type="button"
                           onClick={() => startEdit(item)}
@@ -311,6 +322,7 @@ export default function Timesheet() {
 
   return (
     <div className="p-6 space-y-6">
+      {!projectId && <TimesheetSubmissions />}
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-[color:var(--text-primary)]">Timesheet</h1>

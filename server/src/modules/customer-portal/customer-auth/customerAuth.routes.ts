@@ -1,3 +1,4 @@
+import { authLimiter } from '../../../middleware/rateLimit';
 import { Router } from 'express';
 import { customerAuthMiddleware } from '../middleware/customerAuth.middleware';
 import * as customerAuthController from './customerAuth.controller';
@@ -5,8 +6,8 @@ import * as customerAuthController from './customerAuth.controller';
 const router = Router();
 
 // Public routes
-router.post('/forgot-password', ...customerAuthController.forgotPassword);
-router.post('/reset-password', ...customerAuthController.resetPassword);
+router.post('/forgot-password', authLimiter, ...customerAuthController.forgotPassword);
+router.post('/reset-password', authLimiter, ...customerAuthController.resetPassword);
 
 // Protected routes
 router.get('/me', customerAuthMiddleware, ...customerAuthController.getMe);

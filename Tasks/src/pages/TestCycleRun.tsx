@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
+  api,
   testPlansApi,
   projectsApi,
   type CycleRunItem,
@@ -91,7 +92,28 @@ export default function TestCycleRunPage() {
             Run cycle {project ? `· ${project.name}` : ''}
           </h1>
         </div>
-        <div className="flex gap-4 text-sm">
+        <div className="flex gap-4 text-sm items-center">
+          <label className="cursor-pointer text-xs text-[color:var(--accent)] hover:underline" title="Import results from a CI JUnit XML report (Jest, pytest, JUnit, Playwright, Cypress…)">
+            Import JUnit XML
+            <input
+              type="file"
+              accept=".xml,application/xml,text/xml"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file || !token || !projectId || !planId || !cycleId) return;
+                const r = await api.post<{ total: number; pass: number; fail: number; skip: number; created: number }>(
+                  `/projects/${projectId}/test-plans/${planId}/cycles/${cycleId}/junit`,
+                  { xml: await file.text() },
+                  token
+                );
+                e.target.value = '';
+                if (!r.success || !r.data) return alert(r.message);
+                alert(`Imported ${r.data.total} results: ${r.data.pass} pass, ${r.data.fail} fail, ${r.data.skip} skipped (${r.data.created} new cases).`);
+                window.location.reload();
+              }}
+            />
+          </label>
           <span className="text-green-600">Pass: {passCount}</span>
           <span className="text-red-600">Fail: {failCount}</span>
           <span className="text-[color:var(--text-muted)]">Pending: {pendingCount}</span>

@@ -11,6 +11,7 @@ import { notifyUser } from '../notifications/notificationDispatch.service';
 import { emitWorkspaceEvent } from '../webhooks/workspaceEvents';
 import { emailTicketReply } from './emailInbound';
 import { notifyWhatsappReply, notifyWhatsappStatus } from './whatsappTicketUpdates';
+import { finalizeNewTicket, recomputeSla, sendCsatRequest } from './desk.service';
 
 function applySlaTargets(
   ticket: { priority: string; firstResponseDueAt?: Date; resolutionDueAt?: Date },
@@ -115,6 +116,7 @@ export async function createTicket(
       link: `/service/tickets`,
     }).catch(() => undefined);
   }
+  await finalizeNewTicket(String(doc._id));
   emitWorkspaceEvent(orgId, 'ticket.created', {
     ticketId: String(doc._id),
     subject: doc.subject,
@@ -174,6 +176,10 @@ export async function updateTicket(id: string, workspaceId: string | null | unde
   }
 
   emitWorkspaceEvent(orgId, 'ticket.updated', { ticketId: id, changes: Object.keys($set), status: $set.status ?? existing.status });
+  if ($set.priority && $set.priority !== existing.priority) void recomputeSla(id).catch(() => undefined);
+  if (($set.status === 'resolved' || $set.status === 'closed') && existing.status !== 'resolved' && existing.status !== 'closed') {
+    void sendCsatRequest(id).catch(() => undefined);
+  }
   if (typeof $set.status === 'string' && $set.status !== existing.status) {
     notifyWhatsappStatus(existing, $set.status).catch((err) => console.error('[whatsapp] status update failed', err));
   }
@@ -311,6 +317,7 @@ export async function createTicketFromCustomerRequest(
       },
     });
   }
+  await finalizeNewTicket(String(doc._id));
   return doc.toObject();
 }
 
@@ -393,30 +400,6 @@ export async function getServiceDashboard(workspaceId: string | null | undefined
     trend,
     breachingSoon,
   };
-}
-
-export async function checkSlaBreaches(workspaceId: string): Promise<number> {
-  const now = new Date();
-  const breached = await ServiceTicket.find({
-    taskflowOrganizationId: toOrgOid(workspaceId),
-    status: { $in: ['open', 'pending', 'in_progress'] },
-    $or: [
-      { firstResponseDueAt: { $lt: now }, firstRespondedAt: { $exists: false } },
-      { resolutionDueAt: { $lt: now }, resolvedAt: { $exists: false } },
-    ],
-  }).lean();
-  for (const t of breached) {
-    if (t.assigneeId) {
-      await notifyUser({
-        userId: String(t.assigneeId),
-        eventKey: 'system_alert',
-        title: 'SLA breach',
-        body: t.subject,
-        link: `/service/tickets`,
-      }).catch(() => undefined);
-    }
-  }
-  return breached.length;
 }
 
 /** Customer satisfaction over a window: average, distribution, per agent, and recent comments. */

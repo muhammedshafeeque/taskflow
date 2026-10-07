@@ -38,6 +38,11 @@ export interface IUser extends Document {
   providerEmail?: string | null;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
+  /** Encrypted TOTP secret; present once 2FA is enabled (or being set up). */
+  twoFactorSecret?: string | null;
+  twoFactorEnabled?: boolean;
+  /** SHA-256 hashes of unused one-time recovery codes. */
+  twoFactorRecoveryHashes?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -51,6 +56,9 @@ const userSchema = new Schema<IUser>(
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
     roleId: { type: Schema.Types.ObjectId, ref: 'Role', default: null },
     enabled: { type: Boolean, default: true },
+    twoFactorSecret: { type: String, default: null, select: false },
+    twoFactorEnabled: { type: Boolean, default: false },
+    twoFactorRecoveryHashes: { type: [String], default: undefined, select: false },
     mustChangePassword: { type: Boolean, default: true },
     permissionOverrides: {
       type: {

@@ -1,4 +1,4 @@
-# Ivorix PA Control Center
+# PA Control Center
 
 Manual ops UI for the WhatsApp PA bot (`../PA`), with embedded Atrium.
 

@@ -19,6 +19,8 @@ export interface IHrmsEmployee extends Document {
   exitDate?: Date;
   location?: string;
   annualCtc?: number;
+  /** Optional explicit cost per hour; otherwise derived from CTC. */
+  hourlyCostRate?: number;
   currency: string;
     leaveBalanceDays: number;
   /** Digits-only WhatsApp phone for PA bot HR matching */
@@ -46,6 +48,7 @@ const hrmsEmployeeSchema = new Schema<IHrmsEmployee>(
     exitDate: { type: Date },
     location: { type: String },
     annualCtc: { type: Number, default: 0 },
+    hourlyCostRate: { type: Number },
     currency: { type: String, default: 'USD' },
     leaveBalanceDays: { type: Number, default: 20 },
     notes: { type: String },

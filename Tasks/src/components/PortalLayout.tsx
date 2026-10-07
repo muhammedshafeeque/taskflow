@@ -60,6 +60,7 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
     { to: '/portal/requests/new', label: 'New issue', icon: <FiPlusCircle /> },
     { to: '/portal/tickets', label: 'Tickets', icon: <FiLifeBuoy /> },
     { to: '/portal/projects', label: 'Projects', icon: <FiFolder /> },
+    { to: '/portal/status-reports', label: 'Status reports', icon: <FiList /> },
   ];
 
   if (userHasPermission(perms, CUSTOMER_PERMISSIONS.LEGACY.REQUEST.APPROVE)) {

@@ -1,5 +1,6 @@
 import { getGroq } from '../Config/groq';
 import type { ConversationDoc } from '../Models/Conversation';
+import { brand, brandName } from '../Config/brand';
 
 const DEFAULT_CHAT_MODEL = 'qwen/qwen3.8-27b';
 
@@ -80,7 +81,7 @@ export async function assessLeadReady(
       messages: [
         {
           role: 'system',
-          content: `You qualify WhatsApp project leads for Ivorix (software agency).
+          content: `You qualify WhatsApp project leads for ${brandName()} (${brand().businessDescription}).
 Return JSON only:
 {
   "ready": boolean,
@@ -163,7 +164,7 @@ export async function assessLeadUpdate(
       messages: [
         {
           role: 'system',
-          content: `You maintain an existing Ivorix CRM lead from WhatsApp chat.
+          content: `You maintain an existing ${brandName()} CRM lead from WhatsApp chat.
 Current lead summary:
 ${(currentSummary || 'none').slice(0, 800)}
 

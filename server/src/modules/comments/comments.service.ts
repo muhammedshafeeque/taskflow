@@ -1,3 +1,4 @@
+import { notifyIssuePeople } from '../notifications/domainNotify';
 import { Comment } from './comment.model';
 import * as issueHistoryService from '../issues/issueHistory.service';
 import type { PaginationOptions, PaginatedResult } from '../projects/projects.service';
@@ -19,6 +20,7 @@ export async function create(
     ...opts,
   });
   await issueHistoryService.recordCommentAdded(issueId, authorId, String(doc._id));
+  notifyIssuePeople(issueId, 'task_commented', { title: 'New comment', body: plainText.slice(0, 200) }, authorId);
   const populated = await Comment.findById(doc._id)
     .populate('author', 'name email')
     .lean();

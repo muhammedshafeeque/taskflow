@@ -17,6 +17,7 @@ import {
 } from '../Memory/conversationMemory';
 import type { ConversationDoc } from '../Models/Conversation';
 import { greetingIntro } from './greeting';
+import { brand, brandName } from '../Config/brand';
 
 const DEFAULT_CHAT_MODEL = 'qwen/qwen3.8-27b';
 
@@ -36,7 +37,7 @@ function baseSystem(
   const langRule =
     lang === 'ml'
       ? `Reply ONLY in Malayalam script (no English letters).
-Brand: ഐവോറിക്സ് ഹെൽപ്പ് ഡെസ്ക്. Keep it natural for spoken voice.`
+Brand: ${brandName('ml')} ഹെൽപ്പ് ഡെസ്ക്. Keep it natural for spoken voice.`
       : 'Reply ONLY in clear short English.';
 
   const labels = (supportProjects || [])
@@ -54,7 +55,7 @@ Brand: ഐവോറിക്സ് ഹെൽപ്പ് ഡെസ്ക്. Kee
         ? '\nYou are answering in a WhatsApp support group. Be helpful and concise; do not create sales leads.'
         : '';
 
-  return `You are Ivorix WhatsApp Help Desk for a software agency (websites, apps, custom digital solutions).
+  return `You are the ${brandName()} WhatsApp Help Desk for ${brand().businessDescription}.${brand().servicesSummary ? ` Offerings: ${brand().servicesSummary}.` : ''}
 ${projectLine}
 
 Conversation notes (this chat only — use naturally, never dump as a list):
@@ -158,8 +159,8 @@ async function llmReply(
           role: 'system',
           content:
             lang === 'ml'
-              ? 'നീ ഐവോറിക്സ് വാട്സ്ആപ്പ് ഹെൽപ്പ് ഡെസ്ക് ഏജന്റ് ആണ്. രണ്ട് ചെറിയ മലയാളം വാക്യം മാത്രം. ലേബലുകൾ വേണ്ട.'
-              : 'You are Ivorix WhatsApp Help Desk. Two short English sentences only. No labels.',
+              ? `നീ ${brandName('ml')} വാട്സ്ആപ്പ് ഹെൽപ്പ് ഡെസ്ക് ഏജന്റ് ആണ്. രണ്ട് ചെറിയ മലയാളം വാക്യം മാത്രം. ലേബലുകൾ വേണ്ട.`
+              : `You are the ${brandName()} WhatsApp Help Desk. Two short English sentences only. No labels.`,
         },
         ...history.map((m) => ({
           role: m.role as 'user' | 'assistant',
@@ -181,7 +182,7 @@ export type GenerateReplyResult = {
 };
 
 /**
- * History-aware replies. First greeting uses fixed Ivorix intro (no LLM).
+ * History-aware replies. First greeting uses the configured brand intro (no LLM).
  * When project details are enough → create CRM lead (keep memory, keep chatting).
  * Later useful details → update the same CRM lead automatically.
  */
@@ -212,7 +213,7 @@ export async function generateReply(
   const hasHistory = (conv?.messages?.length ?? 0) > 0;
   const groupMode = Boolean(opts?.isGroup || opts?.supportProjects);
 
-  // First contact greeting → fixed Ivorix Help Desk intro (DMs only)
+  // First contact greeting → configured brand intro (DMs only)
   if (messageType === 'greeting' && !hasHistory && !groupMode) {
     const reply = greetingIntro(lang);
     console.log('Greeting intro', { chatId, lang });

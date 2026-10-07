@@ -10,6 +10,11 @@ import { monitorHttp, monitorLog, monitorTransaction, shouldSkipMonitorHttp } fr
 
 const app = express();
 
+// Behind nginx/a load balancer, set TRUST_PROXY (e.g. 1) so rate limits see the real client IP.
+if (process.env.TRUST_PROXY) {
+  const v = process.env.TRUST_PROXY;
+  app.set('trust proxy', /^\d+$/.test(v) ? Number(v) : v === 'true' ? true : v);
+}
 app.use(passport.initialize());
 
 // Allow the frontend (different origin in dev) to load uploaded images/videos.

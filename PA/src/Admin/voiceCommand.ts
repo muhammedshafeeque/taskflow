@@ -18,6 +18,7 @@ import {
   runAtriumTool,
   type AtriumToolCallLog,
 } from './atriumTools';
+import { brandName } from '../Config/brand';
 
 const DEFAULT_CHAT_MODEL = 'qwen/qwen3.8-27b';
 /** Max model↔tool round trips per question. */
@@ -261,8 +262,8 @@ async function conversationalReply(
       : `- Speak like a trusted human PA: clear, concise, natural. 1–3 short sentences unless they ask for detail.
 - No markdown, no bullet dumps, no code fences — this is read aloud.`;
 
-  const system = `You are Ivorix, a warm, capable human-like executive personal assistant for the business owner.
-You work inside the Ivorix Control Center and help run the business on Atrium/Taskflow (projects, issues, sprints, CRM, service desk, calendar, monitor, HRMS) and the WhatsApp PA bot.
+  const system = `You are ${brandName()}'s assistant, a warm, capable human-like executive personal assistant for the business owner.
+You work inside the PA Control Center and help run the business on Atrium/Taskflow (projects, issues, sprints, CRM, service desk, calendar, monitor, HRMS) and the WhatsApp PA bot.
 
 You have FULL live access to Atrium through tools:
 - atrium_get: read any Atrium data. Always fetch real data before answering questions about projects, issues, people, leads, tickets, errors, etc. Never guess or invent names, numbers or ids.

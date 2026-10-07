@@ -1,9 +1,10 @@
+import { autoPost, postPayroll } from '../ledger/ledger.service';
 import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { HrmsEmployee } from './models/hrmsEmployee.model';
 import { HrmsAttendance } from './models/hrmsAttendance.model';
-import { HrmsLeaveRequest } from './models/hrmsLeaveRequest.model';
+import { unpaidLeaveDays } from './policy.service';
 import { DEFAULT_COMPONENTS, HrmsPayrollRun, HrmsPayrollSettings, type PayComponent } from './models/hrmsPayroll.model';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -103,27 +104,12 @@ async function lopDaysByEmployee(orgOid: mongoose.Types.ObjectId, period: string
     HrmsAttendance.find({ taskflowOrganizationId: orgOid, date: { $gte: start, $lt: end }, status: { $in: ['absent', 'half_day'] } })
       .select('employeeId status')
       .lean(),
-    HrmsLeaveRequest.find({
-      taskflowOrganizationId: orgOid,
-      type: 'unpaid',
-      status: 'approved',
-      startDate: { $lt: end },
-      endDate: { $gte: start },
-    })
-      .select('employeeId startDate endDate days')
-      .lean(),
+    unpaidLeaveDays(orgOid, start, end),
   ]);
   const out = new Map<string, number>();
   const add = (id: unknown, n: number) => out.set(String(id), (out.get(String(id)) ?? 0) + n);
   for (const a of attendance) add(a.employeeId, a.status === 'half_day' ? 0.5 : 1);
-  for (const l of leave) {
-    // Pro-rate leave that spans month boundaries by calendar overlap.
-    const ls = new Date(l.startDate).getTime();
-    const le = new Date(l.endDate).getTime() + 86_400_000;
-    const span = Math.max(1, (le - ls) / 86_400_000);
-    const overlap = Math.max(0, (Math.min(le, end.getTime()) - Math.max(ls, start.getTime())) / 86_400_000);
-    add(l.employeeId, round2((l.days ?? span) * (overlap / span)));
-  }
+  for (const [employeeId, days] of leave) add(employeeId, days);
   return out;
 }
 
@@ -239,7 +225,12 @@ export async function setPayrollRunStatus(
     status === 'finalized'
       ? { status, finalizedAt: new Date(), finalizedBy: new mongoose.Types.ObjectId(userId) }
       : { status, paidAt: new Date() };
-  return HrmsPayrollRun.findByIdAndUpdate(run._id, { $set }, { new: true }).lean();
+  const updated = await HrmsPayrollRun.findByIdAndUpdate(run._id, { $set }, { new: true }).lean();
+  if (status === 'paid' && updated) {
+    const totals = { gross: updated.totals?.gross ?? 0, deductions: updated.totals?.deductions ?? 0, net: updated.totals?.net ?? 0 };
+    autoPost(() => postPayroll(String(run.taskflowOrganizationId), { _id: updated._id, period: updated.period, totals }, updated.payslips[0]?.currency ?? 'USD'), `payroll ${run.period}`);
+  }
+  return updated;
 }
 
 function esc(s: unknown): string {

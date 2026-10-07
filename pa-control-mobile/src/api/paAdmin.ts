@@ -14,7 +14,7 @@ export function defaultApiUrl(): string {
   return (
     process.env.EXPO_PUBLIC_PA_API_URL?.trim() ||
     extra?.paApiUrl?.trim() ||
-    'https://pa.repod.online'
+    ''
   ).replace(/\/$/, '')
 }
 
@@ -22,7 +22,7 @@ export function defaultAtriumUrl(): string {
   return (
     process.env.EXPO_PUBLIC_ATRIUM_URL?.trim() ||
     extra?.atriumUrl?.trim() ||
-    'https://taskflow.repod.online'
+    ''
   ).replace(/\/$/, '')
 }
 

@@ -13,6 +13,7 @@ import {
 import { formatDateDDMMYYYY } from '../lib/dateFormat';
 import ApiTokensCard from '../components/profile/ApiTokensCard';
 import LanguageCard from '../components/profile/LanguageCard';
+import TwoFactorCard from '../components/profile/TwoFactorCard';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -513,6 +514,7 @@ export default function Profile() {
         </div>
       </div>
 
+      <TwoFactorCard />
       <LanguageCard />
 
       {token && <ApiTokensCard token={token} />}

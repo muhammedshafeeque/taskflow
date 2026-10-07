@@ -109,5 +109,5 @@ export const monitorInputClass =
 export const MONITOR_API_BASE = (
   (import.meta.env.VITE_MONITOR_BASE_URL as string | undefined) ||
   (import.meta.env.VITE_API_URL as string | undefined) ||
-  'https://taskflow.repod.online/api'
+  `${window.location.origin}/api`
 ).replace(/\/+$/, '');

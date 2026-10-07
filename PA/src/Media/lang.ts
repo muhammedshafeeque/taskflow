@@ -53,7 +53,7 @@ function normalizeWhisperLang(whisperLang?: string | null): ReplyLang | null {
 }
 
 /**
- * Decide reply language for Ivorix (Kerala-focused: prefer Malayalam over Tamil misfires).
+ * Decide reply language (Kerala-focused: prefer Malayalam over Tamil misfires).
  */
 export function detectReplyLang(
   text: string,

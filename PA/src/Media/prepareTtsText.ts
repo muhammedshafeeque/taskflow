@@ -1,9 +1,17 @@
 import type { ReplyLang } from './lang';
+import { brand, brandName } from '../Config/brand';
 
 /**
  * Malayalam Edge TTS mangles Latin words. Keep only Malayalam script + light punctuation.
  * Returns empty string if the result is not speakable (caller should use a safe fallback).
  */
+/** The configured company name, so Malayalam speech pronounces it as written in companyNameMl. */
+function companyNameRx(): RegExp {
+  const b = brand();
+  if (!b.companyNameMl || !b.companyName.trim()) return /(?!)/g;
+  return new RegExp(b.companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+}
+
 export function prepareTtsText(text: string, lang: ReplyLang): string {
   let t = text.trim();
   if (!t) return '';
@@ -20,11 +28,7 @@ export function prepareTtsText(text: string, lang: ReplyLang): string {
   }
 
   t = t
-    .replace(/Ivorix\s*Help\s*Desk/gi, 'ഐവോറിക്സ് ഹെൽപ്പ് ഡെസ്ക്')
-    .replace(/Ivorix\s*Support/gi, 'ഐവോറിക്സ് സപ്പോർട്ട്')
-    .replace(/Ivorix/gi, 'ഐവോറിക്സ്')
-    .replace(/Evorix\s*Support/gi, 'ഐവോറിക്സ് സപ്പോർട്ട്')
-    .replace(/Evorix/gi, 'ഐവോറിക്സ്')
+    .replace(companyNameRx(), brandName('ml'))
     .replace(/\bHelp\s*Desk\b/gi, 'ഹെൽപ്പ് ഡെസ്ക്')
     .replace(/\bSupport\b/gi, 'സപ്പോർട്ട്')
     .replace(/\bteam\b/gi, 'ടീം')

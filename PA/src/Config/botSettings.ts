@@ -5,6 +5,7 @@ import {
   type SttLanguage,
 } from '../Models/BotSettings';
 import { DEFAULT_QUIET_HOURS, isValidHhmm, isValidTimezone } from './quietHours';
+import { brand, normalizeBrandPatch, setBrandCache, type BrandProfile } from './brand';
 
 const CACHE_MS = 3000;
 
@@ -48,7 +49,8 @@ export async function getBotSettings(): Promise<BotSettingsDoc> {
 }
 
 function withQuietDefaults(doc: BotSettingsDoc): BotSettingsDoc {
-  return { ...doc, quietHours: { ...DEFAULT_QUIET_HOURS, ...(doc.quietHours ?? {}) } };
+  setBrandCache(doc.brand);
+  return { ...doc, quietHours: { ...DEFAULT_QUIET_HOURS, ...(doc.quietHours ?? {}) }, brand: brand() };
 }
 
 export async function updateBotSettings(
@@ -57,6 +59,7 @@ export async function updateBotSettings(
     voiceRepliesEnabled: boolean;
     sttLanguage: SttLanguage;
     quietHours: Partial<QuietHours>;
+    brand: Partial<BrandProfile>;
   }>
 ): Promise<BotSettingsDoc> {
   const $set: Record<string, unknown> = { updatedAt: new Date() };
@@ -89,6 +92,9 @@ export async function updateBotSettings(
     }
     if (typeof qh.awayMessage === 'string') $set['quietHours.awayMessage'] = qh.awayMessage.trim().slice(0, 1000);
   }
+
+  const brandPatch = normalizeBrandPatch(patch.brand);
+  for (const [k, v] of Object.entries(brandPatch)) $set[`brand.${k}`] = v;
 
   const doc = await BotSettings.findOneAndUpdate(
     { key: 'default' },

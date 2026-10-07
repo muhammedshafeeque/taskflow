@@ -1,3 +1,4 @@
+import { ApiError } from '../../utils/ApiError';
 import mongoose from 'mongoose';
 import { WorkLog, type IWorkLog } from './workLog.model';
 import { getProjectObjectIdsInWorkspace } from '../projects/workspaceProjectAccess';
@@ -26,6 +27,7 @@ export async function create(
   options?: {
     laneId?: string;
     overrunReason?: string;
+    billable?: boolean;
     memberPermissions?: string[];
     userGlobalPermissions?: string[];
     activeOrganizationId?: string;
@@ -90,6 +92,7 @@ export async function create(
     description,
     laneId,
     overrunReason: options?.overrunReason,
+    billable: options?.billable ?? true,
   });
   const populated = await WorkLog.findById(doc._id)
     .populate('author', 'name email')
@@ -141,8 +144,10 @@ export async function update(
   workLogId: string,
   issueId: string,
   authorId: string,
-  update: Partial<Pick<IWorkLog, 'minutesSpent' | 'date' | 'description'>>
+  update: Partial<Pick<IWorkLog, 'minutesSpent' | 'date' | 'description' | 'billable'>>
 ): Promise<unknown | null> {
+  const locked = await WorkLog.exists({ _id: workLogId, approvalStatus: { $in: ['submitted', 'approved'] } });
+  if (locked) throw new ApiError(409, 'This time is in a submitted or approved timesheet');
   const workLog = await WorkLog.findOneAndUpdate(
     { _id: workLogId, issue: issueId, author: authorId },
     { $set: update },
@@ -167,6 +172,7 @@ export async function remove(
     _id: workLogId,
     issue: issueId,
     author: authorId,
+    approvalStatus: { $nin: ['submitted', 'approved'] },
   });
   if (result != null) {
     const issue = await Issue.findById(issueId).select('project').lean();
@@ -370,6 +376,8 @@ export interface TimesheetDetailItem {
   minutesSpent: number;
   date: string;
   description?: string;
+  billable?: boolean;
+  approvalStatus?: string;
   authorId: string;
   authorName: string;
   createdAt: string;
@@ -438,6 +446,8 @@ export async function getTimesheetDetails(
         minutesSpent: 1,
         date: 1,
         description: 1,
+        billable: 1,
+        approvalStatus: 1,
         authorId: '$author',
         authorName: '$authorDoc.name',
         createdAt: 1,
@@ -456,10 +466,14 @@ export async function getTimesheetDetails(
     minutesSpent: number;
     date: Date;
     description?: string;
+    billable?: boolean;
+    approvalStatus?: string;
     authorId: mongoose.Types.ObjectId;
     authorName: string;
     createdAt: Date;
   }[]).map((l) => ({
+    billable: l.billable !== false,
+    approvalStatus: l.approvalStatus ?? 'draft',
     _id: String(l._id),
     issueId: String(l.issueId),
     issueKey: l.issueKey ?? String(l.issueId).slice(-6),

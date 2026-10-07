@@ -1,5 +1,6 @@
 import type { Message } from 'whatsapp-web.js';
 import { whatsapp } from './client';
+import { brand } from '../Config/brand';
 
 function serializeId(id: unknown): string {
   if (!id) return '';
@@ -100,11 +101,11 @@ export async function isBotAddressedInGroup(msg: Message): Promise<boolean> {
   if (pushname && body.includes(`@${pushname}`)) {
     return true;
   }
-  if (
-    /\b@ivorix\b/i.test(body) ||
-    body.includes('@ഐവോറിക്സ്') ||
-    body.includes('ivorix help')
-  ) {
+  const b = brand();
+  const aliases = [b.companyName, b.companyNameMl, ...b.mentionAliases]
+    .map((a) => a.trim().toLowerCase())
+    .filter((a) => a && a !== 'our company');
+  if (aliases.some((a) => body.includes(`@${a}`) || body.includes(`${a} help`))) {
     return true;
   }
 

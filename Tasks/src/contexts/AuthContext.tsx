@@ -29,7 +29,11 @@ interface AuthContextValue {
   user: AuthUser | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string; userType?: string }>;
+  login: (
+    email: string,
+    password: string
+  ) => Promise<{ ok: boolean; error?: string; userType?: string; twoFactorChallenge?: string }>;
+  verifyTwoFactor: (challengeToken: string, code: string) => Promise<{ ok: boolean; error?: string; userType?: string }>;
   register: (name: string, email: string, password: string) => Promise<{ ok: boolean; error?: string; userType?: string }>;
   microsoftSso: (code: string, redirectUri?: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
@@ -108,6 +112,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!res.success || !res.data) {
         return { ok: false, error: (res as { message?: string }).message ?? 'Login failed' };
       }
+      if ('twoFactorRequired' in res.data) {
+        return { ok: false, twoFactorChallenge: res.data.challengeToken };
+      }
       const nextUser = res.data.user as AuthUser;
       setUser(nextUser);
       setToken(res.data.tokens.accessToken);
@@ -119,6 +126,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+
+  const verifyTwoFactor = useCallback(async (challengeToken: string, code: string) => {
+    const res = await authApi.verifyTwoFactor(challengeToken, code);
+    if (!res.success || !res.data) {
+      return { ok: false, error: (res as { message?: string }).message ?? 'Invalid code' };
+    }
+    const nextUser = res.data.user as AuthUser;
+    setUser(nextUser);
+    setToken(res.data.tokens.accessToken);
+    localStorage.setItem(ACCESS_KEY, res.data.tokens.accessToken);
+    localStorage.setItem(REFRESH_KEY, res.data.tokens.refreshToken);
+    localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+    persistTaskflowWorkspace(nextUser);
+    return { ok: true, userType: res.data.user.userType };
+  }, []);
 
   const register = useCallback(
     async (name: string, email: string, password: string) => {
@@ -176,6 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       loading,
       login,
+      verifyTwoFactor,
       register,
       microsoftSso,
       logout,
@@ -184,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshUser,
       switchWorkspace,
     }),
-    [user, token, loading, login, register, microsoftSso, logout, updateUser, setAccessToken, refreshUser, switchWorkspace]
+    [user, token, loading, login, verifyTwoFactor, register, microsoftSso, logout, updateUser, setAccessToken, refreshUser, switchWorkspace]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

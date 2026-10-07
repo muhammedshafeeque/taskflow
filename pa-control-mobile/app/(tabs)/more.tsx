@@ -1,3 +1,4 @@
+import Constants from 'expo-constants'
 import { router, useFocusEffect } from 'expo-router'
 import { useCallback, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
@@ -92,7 +93,9 @@ export default function MoreScreen() {
         </Section>
 
         <Card style={{ marginTop: spacing.lg, alignItems: 'center' }}>
-          <Text style={styles.sub}>Ivorix PA Control · v2.0</Text>
+          <Text style={styles.sub}>
+            {Constants.expoConfig?.name ?? 'PA Control'} · v{Constants.expoConfig?.version ?? ''}
+          </Text>
         </Card>
       </ScreenScroll>
     </Screen>

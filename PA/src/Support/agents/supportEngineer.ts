@@ -15,6 +15,7 @@ import {
   type ChatAnalysis,
   type SupportEngineerDecision,
 } from '../types';
+import { brandName } from '../../Config/brand';
 
 const ESCALATE_CATEGORIES = new Set([
   'BUG_REPORT',
@@ -69,7 +70,7 @@ export async function runSupportEngineer(input: {
       messages: [
         {
           role: 'system',
-          content: `You are the Ivorix Support Engineer for WhatsApp project support groups.
+          content: `You are the ${brandName()} Support Engineer for WhatsApp project support groups.
 Reply with ONLY JSON:
 {"action":"REPLY"|"ESCALATE_QA","customerReply":"","escalateReason":"","state":"COMPLETED"|"ESCALATED_TO_QA"}
 
@@ -133,8 +134,8 @@ Rules:
     action: 'REPLY',
     customerReply:
       input.langHint === 'ml'
-        ? `ഹലോ, ഐവോറിക്സ് സപ്പോർട്ട് ടീമിൽ നിന്നാണ്. ${name} സംബന്ധിച്ച് എങ്ങനെ സഹായിക്കാം?`
-        : `Hello — this is the Ivorix support team for ${name}. How may we assist you today?`,
+        ? `ഹലോ, ${brandName('ml')} സപ്പോർട്ട് ടീമിൽ നിന്നാണ്. ${name} സംബന്ധിച്ച് എങ്ങനെ സഹായിക്കാം?`
+        : `Hello — this is the ${brandName('en')} support team for ${name}. How may we assist you today?`,
     state: 'COMPLETED',
   };
 }
@@ -241,7 +242,7 @@ export async function craftFinalCustomerReply(input: {
         messages: [
           {
             role: 'system',
-            content: `You write professional WhatsApp replies for Ivorix customer support.
+            content: `You write professional WhatsApp replies for ${brandName()} customer support.
 Rules:
 - Polite, calm, and confident — enterprise support tone.
 - Max 2 short sentences.

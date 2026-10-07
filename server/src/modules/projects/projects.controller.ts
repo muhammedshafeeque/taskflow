@@ -111,7 +111,7 @@ export async function updateProject(req: Request & { user?: AuthPayload }, res: 
   const userId = req.user?.id;
   const activeOrg = req.activeOrganizationId;
   if (!activeOrg) throw new ApiError(400, 'Active workspace is required');
-  const project = await projectsService.update(req.params.id, req.body, activeOrg);
+  const project = await projectsService.update(req.params.id, req.body, activeOrg, (req as Request & { user?: { id: string } }).user?.id);
   if (!project) throw new ApiError(404, 'Project not found');
   if (userId) {
     const proj = project as { name?: string; key?: string };

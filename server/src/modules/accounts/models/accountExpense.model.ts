@@ -16,7 +16,10 @@ export interface IAccountExpense extends Document {
   taskflowOrganizationId: mongoose.Types.ObjectId;
   reference: string;
   description: string;
-  category: ExpenseCategory;
+  /** From the configurable category list (Accounts settings). */
+  category: string;
+  receiptUrls: string[];
+  reimbursable: boolean;
   status: ExpenseStatus;
   vendorAccountId?: mongoose.Types.ObjectId;
   purchaseOrderId?: mongoose.Types.ObjectId;
@@ -39,7 +42,6 @@ const accountExpenseSchema = new Schema<IAccountExpense>(
     description: { type: String, required: true, trim: true },
     category: {
       type: String,
-      enum: ['payroll', 'software', 'hardware', 'infrastructure', 'travel', 'marketing', 'office', 'professional_services', 'other'],
       default: 'other',
       index: true,
     },
@@ -54,6 +56,10 @@ const accountExpenseSchema = new Schema<IAccountExpense>(
     submittedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     approvedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     notes: { type: String },
+    /** Uploaded receipt URLs (from /api/uploads). */
+    receiptUrls: { type: [String], default: [] },
+    /** Employee paid personally and must be reimbursed. */
+    reimbursable: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

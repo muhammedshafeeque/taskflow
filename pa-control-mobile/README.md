@@ -1,4 +1,4 @@
-# Ivorix PA Control (Mobile) · v2
+# PA Control (Mobile) · v2
 
 Expo React Native app for running PA + Atrium ops from your phone. Talks to the PA admin API; PA proxies Atrium (Taskflow) — including **Atrium Monitor** — so the phone only ever needs the PA admin secret.
 
@@ -9,8 +9,8 @@ Expo React Native app for running PA + Atrium ops from your phone. Talks to the 
 
 ```bash
 # .env
-EXPO_PUBLIC_PA_API_URL=https://pa.repod.online
-EXPO_PUBLIC_ATRIUM_URL=https://taskflow.repod.online
+EXPO_PUBLIC_PA_API_URL=https://pa.example.com
+EXPO_PUBLIC_ATRIUM_URL=https://app.example.com
 ```
 
 3. New native modules were added in v2 (notifications, biometrics, audio, background tasks), so **Expo Go is not enough** — rebuild the dev client:

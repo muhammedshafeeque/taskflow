@@ -8,6 +8,7 @@ import { sendCustomerEmail } from '../../services/email.service';
 import { emitWorkspaceEvent } from '../webhooks/workspaceEvents';
 import { OrganizationMember } from '../organizations/organizationMember.model';
 import { notifyUser } from '../notifications/notificationDispatch.service';
+import { finalizeNewTicket } from './desk.service';
 
 /**
  * Email → ticket. Polls one support mailbox over IMAP:
@@ -151,6 +152,7 @@ async function handleMessage(
     requesterName: msg.fromName,
     emailRef,
   });
+  await finalizeNewTicket(String(ticket._id));
   emitWorkspaceEvent(String(orgOid), 'ticket.created', { ticketId: String(ticket._id), subject: ticket.subject, source: 'email' });
 
   await sendCustomerEmail(

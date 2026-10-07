@@ -226,6 +226,7 @@ export default function MonitorTelemetry() {
               token={token}
               canUpdate={canUpdateErrors}
               onChanged={load}
+              focusId={new URLSearchParams(location.search).get('group') ?? undefined}
             />
           ) : (
           <DataTable

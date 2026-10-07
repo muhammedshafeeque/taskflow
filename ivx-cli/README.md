@@ -1,4 +1,4 @@
-# Ivorix CLI (remote PC agent)
+# PA CLI (remote PC agent)
 
 ## Install
 
@@ -13,7 +13,7 @@ npm link   # optional: puts `ivx` on PATH
 2. On the PC:
 
 ```bash
-ivx login https://pa.repod.online   # or your PA URL
+ivx login https://pa.example.com   # or your PA URL
 ivx pair ABCD1234 --name "dev-laptop"
 ivx workspace add --project APP --path /abs/path/to/repo
 ivx allow-command add "./scripts/deploy.sh"

@@ -4,7 +4,7 @@ import { env } from '../../config/env';
 const router = Router();
 
 router.get('/vapid-public-key', (_req: Request, res: Response) => {
-  res.json({ vapidPublicKey: env.vapidPublicKey || '' });
+  res.json({ success: true, data: { vapidPublicKey: env.vapidPublicKey || '' } });
 });
 
 export const pushRoutes = router;

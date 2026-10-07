@@ -7,6 +7,9 @@ export interface IHrmsLeaveRequest extends Document {
   taskflowOrganizationId: mongoose.Types.ObjectId;
   employeeId: mongoose.Types.ObjectId;
   type: LeaveType;
+  /** Company-defined leave type (preferred over the legacy `type`). */
+  leaveTypeId?: mongoose.Types.ObjectId | null;
+  halfDay?: boolean;
   status: LeaveStatus;
   startDate: Date;
   endDate: Date;
@@ -22,6 +25,8 @@ const hrmsLeaveRequestSchema = new Schema<IHrmsLeaveRequest>(
   {
     taskflowOrganizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     employeeId: { type: Schema.Types.ObjectId, ref: 'HrmsEmployee', required: true, index: true },
+    leaveTypeId: { type: Schema.Types.ObjectId, ref: 'HrmsLeaveType', default: null },
+    halfDay: { type: Boolean, default: false },
     type: { type: String, enum: ['annual', 'sick', 'casual', 'unpaid', 'comp_off'], default: 'annual' },
     status: { type: String, enum: ['pending', 'approved', 'rejected', 'cancelled'], default: 'pending', index: true },
     startDate: { type: Date, required: true },

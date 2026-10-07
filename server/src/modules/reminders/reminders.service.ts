@@ -1,3 +1,8 @@
+import { syncAllMailAccounts } from '../mail/mailSync.service';
+import { HrmsSettings } from '../hrms/models/hrmsPolicy.model';
+import { HrmsEmployee } from '../hrms/models/hrmsEmployee.model';
+import { WorkLog } from '../workLogs/workLog.model';
+import { TimesheetSubmission, weekStartOf } from '../workLogs/timesheetApproval';
 import mongoose from 'mongoose';
 import { Issue } from '../issues/issue.model';
 import { Project } from '../projects/project.model';
@@ -380,7 +385,44 @@ export async function markOverdueInvoices(now = new Date()): Promise<number> {
   return sent;
 }
 
+/**
+ * Weekly nudge for people whose logged time this week is under ~80% of the
+ * expected hours (both set per workspace in HR settings; off unless a weekday is chosen).
+ */
+export async function remindTimesheets(now = new Date()): Promise<number> {
+  const settingsList = await HrmsSettings.find({ timesheetReminderWeekday: { $ne: null } }).lean();
+  let sent = 0;
+  for (const s of settingsList) {
+    if (now.getUTCDay() !== s.timesheetReminderWeekday || now.getUTCHours() < 11) continue;
+    const week = weekStartOf(now);
+    const employees = await HrmsEmployee.find({ taskflowOrganizationId: s.taskflowOrganizationId, status: { $in: ['active', 'probation'] }, userId: { $ne: null } })
+      .select('userId')
+      .lean();
+    const target = (s.expectedWeeklyHours ?? 40) * 60 * 0.8;
+    for (const e of employees) {
+      const submitted = await TimesheetSubmission.exists({ userId: e.userId, weekStart: week });
+      if (submitted) continue;
+      const logged = await WorkLog.aggregate<{ m: number }>([
+        { $match: { author: e.userId, date: { $gte: week, $lt: new Date(week.getTime() + 7 * DAY) } } },
+        { $group: { _id: null, m: { $sum: '$minutesSpent' } } },
+      ]);
+      const minutes = logged[0]?.m ?? 0;
+      if (minutes >= target) continue;
+      if (!(await claimReminder('timesheet_reminder', `${e.userId}:${day(week)}`))) continue;
+      await notifyMany([e.userId], {
+        eventKey: 'timesheet_reminder',
+        title: 'Timesheet reminder',
+        body: `You've logged ${(minutes / 60).toFixed(1)}h this week (expected ${s.expectedWeeklyHours ?? 40}h). Please log and submit your time.`,
+        link: '/timesheet',
+      });
+      sent++;
+    }
+  }
+  return sent;
+}
+
 export const REMINDER_JOBS = {
+  timesheets: remindTimesheets,
   issueDueDates: remindIssueDueDates,
   milestones: remindMilestones,
   sla: remindSla,
@@ -389,6 +431,7 @@ export const REMINDER_JOBS = {
   renewals: remindRenewals,
   subscriptionInvoices: generateDueSubscriptionInvoices,
   overdueInvoices: markOverdueInvoices,
+  mailSync: syncAllMailAccounts,
 } as const;
 
 export type ReminderJobName = keyof typeof REMINDER_JOBS;

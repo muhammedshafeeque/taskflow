@@ -1,3 +1,4 @@
+import { notifyIssuePeople } from '../notifications/domainNotify';
 import mongoose from 'mongoose';
 import { Issue } from './issue.model';
 import { Project } from '../projects/project.model';
@@ -628,6 +629,20 @@ export async function update(
 
   if (authorId && changes.length > 0) {
     await issueHistoryService.recordFieldChanges(id, authorId, changes);
+    const fieldEvents: Array<[string, 'task_priority_changed' | 'task_due_date_changed' | 'task_moved_sprint' | 'task_estimate_changed', string]> = [
+      ['priority', 'task_priority_changed', 'Priority changed'],
+      ['dueDate', 'task_due_date_changed', 'Due date changed'],
+      ['sprint', 'task_moved_sprint', 'Moved to another sprint'],
+      ['timeEstimateMinutes', 'task_estimate_changed', 'Estimate changed'],
+      ['storyPoints', 'task_estimate_changed', 'Estimate changed'],
+    ];
+    const sent = new Set<string>();
+    for (const [field, eventKey, title] of fieldEvents) {
+      const c = changes.find((x) => x.field === field);
+      if (!c || sent.has(eventKey)) continue;
+      sent.add(eventKey);
+      notifyIssuePeople(id, eventKey, { title: `${title}: ${String(oldRaw.key ?? oldRaw.title ?? '')}`, body: `${String(c.fromValue ?? '—')} → ${String(c.toValue ?? '—')}` }, authorId);
+    }
   }
 
   const updateOp = Object.keys(unset).length

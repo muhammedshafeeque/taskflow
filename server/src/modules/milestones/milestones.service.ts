@@ -1,3 +1,4 @@
+import { notifyProjectMembers } from '../notifications/domainNotify';
 import { Milestone } from './milestone.model';
 import { ProjectMember } from '../projects/projectMember.model';
 import { ApiError } from '../../utils/ApiError';
@@ -54,11 +55,15 @@ export async function update(
   }
   if (input.status !== undefined) $set.status = input.status;
   if (input.description !== undefined) $set.description = input.description;
+  const before = input.status !== undefined ? await Milestone.findById(milestoneId).select('status').lean() : null;
   const doc = await Milestone.findOneAndUpdate(
     { _id: milestoneId, project: projectId },
     { ...(Object.keys($set).length ? { $set } : {}), ...(Object.keys($unset).length ? { $unset } : {}) },
     { new: true }
   ).lean();
+  if (doc && before && before.status !== doc.status && /complete|done|closed/i.test(String(doc.status))) {
+    notifyProjectMembers(projectId, 'milestone_completed', { title: `Milestone completed: ${doc.name}`, link: `/projects/${projectId}/roadmap` }, userId);
+  }
   return doc;
 }
 

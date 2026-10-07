@@ -1,7 +1,7 @@
 {
   "name": "ivx-cli",
   "version": "0.1.0",
-  "description": "Ivorix remote PC agent CLI",
+  "description": "Remote PC agent CLI for the PA server",
   "bin": {
     "ivx": "./dist/index.js"
   },

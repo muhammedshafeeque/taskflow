@@ -1,3 +1,4 @@
+import { notifyUsers } from '../notifications/domainNotify';
 import mongoose from 'mongoose';
 import { Organization } from './organization.model';
 import { OrganizationMember } from './organizationMember.model';
@@ -181,6 +182,9 @@ export async function updateMemberRole(
   )
     .populate('user', 'name email')
     .lean();
+  if (target.role !== role) {
+    void notifyUsers([targetUserId], 'workspace_member_role_changed', { title: 'Your workspace role changed', body: role === 'org_admin' ? 'You are now a workspace admin' : 'You are now a workspace member' }, actorUserId);
+  }
   return updated;
 }
 

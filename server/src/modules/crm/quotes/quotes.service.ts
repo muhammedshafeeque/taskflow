@@ -1,3 +1,4 @@
+import { notifyUsers } from '../../notifications/domainNotify';
 import mongoose from 'mongoose';
 import {
   CrmQuote,
@@ -385,6 +386,10 @@ export async function sendQuote(
     { toEmail, attachedPdf: Boolean(opts?.pdfBase64) }
   );
   await doc.save();
+  {
+    const deal = doc.dealId ? await CrmDeal.findById(doc.dealId).select('ownerId').lean() : null;
+    void notifyUsers([doc.createdBy, deal?.ownerId], 'crm_quote_sent', { title: `Quote sent: ${quote.title}`, body: `To ${toEmail}`, link: `/crm/quotes/${id}` }, opts?.userId);
+  }
   try {
     const { dispatchWebhook } = await import('../ecosystem/ecosystem.service');
     await dispatchWebhook(orgId, 'quote.sent', { quoteId: id, toEmail, title: quote.title });
@@ -422,6 +427,8 @@ export async function updateQuote(
     let converted: { contractId?: string; invoiceId?: string } | undefined;
     if (nextStatus === 'accepted') {
       converted = await convertAcceptedQuote(existing, orgId);
+      const deal = existing.dealId ? await CrmDeal.findById(existing.dealId).select('ownerId').lean() : null;
+      void notifyUsers([existing.createdBy, deal?.ownerId], 'crm_quote_accepted', { title: `Quote accepted: ${existing.title}`, body: `${existing.currency} ${existing.total}`, link: `/crm/quotes/${existing._id}` }, userId);
     }
     return { ...existing.toObject(), converted };
   }

@@ -1,3 +1,4 @@
+import { notifyUsers } from '../notifications/domainNotify';
 import mongoose from 'mongoose';
 import { Project } from './project.model';
 import { ProjectMember } from './projectMember.model';
@@ -265,6 +266,8 @@ export async function removeMember(projectId: string, memberId: string) {
   }
 
   await ProjectMember.findByIdAndDelete(memberId);
+  const proj = await Project.findById(projectId).select('name').lean();
+  void notifyUsers([(member.user as { _id?: unknown })._id], 'project_removed', { title: `Removed from project: ${proj?.name ?? ''}`, link: '/projects' });
 }
 
 export async function listInvitations(projectId: string): Promise<unknown[]> {

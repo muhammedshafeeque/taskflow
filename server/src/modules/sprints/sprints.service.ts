@@ -1,3 +1,4 @@
+import { notifyProjectMembers } from '../notifications/domainNotify';
 import { Sprint } from './sprint.model';
 import { Issue } from '../issues/issue.model';
 import { ApiError } from '../../utils/ApiError';
@@ -118,6 +119,7 @@ export async function start(id: string): Promise<unknown | null> {
     .lean();
 
   if (updated) notifyProjectRefresh(String(sprint.project));
+  if (updated) notifyProjectMembers(String(sprint.project), 'sprint_started', { title: `Sprint started: ${sprint.name}`, link: `/projects/${sprint.project}/sprints` });
   return updated ?? null;
 }
 
@@ -149,6 +151,7 @@ export async function complete(id: string): Promise<unknown | null> {
     .lean();
 
   if (updated) notifyProjectRefresh(String(sprint.project));
+  if (updated) notifyProjectMembers(String(sprint.project), 'sprint_completed', { title: `Sprint completed: ${sprint.name}`, link: `/projects/${sprint.project}/sprints/${id}/report` });
   return updated ?? null;
 }
 

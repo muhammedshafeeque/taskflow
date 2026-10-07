@@ -121,6 +121,26 @@ export const TASK_FLOW_PERMISSIONS = {
     PLATFORM: {
       EXECUTIVE: { READ: 'taskflow.platform.executive.read' },
       AUDIT: { READ: 'taskflow.platform.audit.read' },
+      /** Company announcements shown to everyone */
+      ANNOUNCEMENT: { MANAGE: 'taskflow.platform.announcement.manage' },
+      /** Revenue vs labour cost by project/client, cash, utilisation in money */
+      PROFITABILITY: { READ: 'taskflow.platform.profitability.read' },
+      /** Workspace preferences: default role for new users, 2FA policy */
+      SETTINGS: { MANAGE: 'taskflow.platform.settings.manage' },
+    },
+    /** Self-service for any employee — data scoped to the signed-in user */
+    SELF: {
+      PROFILE: { READ: 'taskflow.self.profile.read' },
+      LEAVE: { APPLY: 'taskflow.self.leave.apply' },
+      ATTENDANCE: { MARK: 'taskflow.self.attendance.mark' },
+      PAYSLIP: { READ: 'taskflow.self.payslip.read' },
+      EXPENSE: { CLAIM: 'taskflow.self.expense.claim' },
+      ASSET: { READ: 'taskflow.self.asset.read' },
+      DIRECTORY: { READ: 'taskflow.self.directory.read' },
+    },
+    TIMESHEET: {
+      SUBMIT: 'taskflow.timesheet.submit',
+      APPROVE: 'taskflow.timesheet.approve',
     },
     HR: {
       /** Company job titles (legacy designations collection) */
@@ -144,6 +164,13 @@ export const TASK_FLOW_PERMISSIONS = {
         READ: 'taskflow.hr.payroll.read',
         MANAGE: 'taskflow.hr.payroll.manage',
       },
+      /** Leave types, accrual rules and holiday calendars */
+      POLICY: { MANAGE: 'taskflow.hr.policy.manage' },
+      ONBOARDING: { READ: 'taskflow.hr.onboarding.read', MANAGE: 'taskflow.hr.onboarding.manage' },
+      RECRUITMENT: { READ: 'taskflow.hr.recruitment.read', MANAGE: 'taskflow.hr.recruitment.manage' },
+      APPRAISAL: { READ: 'taskflow.hr.appraisal.read', MANAGE: 'taskflow.hr.appraisal.manage' },
+      /** Hourly cost rates used for profitability */
+      COST_RATE: { MANAGE: 'taskflow.hr.cost_rate.manage' },
     },
     ACCOUNTS: {
       DASHBOARD: { READ: 'taskflow.accounts.dashboard.read' },
@@ -164,6 +191,12 @@ export const TASK_FLOW_PERMISSIONS = {
         UPDATE: 'taskflow.accounts.expense.update',
       },
       REPORT: { READ: 'taskflow.accounts.report.read' },
+      CHART: { MANAGE: 'taskflow.accounts.chart.manage' },
+      JOURNAL: { READ: 'taskflow.accounts.journal.read', MANAGE: 'taskflow.accounts.journal.manage' },
+      BILL: { LIST: 'taskflow.accounts.bill.list', MANAGE: 'taskflow.accounts.bill.manage' },
+      BANK: { READ: 'taskflow.accounts.bank.read', MANAGE: 'taskflow.accounts.bank.manage' },
+      CREDIT_NOTE: { MANAGE: 'taskflow.accounts.credit_note.manage' },
+      TAX_REPORT: { READ: 'taskflow.accounts.tax_report.read' },
     },
     CONTRACTS: {
       DASHBOARD: { READ: 'taskflow.contracts.dashboard.read' },
@@ -297,6 +330,7 @@ export const TASK_FLOW_PERMISSIONS = {
       },
       REPORT: { READ: 'taskflow.crm.report.read' },
       SETTINGS: { MANAGE: 'taskflow.crm.settings.manage' },
+      COMMISSION: { READ: 'taskflow.crm.commission.read', MANAGE: 'taskflow.crm.commission.manage' },
     },
     MAIL: {
       MAILBOX: {
@@ -325,6 +359,8 @@ export const TASK_FLOW_PERMISSIONS = {
         LIST: 'taskflow.service.kb.list',
       },
       SLA: { MANAGE: 'taskflow.service.sla.manage' },
+      /** Saved replies, assignment rules, business hours */
+      SETTINGS: { MANAGE: 'taskflow.service.settings.manage' },
     },
     MONITOR: {
       PROJECT: { READ: 'taskflow.monitor.project.read', MANAGE: 'taskflow.monitor.project.manage' },
@@ -340,6 +376,8 @@ export const TASK_FLOW_PERMISSIONS = {
       RELEASE: { READ: 'taskflow.monitor.release.read' },
       EVENT: { READ: 'taskflow.monitor.event.read' },
       ALERT: { READ: 'taskflow.monitor.alert.read', MANAGE: 'taskflow.monitor.alert.manage' },
+      STATUS_PAGE: { MANAGE: 'taskflow.monitor.status_page.manage' },
+      POSTMORTEM: { READ: 'taskflow.monitor.postmortem.read', MANAGE: 'taskflow.monitor.postmortem.manage' },
     },
   },
 } as const;
@@ -548,6 +586,20 @@ export const PROJECT_PERMISSIONS = {
       CREATE: 'milestone.milestone.create',
       UPDATE: 'milestone.milestone.update',
       DELETE: 'milestone.milestone.delete',
+    },
+  },
+
+  /** Project risk register and client status reports */
+  RISK: {
+    RISK: {
+      READ: 'project.risk.read',
+      MANAGE: 'project.risk.manage',
+    },
+  },
+  STATUS_REPORT: {
+    STATUS_REPORT: {
+      READ: 'project.status_report.read',
+      MANAGE: 'project.status_report.manage',
     },
   },
 

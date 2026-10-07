@@ -1,6 +1,7 @@
 import { toFile } from 'groq-sdk';
 import { getBotSettings } from '../Config/botSettings';
 import { getGroq } from '../Config/groq';
+import { brandName } from '../Config/brand';
 
 const DEFAULT_WHISPER = 'whisper-large-v3';
 
@@ -56,8 +57,8 @@ export async function transcribeAudio(
     // still transcribed as English.
     prompt:
       language === 'en'
-        ? 'Transcribe clear English. Speakers discuss business, projects, leads, WhatsApp, Atrium, Taskflow, Ivorix.'
-        : 'ഐവോറിക്സ് ഹെൽപ്പ് ഡെസ്ക്. ആപ്പ്, വെബ്സൈറ്റ്, ബില്ലിംഗ്, സോഫ്റ്റ്‌വെയർ, ലോഗിൻ, പ്രശ്നം.',
+        ? `Transcribe clear English. Speakers discuss business, projects, leads, WhatsApp, ${brandName('en')}.`
+        : `${brandName('ml')} ഹെൽപ്പ് ഡെസ്ക്. ആപ്പ്, വെബ്സൈറ്റ്, ബില്ലിംഗ്, സോഫ്റ്റ്‌വെയർ, ലോഗിൻ, പ്രശ്നം.`,
     ...(language ? { language } : {}),
     response_format: 'verbose_json',
     temperature: 0,

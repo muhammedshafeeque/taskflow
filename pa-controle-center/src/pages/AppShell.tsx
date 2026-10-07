@@ -15,7 +15,7 @@ export function AppShell() {
         <div className="brand">
           <span className="brand-mark">PA</span>
           <div>
-            <strong>Ivorix</strong>
+            <strong>{import.meta.env.VITE_BRAND_NAME || 'PA Control'}</strong>
             <small>Control Center</small>
           </div>
         </div>
@@ -29,6 +29,7 @@ export function AppShell() {
           <NavLink to="/requests">Requests</NavLink>
           <NavLink to="/leads">Leads</NavLink>
           <NavLink to="/atrium">Atrium</NavLink>
+          <NavLink to="/brand">Brand</NavLink>
         </nav>
         <button
           type="button"

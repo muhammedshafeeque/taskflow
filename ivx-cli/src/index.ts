@@ -7,12 +7,12 @@ import { detectAi, executeJob } from './executor';
 import { assertPathJail } from './security';
 
 const program = new Command();
-program.name('ivx').description('Ivorix remote PC agent').version('0.1.0');
+program.name('ivx').description('Remote PC agent for the PA server').version('0.1.0');
 
 program
   .command('login')
   .description('Set PA API base URL')
-  .argument('<url>', 'PA base URL e.g. https://pa.repod.online')
+  .argument('<url>', 'PA base URL e.g. https://pa.example.com')
   .action((url: string) => {
     const cfg = loadConfig();
     cfg.apiBase = url.replace(/\/$/, '');

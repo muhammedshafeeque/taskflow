@@ -54,6 +54,8 @@ export interface IBillingInvoice extends Document {
   paymentLink?: { provider: 'razorpay' | 'stripe'; id: string; url: string; amount: number; currency: string; createdAt: Date };
   /** Provider payment ids already applied — makes webhook retries idempotent. */
   paymentRefs?: string[];
+  /** Sum of credit notes issued against this invoice. */
+  amountCredited?: number;
   createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -121,6 +123,7 @@ const billingInvoiceSchema = new Schema<IBillingInvoice>(
       createdAt: { type: Date },
     },
     paymentRefs: { type: [String], default: undefined },
+    amountCredited: { type: Number, default: 0 },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

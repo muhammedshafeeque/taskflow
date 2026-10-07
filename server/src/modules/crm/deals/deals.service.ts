@@ -1,3 +1,5 @@
+import { accrueDealCommission, voidDealCommission } from '../commissions/commissions';
+import { notifyUsers } from '../../notifications/domainNotify';
 import mongoose from 'mongoose';
 import { CrmDeal } from '../models/crmDeal.model';
 import { CrmPipeline } from '../models/crmPipeline.model';
@@ -61,6 +63,15 @@ export async function updateDeal(id: string, workspaceId: string | null | undefi
     { new: true }
   ).lean();
   if (!updated) throw new ApiError(404, 'Deal not found');
+  if (input.status === 'won') void accrueDealCommission(String(updated._id)).catch((err) => console.error('[commission]', err));
+  else if (input.status) void voidDealCommission(String(updated._id)).catch(() => undefined);
+  if (input.status === 'won' || input.status === 'lost') {
+    void notifyUsers([updated.ownerId], input.status === 'won' ? 'crm_deal_won' : 'crm_deal_lost', {
+      title: `Deal ${input.status}: ${updated.title}`,
+      body: `${updated.currency} ${updated.value}`,
+      link: '/crm/deals',
+    });
+  }
   return updated;
 }
 
@@ -76,7 +87,19 @@ export async function moveDealStage(id: string, workspaceId: string | null | und
   if ((stage as { isWon?: boolean }).isWon) deal.status = 'won';
   else if ((stage as { isLost?: boolean }).isLost) deal.status = 'lost';
   else deal.status = 'open';
+  const previousStatus = (await CrmDeal.findById(deal._id).select('status').lean())?.status;
   await deal.save();
+  if (deal.status !== previousStatus) {
+    if (deal.status === 'won') void accrueDealCommission(String(deal._id)).catch((err) => console.error('[commission]', err));
+    else if (previousStatus === 'won') void voidDealCommission(String(deal._id)).catch(() => undefined);
+  }
+  if (deal.status !== previousStatus && (deal.status === 'won' || deal.status === 'lost')) {
+    void notifyUsers([deal.ownerId], deal.status === 'won' ? 'crm_deal_won' : 'crm_deal_lost', {
+      title: `Deal ${deal.status}: ${deal.title}`,
+      body: `${deal.currency} ${deal.value}`,
+      link: '/crm/deals',
+    });
+  }
   if (deal.status === 'won') {
     try {
       const { dispatchWebhook } = await import('../ecosystem/ecosystem.service');

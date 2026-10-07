@@ -4,9 +4,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useAppDisplayName } from '../../hooks/useAppDisplayName';
 import { canAny } from '../../utils/moduleAccess';
 import { money } from '../../components/moduleKit';
-import { billingApi, type BillingInvoice, type BillingInvoiceLine } from '../../lib/api';
+import { api, billingApi, type BillingInvoice, type BillingInvoiceLine } from '../../lib/api';
 import { billingTypeLabel } from '../../lib/billingLineUtils';
-import { downloadInvoicePdfFromInvoice } from '../../lib/invoicePdf';
+import { buildInvoicePdf, downloadInvoicePdfFromInvoice } from '../../lib/invoicePdf';
 
 function refId(ref?: string | { _id: string }): string {
   if (!ref) return '';
@@ -93,6 +93,22 @@ export default function BillingInvoiceDetail() {
       void navigator.clipboard?.writeText(res.data.url).catch(() => undefined);
       setActionMsg('Payment link copied — share it with the customer. The invoice updates automatically when they pay.');
     } else setActionMsg(res.message ?? 'Could not create payment link');
+  }
+
+  async function handleEmail() {
+    if (!token || !invoice) return;
+    const toEmail = prompt('Send invoice to (email)');
+    if (!toEmail) return;
+    const message = prompt('Message (optional)') ?? undefined;
+    setActionBusy(true);
+    // Attach the same PDF the user can download.
+    const doc = buildInvoicePdf(invoice, companyName);
+    const pdfBase64 = doc.output('datauristring').split(',')[1];
+    const r = await api.post(`/billing/invoices/${invoice._id}/email`, { toEmail, message, pdfBase64, companyName }, token);
+    setActionBusy(false);
+    if (!r.success) return alert(r.message);
+    alert('Invoice emailed.');
+    load();
   }
 
   const load = () => {
@@ -203,6 +219,11 @@ export default function BillingInvoiceDetail() {
           >
             Download PDF
           </button>
+          {canManage && invoice.status !== 'void' && (
+            <button type="button" disabled={actionBusy} className="px-3 py-1.5 rounded-lg border border-[color:var(--border-subtle)] text-sm" onClick={() => void handleEmail()}>
+              Email
+            </button>
+          )}
           {isDraft && canCreate && (
             <Link to={`/billing/invoices/${invoice._id}/edit`} className="btn-primary px-3 py-1.5 rounded-lg text-sm">
               Edit draft
@@ -275,7 +296,7 @@ export default function BillingInvoiceDetail() {
           <p className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">Contract</p>
           <p className="mt-1">
             {invoice.contractId ? (
-              <Link to={`/contracts/agreements/${refId(invoice.contractId)}`} className="text-[color:var(--accent)] hover:underline">
+              <Link to={`/contracts/${refId(invoice.contractId)}`} className="text-[color:var(--accent)] hover:underline">
                 {refName(invoice.contractId)}
               </Link>
             ) : (

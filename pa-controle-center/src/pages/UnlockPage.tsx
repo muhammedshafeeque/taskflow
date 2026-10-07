@@ -37,7 +37,7 @@ export function UnlockPage() {
   return (
     <div className="unlock">
       <form className="unlock-card" onSubmit={onSubmit}>
-        <p className="eyebrow">Ivorix PA</p>
+        <p className="eyebrow">{import.meta.env.VITE_BRAND_NAME || "PA Control"}</p>
         <h1>Control Center</h1>
         <p className="muted">Enter the PA admin secret to continue.</p>
         <label>

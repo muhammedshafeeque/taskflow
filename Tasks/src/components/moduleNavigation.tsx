@@ -119,7 +119,7 @@ export function buildAuthNav(user: NavUser): NavItem[] {
 /** CRM — pipeline order: lead → account → contact → deal → quote */
 export function buildCrmNav(user: NavUser): NavItem[] {
   const nav: NavItem[] = [];
-  if (!allow(user, 'taskflow.crm.account.list', 'taskflow.crm.report.read', 'taskflow.crm.lead.list', 'taskflow.crm.deal.list')) {
+  if (!allow(user, 'taskflow.crm.account.list', 'taskflow.crm.report.read', 'taskflow.crm.lead.list', 'taskflow.crm.deal.list', 'taskflow.crm.commission.read', 'taskflow.mail.mailbox.read')) {
     return nav;
   }
   nav.push({ to: '/crm', label: 'Dashboard', icon: <DashboardIcon />, end: true });
@@ -148,6 +148,12 @@ export function buildCrmNav(user: NavUser): NavItem[] {
   if (allow(user, 'taskflow.crm.contract.list', 'taskflow.crm.contract.create')) {
     nav.push({ to: '/crm/contracts', label: 'Contracts', icon: <PackageIcon /> });
   }
+  if (allow(user, 'taskflow.crm.commission.read', 'taskflow.crm.commission.manage')) {
+    nav.push({ to: '/crm/commissions', label: 'Commissions', icon: <PackageIcon /> });
+  }
+  if (allow(user, 'taskflow.mail.mailbox.read', 'taskflow.mail.mailbox.manage')) {
+    nav.push({ to: '/crm/email-sync', label: 'Email sync', icon: <InboxIcon /> });
+  }
   if (allow(user, 'taskflow.crm.settings.manage')) {
     nav.push({ to: '/crm/settings', label: 'Settings', icon: <AppHubSettingsIcon /> });
   }
@@ -166,6 +172,12 @@ export function buildServiceNav(user: NavUser): NavItem[] {
     nav.push({ to: '/service/sla', label: 'SLA policies', icon: <SettingsIcon /> });
   }
   nav.push({ to: '/service/kb', label: 'Knowledge base', icon: <SettingsIcon /> });
+  if (allow(user, 'taskflow.service.ticket.update', 'taskflow.service.settings.manage')) {
+    nav.push({ to: '/service/saved-replies', label: 'Saved replies', icon: <InboxIcon /> });
+  }
+  if (allow(user, 'taskflow.service.settings.manage')) {
+    nav.push({ to: '/service/settings', label: 'Settings', icon: <AppHubSettingsIcon /> });
+  }
   return nav;
 }
 
@@ -193,6 +205,10 @@ export function buildPortalAdminNav(user: NavUser): NavItem[] {
 export function buildInboxNav(_user: NavUser): NavItem[] {
   return [
     { to: '/inbox', label: 'Inbox', icon: <InboxIcon />, end: true },
+    ...(canAny(_user, 'taskflow.self.profile.read', 'taskflow.self.leave.apply', 'taskflow.self.attendance.mark', 'taskflow.self.payslip.read', 'taskflow.self.expense.claim', 'taskflow.self.asset.read', 'taskflow.self.directory.read')
+      ? [{ to: '/me', label: 'Me (HR self-service)', icon: <UsersIcon /> }]
+      : []),
+    { to: '/profile', label: 'Profile & security', icon: <SettingsIcon />, end: true },
     { to: '/profile/notifications', label: 'Preferences', icon: <SettingsIcon /> },
   ];
 }
@@ -208,7 +224,11 @@ export function buildHrmsNav(user: NavUser): NavItem[] {
       'taskflow.hr.designation.manage',
       'taskflow.hr.attendance.read',
       'taskflow.hr.leave.read',
-      'taskflow.hr.payroll.read'
+      'taskflow.hr.payroll.read',
+      'taskflow.hr.policy.manage',
+      'taskflow.hr.onboarding.read',
+      'taskflow.hr.recruitment.read',
+      'taskflow.hr.appraisal.read'
     )
   ) {
     return nav;
@@ -226,6 +246,20 @@ export function buildHrmsNav(user: NavUser): NavItem[] {
   if (allow(user, 'taskflow.hr.payroll.read', 'taskflow.hr.payroll.manage')) {
     nav.push({ to: '/hrms/payroll', label: 'Payroll', icon: <PackageIcon /> });
   }
+  if (allow(user, 'taskflow.hr.onboarding.read', 'taskflow.hr.onboarding.manage')) {
+    nav.push({ to: '/hrms/onboarding', label: 'On/offboarding', icon: <BoardsIcon /> });
+  }
+  if (allow(user, 'taskflow.hr.recruitment.read', 'taskflow.hr.recruitment.manage')) {
+    nav.push({ to: '/hrms/recruitment', label: 'Recruitment', icon: <UsersIcon /> });
+  }
+  nav.push({ to: '/hrms/appraisals', label: 'Appraisals', icon: <IssuesIcon /> });
+  if (allow(user, 'taskflow.hr.policy.manage', 'taskflow.hr.leave.read', 'taskflow.hr.leave.manage')) {
+    nav.push({ to: '/hrms/leave-types', label: 'Leave types', icon: <SettingsIcon /> });
+    nav.push({ to: '/hrms/holidays', label: 'Holidays', icon: <TimesheetIcon /> });
+  }
+  if (allow(user, 'taskflow.hr.policy.manage')) {
+    nav.push({ to: '/hrms/settings', label: 'HR settings', icon: <AppHubSettingsIcon /> });
+  }
   return nav;
 }
 
@@ -240,7 +274,11 @@ export function buildAccountsNav(user: NavUser): NavItem[] {
       'taskflow.accounts.invoice.list',
       'taskflow.accounts.expense.list',
       'taskflow.accounts.report.read',
-      'taskflow.cost_report.view'
+      'taskflow.cost_report.view',
+      'taskflow.accounts.journal.read',
+      'taskflow.accounts.bill.list',
+      'taskflow.accounts.bank.read',
+      'taskflow.accounts.chart.manage'
     )
   ) {
     return nav;
@@ -260,6 +298,25 @@ export function buildAccountsNav(user: NavUser): NavItem[] {
   }
   if (allow(user, 'taskflow.accounts.report.read', 'taskflow.cost_report.view')) {
     nav.push({ to: '/accounts/reports', label: 'Reports', icon: <SettingsIcon /> });
+  }
+  if (allow(user, 'taskflow.accounts.report.read', 'taskflow.accounts.tax_report.read', 'taskflow.accounts.journal.read')) {
+    nav.push({ to: '/accounts/statements', label: 'Statements & tax', icon: <BoardsIcon /> });
+  }
+  if (allow(user, 'taskflow.accounts.journal.read', 'taskflow.accounts.journal.manage')) {
+    nav.push({ to: '/accounts/journals', label: 'Journals', icon: <SettingsIcon /> });
+  }
+  if (allow(user, 'taskflow.accounts.bill.list', 'taskflow.accounts.bill.manage')) {
+    nav.push({ to: '/accounts/bills', label: 'Vendor bills', icon: <PackageIcon /> });
+  }
+  if (allow(user, 'taskflow.accounts.credit_note.manage', 'taskflow.accounts.invoice.list')) {
+    nav.push({ to: '/accounts/credit-notes', label: 'Credit notes', icon: <PackageIcon /> });
+  }
+  if (allow(user, 'taskflow.accounts.bank.read', 'taskflow.accounts.bank.manage')) {
+    nav.push({ to: '/accounts/banking', label: 'Banking', icon: <TimesheetIcon /> });
+  }
+  if (allow(user, 'taskflow.accounts.chart.manage', 'taskflow.accounts.journal.read')) {
+    nav.push({ to: '/accounts/chart', label: 'Chart of accounts', icon: <BoardsIcon /> });
+    nav.push({ to: '/accounts/books-settings', label: 'Books settings', icon: <AppHubSettingsIcon /> });
   }
   return nav;
 }
@@ -350,7 +407,10 @@ export function buildCoreNav(user: NavUser): NavItem[] {
       'taskflow.core.currency.manage',
       'taskflow.core.exchange_rate.read',
       'taskflow.core.exchange_rate.manage',
-      'taskflow.core.modules.manage'
+      'taskflow.core.modules.manage',
+      'taskflow.platform.settings.manage',
+      'taskflow.platform.announcement.manage',
+      'taskflow.platform.profitability.read'
     )
   ) {
     return nav;
@@ -366,6 +426,15 @@ export function buildCoreNav(user: NavUser): NavItem[] {
   }
   if (allow(user, 'taskflow.core.modules.manage')) {
     nav.push({ to: '/core/modules', label: 'Modules', icon: <BoardsIcon /> });
+  }
+  if (allow(user, 'taskflow.platform.settings.manage')) {
+    nav.push({ to: '/core/preferences', label: 'Preferences', icon: <AppHubSettingsIcon /> });
+  }
+  if (allow(user, 'taskflow.platform.announcement.manage')) {
+    nav.push({ to: '/core/announcements', label: 'Announcements', icon: <InboxIcon /> });
+  }
+  if (allow(user, 'taskflow.platform.profitability.read')) {
+    nav.push({ to: '/core/insights', label: 'Management insights', icon: <DashboardIcon /> });
   }
   return nav;
 }
@@ -502,8 +571,14 @@ export function buildMonitorNav(user: NavUser, pathname = ''): NavItem[] {
     return nav;
   }
   nav.push({ to: '/monitor', label: 'Projects', icon: <ProjectsIcon />, end: true });
+  if (allow(user, 'taskflow.monitor.status_page.manage')) {
+    nav.push({ to: '/monitor/status-pages', label: 'Status pages', icon: <BoardsIcon /> });
+  }
+  if (allow(user, 'taskflow.monitor.postmortem.read', 'taskflow.monitor.postmortem.manage')) {
+    nav.push({ to: '/monitor/postmortems', label: 'Postmortems', icon: <IssuesIcon /> });
+  }
   const match = pathname.match(/^\/monitor\/([^/]+)/);
-  const pid = match?.[1];
+  const pid = match?.[1] && !['status-pages', 'postmortems'].includes(match[1]) ? match[1] : undefined;
   if (!pid) return nav;
   const base = `/monitor/${pid}`;
   nav.push({ to: base, label: 'Overview', icon: <DashboardIcon />, end: true });

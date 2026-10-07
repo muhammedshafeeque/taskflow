@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import type { LeadAssessment } from './assessLeadReady';
 import { pushToDevices } from '../Push/expoPush';
+import { brand, brandName, fillBrand } from '../Config/brand';
 
 const localLeadSchema = new mongoose.Schema(
   {
@@ -325,7 +326,13 @@ export async function updateAtriumLead(input: {
 }
 
 export function handoffThanksMessage(lang: 'ml' | 'en'): string {
-  return lang === 'ml'
-    ? 'വിശദാംശങ്ങൾക്ക് നന്ദി. ഐവോറിക്സ് സെയിൽസ് ടീം ഉടൻ നിങ്ങളെ ബന്ധപ്പെടും. കൂടുതൽ വിവരങ്ങളുണ്ടെങ്കിൽ ഇവിടെ പറയാം.'
-    : 'Thanks for the details. Our Ivorix sales team will connect with you shortly. You can share more details here anytime.';
+  const b = brand();
+  if (lang === 'ml') {
+    return b.leadThanksMl
+      ? fillBrand(b.leadThanksMl, 'ml')
+      : `വിശദാംശങ്ങൾക്ക് നന്ദി. ${brandName('ml')} സെയിൽസ് ടീം ഉടൻ നിങ്ങളെ ബന്ധപ്പെടും. കൂടുതൽ വിവരങ്ങളുണ്ടെങ്കിൽ ഇവിടെ പറയാം.`;
+  }
+  return b.leadThanksEn
+    ? fillBrand(b.leadThanksEn, 'en')
+    : `Thanks for the details. Our ${brandName('en')} sales team will connect with you shortly. You can share more details here anytime.`;
 }

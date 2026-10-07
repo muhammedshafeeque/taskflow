@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { CrmEmailPanel } from './CrmSalesTools';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import { money } from '../../components/moduleKit';
@@ -351,6 +352,7 @@ export default function CrmLeadDetail() {
 
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="xl:col-span-2 space-y-4 min-w-0">
+        {id && <CrmEmailPanel relatedType="lead" relatedId={id} defaultTo={lead.contactEmail} />}
         <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5">
           <h2 className="text-sm font-semibold mb-4">Details</h2>
           <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

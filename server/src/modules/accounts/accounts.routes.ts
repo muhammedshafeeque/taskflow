@@ -1,3 +1,4 @@
+import { ledgerRouter } from '../ledger/ledger.routes';
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import { requireAnyPermission } from '../../middleware/requirePermission';
@@ -23,6 +24,7 @@ const expenseManage = [A.EXPENSE.UPDATE];
 
 const router = Router();
 router.use(authMiddleware);
+router.use('/books', ledgerRouter);
 
 router.get('/dashboard', requireAnyPermission(readAny), asyncHandler(ctrl.getDashboard));
 router.get('/ledger', requireAnyPermission(ledgerRead), asyncHandler(ctrl.getLedger));

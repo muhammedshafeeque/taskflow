@@ -1,11 +1,8 @@
 const SECRET_KEY = 'pa_admin_secret'
 
 export function getStoredSecret(): string {
-  return (
-    sessionStorage.getItem(SECRET_KEY) ||
-    import.meta.env.VITE_PA_ADMIN_SECRET ||
-    ''
-  ).trim()
+  // Never bake credentials into the bundle — sign in with the admin secret or an Atrium token.
+  return (sessionStorage.getItem(SECRET_KEY) || '').trim()
 }
 
 export function setStoredSecret(secret: string): void {
@@ -51,11 +48,24 @@ async function request<T>(
   return json.data as T
 }
 
+export type BrandProfile = {
+  companyName: string
+  companyNameMl: string
+  businessDescription: string
+  servicesSummary: string
+  greetingEn: string
+  greetingMl: string
+  leadThanksEn: string
+  leadThanksMl: string
+  mentionAliases: string[]
+}
+
 export type BotSettings = {
   key: string
   botPaused: boolean
   voiceRepliesEnabled: boolean
   sttLanguage: 'ml' | 'en' | 'auto'
+  brand?: BrandProfile
   updatedAt?: string
 }
 

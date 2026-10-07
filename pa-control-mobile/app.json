@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Ivorix PA Control",
+    "name": "PA Control",
     "slug": "pa-control-mobile",
     "version": "2.0.0",
     "orientation": "portrait",
@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "online.repod.pacontrol",
+      "bundleIdentifier": "com.example.pacontrol",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Used for voice commands to the PA assistant.",
         "NSFaceIDUsageDescription": "Unlock PA Control with Face ID.",
@@ -21,7 +21,7 @@
       }
     },
     "android": {
-      "package": "online.repod.pacontrol",
+      "package": "com.example.pacontrol",
       "adaptiveIcon": {
         "backgroundColor": "#090C13",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -78,11 +78,9 @@
       "typedRoutes": true
     },
     "extra": {
-      "paApiUrl": "https://pa.repod.online",
-      "atriumUrl": "https://taskflow.repod.online",
-      "eas": {
-        "projectId": "pa-control-mobile-local"
-      }
+      "paApiUrl": "",
+      "atriumUrl": "",
+      "eas": {}
     }
   }
 }

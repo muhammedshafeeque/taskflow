@@ -1,3 +1,6 @@
+import mongoose from 'mongoose';
+import { applyLeaveUsage, getBalances, workingDaysFor } from './policy.service';
+import { HrmsLeaveType } from './models/hrmsPolicy.model';
 import { ApiError } from '../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { HrmsEmployee } from './models/hrmsEmployee.model';
@@ -82,12 +85,12 @@ export async function updateEmployee(id: string, workspaceId: string | null | un
   if (!existing) throw new ApiError(404, 'Employee not found');
   const fields = [
     'name', 'email', 'phone', 'whatsappPhone', 'department', 'designation', 'managerId', 'employmentType',
-    'status', 'location', 'annualCtc', 'currency', 'leaveBalanceDays', 'notes', 'userId',
+    'status', 'location', 'annualCtc', 'hourlyCostRate', 'currency', 'leaveBalanceDays', 'notes', 'userId',
   ] as const;
   for (const key of fields) {
     if (!(key in input)) continue;
     const val = input[key];
-    if (key === 'annualCtc' || key === 'leaveBalanceDays') {
+    if (key === 'annualCtc' || key === 'leaveBalanceDays' || key === 'hourlyCostRate') {
       (existing as unknown as Record<string, unknown>)[key] = Number(val);
     } else {
       (existing as unknown as Record<string, unknown>)[key] = val === '' ? undefined : val;
@@ -138,11 +141,38 @@ export async function createLeave(workspaceId: string | null | undefined, input:
   const start = asDate(input.startDate);
   const end = asDate(input.endDate);
   if (!start || !end) throw new ApiError(400, 'Start and end dates are required');
-  const days = input.days != null ? Number(input.days) : daysBetween(start, end);
+  if (end < start) throw new ApiError(400, 'End date is before start date');
+  const halfDay = Boolean(input.halfDay);
+  let leaveTypeId: mongoose.Types.ObjectId | null = null;
+  let legacyType = (input.type as string | undefined) ?? 'annual';
+  if (input.leaveTypeId) {
+    const lt = await HrmsLeaveType.findOne({ _id: input.leaveTypeId, taskflowOrganizationId: orgOid, active: true }).lean();
+    if (!lt) throw new ApiError(400, 'Unknown leave type');
+    leaveTypeId = lt._id as mongoose.Types.ObjectId;
+    legacyType = lt.paid ? 'annual' : 'unpaid';
+  }
+  // Count working days (weekends and holidays excluded) unless HR overrides.
+  const days =
+    input.days != null ? Number(input.days) : await workingDaysFor(orgOid, start, end, employee.location, halfDay);
+  if (!(days > 0)) throw new ApiError(400, 'The selected dates contain no working days');
+  if (leaveTypeId) {
+    const balance = (await getBalances(orgId, String(employee._id), start)).find((b) => b.leaveTypeId === String(leaveTypeId));
+    if (balance?.paid && !balance.allowNegative && balance.available !== null) {
+      const pending = await HrmsLeaveRequest.aggregate<{ d: number }>([
+        { $match: { employeeId: employee._id, leaveTypeId, status: 'pending' } },
+        { $group: { _id: null, d: { $sum: '$days' } } },
+      ]);
+      if (days > balance.available - (pending[0]?.d ?? 0)) {
+        throw new ApiError(400, `Not enough ${balance.name} balance (${balance.available} available, ${pending[0]?.d ?? 0} pending)`);
+      }
+    }
+  }
   const doc = await HrmsLeaveRequest.create({
     taskflowOrganizationId: orgOid,
     employeeId: employee._id,
-    type: input.type ?? 'annual',
+    type: legacyType,
+    leaveTypeId,
+    halfDay,
     status: 'pending',
     startDate: start,
     endDate: end,
@@ -168,8 +198,11 @@ export async function decideLeave(
   leave.decidedAt = new Date();
   await leave.save();
 
-  // Adjust leave balance for paid types on approval / reversal
-  if (leave.type !== 'unpaid') {
+  // Typed leave: per-type ledger. Legacy requests keep the old single balance.
+  if (leave.leaveTypeId) {
+    if (status === 'approved' && !wasApproved) await applyLeaveUsage(leave, 1);
+    if (status !== 'approved' && wasApproved) await applyLeaveUsage(leave, -1);
+  } else if (leave.type !== 'unpaid') {
     const employee = await HrmsEmployee.findById(leave.employeeId);
     if (employee) {
       if (status === 'approved' && !wasApproved) employee.leaveBalanceDays -= leave.days;

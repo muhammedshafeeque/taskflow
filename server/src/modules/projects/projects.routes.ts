@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { governanceRouter } from './projectGovernance';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import { requirePermission } from '../../middleware/requirePermission';
 import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
@@ -79,6 +80,7 @@ router.patch('/:projectId/designations/:id', requireProjectPermission(PROJECT_PE
 router.delete('/:projectId/designations/:id', requireProjectPermission(PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.UPDATE), ...projectDesignationController.deleteDesignationHandler);
 
 router.use('/:id/milestones', idParamHandler[0], milestonesRoutes);
+router.use('/:id/governance', idParamHandler[0], governanceRouter);
 router.use('/:id/roadmaps', idParamHandler[0], roadmapsRoutes);
 router.use('/:id/test-cases', idParamHandler[0], testCasesRoutes);
 router.use('/:id/test-plans', idParamHandler[0], testPlansRoutes);

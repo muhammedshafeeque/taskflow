@@ -5,6 +5,7 @@ import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as ctrl from './billing.controller';
 import { createPaymentLink, paymentsStatus } from './payments.service';
+import { emailInvoice } from './billing.service';
 
 const B = TASK_FLOW_PERMISSIONS.TASKFLOW.BILLING;
 
@@ -43,6 +44,14 @@ router.post('/invoices/:id/pay', requireAnyPermission([B.INVOICE.MANAGE]), async
 router.get('/payments/status', requireAnyPermission(invList), (_req, res) => {
   res.json({ success: true, data: paymentsStatus() });
 });
+router.post(
+  '/invoices/:id/email',
+  requireAnyPermission([B.INVOICE.MANAGE]),
+  asyncHandler(async (req, res) => {
+    const data = await emailInvoice(req.params.id, (req as { activeOrganizationId?: string }).activeOrganizationId, req.body ?? {});
+    res.json({ success: true, data });
+  })
+);
 router.post(
   '/invoices/:id/payment-link',
   requireAnyPermission([B.INVOICE.MANAGE]),

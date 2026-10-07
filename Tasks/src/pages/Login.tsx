@@ -12,10 +12,12 @@ import AtriumLogo from '../components/AtriumLogo';
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, microsoftSso, switchWorkspace } = useAuth();
+  const { login, verifyTwoFactor, microsoftSso, switchWorkspace } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [ssoLoading, setSsoLoading] = useState(false);
   const [publicConfig, setPublicConfig] = useState<PublicAuthConfig>({
@@ -119,8 +121,13 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const result = await login(email, password);
+    const result = challenge ? await verifyTwoFactor(challenge, code) : await login(email, password);
     setLoading(false);
+    const pendingChallenge = (result as { twoFactorChallenge?: string }).twoFactorChallenge;
+    if (!result.ok && pendingChallenge) {
+      setChallenge(pendingChallenge);
+      return;
+    }
     if (result.ok) {
       const stored = localStorage.getItem('pm_user');
       const u = stored ? JSON.parse(stored) : null;
@@ -189,7 +196,28 @@ export default function Login() {
                   {error}
                 </div>
               )}
-              {publicConfig.emailPasswordEnabled ? (
+              {challenge ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-[color:var(--text-muted)]">
+                    Enter the 6-digit code from your authenticator app, or one of your recovery codes.
+                  </p>
+                  <input
+                    autoFocus
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="123456"
+                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3.5 py-2.5 text-center text-lg tracking-[0.3em]"
+                  />
+                  <button type="submit" disabled={loading || code.trim().length < 6} className="btn-primary w-full rounded-lg py-2.5 text-sm disabled:opacity-50">
+                    {loading ? 'Verifying…' : 'Verify'}
+                  </button>
+                  <button type="button" className="w-full text-xs text-[color:var(--text-muted)]" onClick={() => { setChallenge(null); setCode(''); }}>
+                    Back
+                  </button>
+                </div>
+              ) : publicConfig.emailPasswordEnabled ? (
                 <>
                   <div className="space-y-5">
                     <div>

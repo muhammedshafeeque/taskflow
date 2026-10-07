@@ -1,3 +1,4 @@
+import { notifyProjectMembers, notifyUsers } from '../notifications/domainNotify';
 import mongoose from 'mongoose';
 import { Project } from './project.model';
 import {
@@ -216,6 +217,23 @@ export async function findById(id: string, activeTaskflowOrganizationId: string)
   return out;
 }
 
+const SETTINGS_FIELDS = ['statuses', 'issueTypes', 'priorities', 'customFields', 'fieldSchemes', 'environments', 'releaseRules', 'projectRules', 'rulesEnforcementMode', 'estimateApprovalEnabled', 'githubRepo'];
+
+function notifyProjectChanges(projectId: string, input: Record<string, unknown>, before: { versions?: Array<{ id: string; name: string; status?: string }>; lead?: unknown; name?: string } | null, actorId?: string) {
+  const changed = SETTINGS_FIELDS.filter((f) => input[f] !== undefined);
+  if (changed.length && before?.lead) {
+    void notifyUsers([before.lead], 'project_settings_changed', { title: `Project settings changed: ${before.name ?? ''}`, body: changed.join(', '), link: `/projects/${projectId}/settings` }, actorId);
+  }
+  if (Array.isArray(input.versions) && before?.versions) {
+    for (const v of input.versions as Array<{ id: string; name: string; status?: string }>) {
+      const prev = before.versions.find((x) => x.id === v.id);
+      if (v.status === 'released' && prev && prev.status !== 'released') {
+        notifyProjectMembers(projectId, 'release_ready', { title: `Release ready: ${v.name}`, body: before.name, link: `/projects/${projectId}/versions` }, actorId);
+      }
+    }
+  }
+}
+
 function withProjectDefaults(p: Record<string, unknown>): Record<string, unknown> {
   if (!p.statuses || (Array.isArray(p.statuses) && p.statuses.length === 0)) {
     p.statuses = [
@@ -331,8 +349,10 @@ export async function saveAsTemplate(
 export async function update(
   id: string,
   input: UpdateProjectBody,
-  activeTaskflowOrganizationId: string
+  activeTaskflowOrganizationId: string,
+  actorId?: string
 ): Promise<unknown | null> {
+  const beforeForNotify = await Project.findById(id).select('versions lead name').lean();
   let previousLeadId: string | null = null;
   if (input.lead !== undefined) {
     const existingProj = await Project.findOne({ _id: id, taskflowOrganizationId: activeTaskflowOrganizationId })
@@ -452,6 +472,7 @@ export async function update(
     );
     (out as Record<string, unknown>).versions = versions.map((v, i) => ({ ...v, issueCount: counts[i] }));
   }
+  notifyProjectChanges(id, input as Record<string, unknown>, beforeForNotify, actorId);
   return out;
 }
 

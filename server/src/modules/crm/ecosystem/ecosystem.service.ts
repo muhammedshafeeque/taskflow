@@ -71,27 +71,6 @@ export async function dispatchWebhook(
   );
 }
 
-export async function runStaleDealAlerts(workspaceId: string): Promise<number> {
-  const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-  const stale = await CrmDeal.find({
-    taskflowOrganizationId: toOrgOid(workspaceId),
-    status: 'open',
-    updatedAt: { $lt: cutoff },
-    ownerId: { $exists: true },
-  }).lean();
-  for (const deal of stale) {
-    if (deal.ownerId) {
-      await notifyUser({
-        userId: String(deal.ownerId),
-        eventKey: 'system_alert',
-        title: 'Stale deal',
-        body: `Deal "${deal.title}" has had no activity for 14+ days.`,
-        link: `/crm/deals`,
-      }).catch(() => undefined);
-    }
-  }
-  return stale.length;
-}
 
 export async function assignLeadRoundRobin(workspaceId: string, leadId: string, assigneeIds: string[]): Promise<void> {
   if (!assigneeIds.length) return;

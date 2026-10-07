@@ -39,12 +39,15 @@ export default function ErrorIncidents({
   token,
   canUpdate,
   onChanged,
+  focusId,
 }: {
   projectId: string;
   rows: Group[];
   token: string;
   canUpdate: boolean;
   onChanged: () => void;
+  /** Error group opened from a link (?group=) — shown first and highlighted. */
+  focusId?: string;
 }) {
   const { user } = useAuth();
   const myId = (user as { id?: string; _id?: string } | null)?.id ?? (user as { _id?: string } | null)?._id;
@@ -89,11 +92,14 @@ export default function ErrorIncidents({
   return (
     <div className="space-y-2">
       {error && <p className="text-xs text-red-500">{error}</p>}
-      {rows.map((g) => {
+      {[...rows].sort((a, b) => (a._id === focusId ? -1 : b._id === focusId ? 1 : 0)).map((g) => {
         const snoozed = g.snoozedUntil && new Date(g.snoozedUntil) > new Date();
         const open = g.status !== 'resolved';
         return (
-          <div key={g._id} className="rounded-lg border border-[color:var(--border-subtle)] px-3 py-2.5 text-[13px]">
+          <div
+            key={g._id}
+            className={`rounded-lg border px-3 py-2.5 text-[13px] ${g._id === focusId ? 'border-[color:var(--accent)] ring-1 ring-[color:var(--accent)]/40' : 'border-[color:var(--border-subtle)]'}`}
+          >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-[color:var(--text-primary)] break-words">{g.message}</p>
