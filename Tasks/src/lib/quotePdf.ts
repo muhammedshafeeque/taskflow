@@ -1,9 +1,77 @@
 import { jsPDF } from 'jspdf';
-import type { CrmQuote, CrmQuoteLine } from './api';
+import type { CoreCompanySettings, CrmQuote, CrmQuoteLine } from './api';
+
+/** Issuer (your company) details printed in the PDF header. All values come from Core company settings. */
+export type QuotePdfIssuer = {
+  name: string;
+  legalName?: string;
+  address?: string;
+  city?: string;
+  country?: string;
+  taxId?: string;
+  website?: string;
+  /** data: URL (PNG/JPEG) — jsPDF cannot fetch remote images. */
+  logoDataUrl?: string;
+};
+
+export function issuerFromCompany(
+  company: Partial<CoreCompanySettings> | null | undefined,
+  fallbackName: string,
+  logoDataUrl?: string
+): QuotePdfIssuer {
+  return {
+    name: company?.companyName?.trim() || fallbackName,
+    legalName: company?.legalName?.trim() || undefined,
+    address: company?.address?.trim() || undefined,
+    city: company?.city?.trim() || undefined,
+    country: company?.country?.trim() || undefined,
+    taxId: company?.taxId?.trim() || undefined,
+    website: company?.website?.trim() || undefined,
+    logoDataUrl,
+  };
+}
+
+/** Fetch an image URL and return a data: URL usable by jsPDF (undefined on CORS / network failure). */
+export async function imageUrlToDataUrl(url?: string | null): Promise<string | undefined> {
+  if (!url) return undefined;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return undefined;
+    const blob = await res.blob();
+    if (!/^image\/(png|jpe?g)$/i.test(blob.type)) return undefined;
+    return await new Promise<string | undefined>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : undefined);
+      reader.onerror = () => resolve(undefined);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+type RGB = [number, number, number];
+
+const INK: RGB = [17, 24, 39];
+const BODY: RGB = [55, 65, 81];
+const MUTED: RGB = [107, 114, 128];
+const FAINT: RGB = [156, 163, 175];
+const RULE: RGB = [229, 231, 235];
+const PANEL: RGB = [248, 250, 252];
+const ACCENT: RGB = [67, 56, 202];
+const ACCENT_SOFT: RGB = [238, 242, 255];
+
+const STATUS_COLORS: Record<string, { fg: RGB; bg: RGB }> = {
+  draft: { fg: [75, 85, 99], bg: [243, 244, 246] },
+  sent: { fg: [29, 78, 216], bg: [219, 234, 254] },
+  accepted: { fg: [21, 128, 61], bg: [220, 252, 231] },
+  rejected: { fg: [185, 28, 28], bg: [254, 226, 226] },
+  expired: { fg: [180, 83, 9], bg: [254, 243, 199] },
+};
 
 /** jsPDF Helvetica cannot render many currency glyphs (e.g. ₹) — use ASCII-safe labels. */
 const CURRENCY_PREFIX: Record<string, string> = {
-  INR: 'Rs.',
+  INR: 'Rs. ',
   USD: '$',
   EUR: 'EUR ',
   GBP: 'GBP ',
@@ -26,16 +94,10 @@ function money(n: number, currency: string): string {
 }
 
 function fmtDate(d?: string): string {
-  if (!d) return '—';
-  try {
-    return new Date(d).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
-  } catch {
-    return String(d).slice(0, 10);
-  }
+  if (!d) return '-';
+  const date = new Date(d);
+  if (Number.isNaN(date.getTime())) return String(d).slice(0, 10);
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function billingLabel(type?: string): string {
@@ -53,334 +115,451 @@ function lineNet(line: CrmQuoteLine): number {
 }
 
 function qtyCell(line: CrmQuoteLine): string {
-  if (line.billingType === 'hourly') return `${line.quantity} hrs`;
+  if (line.billingType === 'milestone') return '1';
+  if (line.billingType === 'hourly') return `${line.quantity ?? 0} h`;
   return String(line.quantity ?? 0);
 }
 
 function rateCell(line: CrmQuoteLine, currency: string): string {
-  if (line.billingType === 'hourly') return `${money(line.unitPrice ?? 0, currency)}/hr`;
+  if (line.billingType === 'hourly') return `${money(line.unitPrice ?? 0, currency)}/h`;
   return money(line.unitPrice ?? 0, currency);
 }
 
-function customerBlock(quote: CrmQuote): {
-  name: string;
-  lines: string[];
-} {
-  const account =
-    quote.accountId && typeof quote.accountId === 'object' ? quote.accountId : null;
-  const org =
-    quote.customerOrgId && typeof quote.customerOrgId === 'object' ? quote.customerOrgId : null;
-  const lead = quote.leadId && typeof quote.leadId === 'object' ? quote.leadId : null;
+function quoteNumber(quote: CrmQuote): string {
+  return `Q-${quote._id.slice(-8).toUpperCase()}`;
+}
 
-  const name =
-    org?.name ||
-    account?.name ||
-    lead?.companyName ||
-    lead?.title ||
-    (typeof quote.accountId === 'string' ? 'Customer' : '—');
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return (parts.length > 1 ? parts[0][0] + parts[1][0] : name.slice(0, 2)).toUpperCase() || 'Q';
+}
+
+/** Strip characters Helvetica (WinAnsi) cannot draw so they don't render as garbage. */
+function safe(s: string): string {
+  return s
+    .replace(/[–—]/g, '-')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/…/g, '...')
+    .replace(/[•·]/g, '-')
+    .split('')
+    .filter((ch) => {
+      const c = ch.charCodeAt(0);
+      return c === 9 || c === 10 || c === 13 || (c >= 32 && c <= 126) || (c >= 160 && c <= 255);
+    })
+    .join('');
+}
+
+function customerBlock(quote: CrmQuote): { name: string; lines: string[] } {
+  const account = quote.accountId && typeof quote.accountId === 'object' ? quote.accountId : null;
+  const org = quote.customerOrgId && typeof quote.customerOrgId === 'object' ? quote.customerOrgId : null;
+  const lead = quote.leadId && typeof quote.leadId === 'object' ? quote.leadId : null;
+  const contact = quote.contactId && typeof quote.contactId === 'object' ? quote.contactId : null;
+
+  const name = org?.name || account?.name || lead?.companyName || lead?.title || 'Customer';
 
   const lines: string[] = [];
-  if (lead?.contactName) lines.push(lead.contactName);
-  if (lead?.contactEmail) lines.push(lead.contactEmail);
-  if (org && 'contactEmail' in org && (org as { contactEmail?: string }).contactEmail) {
-    lines.push(String((org as { contactEmail?: string }).contactEmail));
-  }
-  if (account?.industry) lines.push(account.industry);
+  const attn = contact?.name || lead?.contactName;
+  if (attn) lines.push(`Attn: ${attn}`);
+  const email = contact?.email || lead?.contactEmail || org?.contactEmail;
+  if (email) lines.push(email);
   if (account?.website) lines.push(account.website);
-  if (lead?.companyName && lead?.title && lead.companyName !== name) {
-    lines.push(`Opportunity: ${lead.title}`);
-  }
-
-  return { name, lines };
+  if (account?.industry) lines.push(account.industry);
+  return { name, lines: [...new Set(lines)] };
 }
 
-function ensureSpace(doc: jsPDF, y: number, need: number, margin: number): number {
-  const pageH = doc.internal.pageSize.getHeight();
-  if (y + need <= pageH - margin) return y;
-  doc.addPage();
-  return margin;
-}
+export function buildQuotePdf(quote: CrmQuote, issuerOrName?: QuotePdfIssuer | string): jsPDF {
+  const issuer: QuotePdfIssuer =
+    typeof issuerOrName === 'object' && issuerOrName
+      ? issuerOrName
+      : { name: (issuerOrName as string | undefined) || 'Quotation' };
 
-function drawTableHeader(
-  doc: jsPDF,
-  cols: Array<{ label: string; x: number; w: number; align?: 'left' | 'right' }>,
-  y: number,
-  pageW: number,
-  margin: number
-): number {
-  doc.setFillColor(245, 247, 250);
-  doc.rect(margin, y - 4, pageW - 2 * margin, 7, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(60);
-  for (const c of cols) {
-    doc.text(c.label, c.align === 'right' ? c.x + c.w : c.x, y, {
-      align: c.align === 'right' ? 'right' : 'left',
-    });
-  }
-  y += 3;
-  doc.setDrawColor(210);
-  doc.line(margin, y, pageW - margin, y);
-  return y + 5;
-}
-
-export function buildQuotePdf(quote: CrmQuote, companyName?: string): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const margin = 14;
-  let y = margin;
-  const currency = quote.currency || 'USD';
-  const customer = customerBlock(quote);
-  const dealTitle =
-    quote.dealId && typeof quote.dealId === 'object' ? quote.dealId.title : undefined;
-  const leadTitle =
-    quote.leadId && typeof quote.leadId === 'object' ? quote.leadId.title : undefined;
+  const M = 16;
+  const contentW = pageW - 2 * M;
+  const bottomLimit = pageH - 22;
+  const currency = (quote.currency || 'USD').toUpperCase();
   const lines = quote.lineItems ?? [];
   const totalHours = lines
     .filter((l) => l.billingType === 'hourly')
     .reduce((s, l) => s + (l.quantity || 0), 0);
+  const dealTitle = quote.dealId && typeof quote.dealId === 'object' ? quote.dealId.title : undefined;
+  const leadTitle = quote.leadId && typeof quote.leadId === 'object' ? quote.leadId.title : undefined;
 
-  // ── Header ────────────────────────────────────────────────────────────
-  doc.setFillColor(24, 32, 48);
-  doc.rect(0, 0, pageW, 28, 'F');
-  doc.setTextColor(255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text(companyName || 'Quotation', margin, 12);
-  doc.setFontSize(18);
-  doc.text('QUOTATION', pageW - margin, 12, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(quote.title || 'Untitled quotation', margin, 20);
-  doc.text(`Ref: ${quote._id.slice(-8).toUpperCase()}`, pageW - margin, 20, { align: 'right' });
-  y = 36;
-  doc.setTextColor(30);
+  const color = (c: RGB) => doc.setTextColor(c[0], c[1], c[2]);
+  const fill = (c: RGB) => doc.setFillColor(c[0], c[1], c[2]);
+  const stroke = (c: RGB) => doc.setDrawColor(c[0], c[1], c[2]);
+  const font = (style: 'normal' | 'bold', size: number, c: RGB = BODY) => {
+    doc.setFont('helvetica', style);
+    doc.setFontSize(size);
+    color(c);
+  };
+  const text = (s: string | string[], x: number, y: number, opts?: { align?: 'left' | 'right' | 'center' }) =>
+    doc.text(Array.isArray(s) ? s.map(safe) : safe(s), x, y, opts);
+  const wrap = (s: string, w: number): string[] => doc.splitTextToSize(safe(s), w) as string[];
+  const eyebrow = (label: string, x: number, y: number, align?: 'left' | 'right') => {
+    font('bold', 7, MUTED);
+    doc.setCharSpace(0.6);
+    text(label.toUpperCase(), x, y, { align });
+    doc.setCharSpace(0);
+  };
 
-  // ── Two-column meta ───────────────────────────────────────────────────
-  const leftX = margin;
-  const rightX = pageW / 2 + 4;
+  let y = 0;
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(100);
-  doc.text('PREPARED FOR', leftX, y);
-  doc.text('QUOTE DETAILS', rightX, y);
-  y += 5;
+  // ── Accent strip ──────────────────────────────────────────────────────
+  fill(ACCENT);
+  doc.rect(0, 0, pageW, 3, 'F');
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(20);
-  doc.text(customer.name, leftX, y);
+  // ── Issuer (left) ─────────────────────────────────────────────────────
+  y = 16;
+  let brandX = M;
+  let logoDrawn = false;
+  if (issuer.logoDataUrl) {
+    try {
+      const props = doc.getImageProperties(issuer.logoDataUrl);
+      const maxH = 14;
+      const maxW = 36;
+      const ratio = props.width / props.height;
+      const h = Math.min(maxH, maxW / ratio);
+      const w = h * ratio;
+      doc.addImage(issuer.logoDataUrl, M, y - 4, w, h);
+      brandX = M + w + 4;
+      logoDrawn = true;
+    } catch {
+      logoDrawn = false;
+    }
+  }
+  if (!logoDrawn) {
+    fill(ACCENT);
+    doc.roundedRect(M, y - 4, 14, 14, 2.5, 2.5, 'F');
+    font('bold', 11, [255, 255, 255]);
+    text(initials(issuer.name), M + 7, y + 4.6, { align: 'center' });
+    brandX = M + 18;
+  }
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(50);
-  const detailRows: Array<[string, string]> = [
-    ['Status', (quote.status || 'draft').toUpperCase()],
-    ['Version', String(quote.version ?? 1)],
-    ['Currency', currency.toUpperCase()],
+  font('bold', 13, INK);
+  const nameLines = wrap(issuer.name, pageW / 2 - brandX + 6);
+  text(nameLines[0], brandX, y + 1);
+  font('normal', 7.5, MUTED);
+  let iy = y + 5.5;
+  const issuerLines = [
+    issuer.legalName && issuer.legalName !== issuer.name ? issuer.legalName : '',
+    issuer.address ?? '',
+    [issuer.city, issuer.country].filter(Boolean).join(', '),
+    issuer.taxId ? `Tax ID: ${issuer.taxId}` : '',
+    issuer.website ?? '',
+  ].filter(Boolean);
+  for (const l of issuerLines) {
+    for (const w of wrap(l, pageW / 2 - brandX + 6)) {
+      text(w, brandX, iy);
+      iy += 3.6;
+    }
+  }
+
+  // ── Document title (right) ────────────────────────────────────────────
+  font('bold', 24, INK);
+  doc.setCharSpace(1.2);
+  text('QUOTATION', pageW - M, y + 3, { align: 'right' });
+  doc.setCharSpace(0);
+  font('normal', 9, MUTED);
+  text(`No. ${quoteNumber(quote)}`, pageW - M, y + 9, { align: 'right' });
+
+  const status = (quote.status || 'draft').toLowerCase();
+  const sc = STATUS_COLORS[status] ?? STATUS_COLORS.draft;
+  font('bold', 7, sc.fg);
+  const pillLabel = status.toUpperCase();
+  const pillW = doc.getTextWidth(pillLabel) + 6;
+  fill(sc.bg);
+  doc.roundedRect(pageW - M - pillW, y + 11.5, pillW, 5, 2.5, 2.5, 'F');
+  color(sc.fg);
+  text(pillLabel, pageW - M - pillW / 2, y + 15, { align: 'center' });
+
+  y = Math.max(iy, y + 22) + 4;
+
+  // ── Meta strip ────────────────────────────────────────────────────────
+  const meta: Array<[string, string]> = [
     ['Issue date', fmtDate(quote.createdAt)],
     ['Valid until', fmtDate(quote.validUntil)],
+    ['Currency', currency],
+    ['Version', `v${quote.version ?? 1}`],
   ];
-  if (dealTitle) detailRows.push(['Deal', dealTitle]);
-  if (leadTitle) detailRows.push(['Lead', leadTitle]);
-  if (totalHours > 0) detailRows.push(['Total hours', `${totalHours} hrs`]);
+  if (totalHours > 0) meta.push(['Est. effort', `${totalHours} hrs`]);
+  fill(PANEL);
+  doc.roundedRect(M, y, contentW, 15, 2, 2, 'F');
+  const cellW = contentW / meta.length;
+  meta.forEach(([label, value], i) => {
+    const cx = M + i * cellW + 5;
+    eyebrow(label, cx, y + 5.5);
+    font('bold', 9.5, INK);
+    text(value, cx, y + 11);
+    if (i > 0) {
+      stroke(RULE);
+      doc.setLineWidth(0.2);
+      doc.line(M + i * cellW, y + 3, M + i * cellW, y + 12);
+    }
+  });
+  y += 23;
 
-  let metaY = y;
-  for (const [label, value] of detailRows) {
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(120);
-    doc.text(`${label}:`, rightX, metaY);
-    doc.setTextColor(30);
-    doc.setFont('helvetica', 'bold');
-    const valueLines = doc.splitTextToSize(value, pageW / 2 - margin - 28);
-    doc.text(valueLines, rightX + 28, metaY);
-    metaY += Math.max(5, valueLines.length * 4);
+  // ── Bill to / Subject ─────────────────────────────────────────────────
+  const colW = contentW / 2 - 6;
+  const rightCol = M + contentW / 2 + 6;
+  const customer = customerBlock(quote);
+
+  eyebrow('Prepared for', M, y);
+  eyebrow('Subject', rightCol, y);
+  let ly = y + 6;
+  font('bold', 11, INK);
+  for (const w of wrap(customer.name, colW)) {
+    text(w, M, ly);
+    ly += 5;
+  }
+  font('normal', 8.5, BODY);
+  for (const l of customer.lines) {
+    for (const w of wrap(l, colW)) {
+      text(w, M, ly);
+      ly += 4;
+    }
   }
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(60);
-  let custY = y + 5;
-  for (const line of customer.lines) {
-    const wrapped = doc.splitTextToSize(line, pageW / 2 - margin - 4);
-    doc.text(wrapped, leftX, custY);
-    custY += wrapped.length * 4;
+  let ry = y + 6;
+  font('bold', 11, INK);
+  for (const w of wrap(quote.title || 'Quotation', colW)) {
+    text(w, rightCol, ry);
+    ry += 5;
   }
-  if (customer.lines.length === 0 && !accountOrOrgOrLead(quote)) {
-    doc.setTextColor(140);
-    doc.text('Customer details not linked', leftX, custY);
-    custY += 4;
+  font('normal', 8.5, BODY);
+  const subjectLines = [
+    dealTitle ? `Deal: ${dealTitle}` : '',
+    leadTitle && leadTitle !== quote.title ? `Opportunity: ${leadTitle}` : '',
+  ].filter(Boolean);
+  for (const l of subjectLines) {
+    for (const w of wrap(l, colW)) {
+      text(w, rightCol, ry);
+      ry += 4;
+    }
   }
 
-  y = Math.max(metaY, custY) + 6;
-  doc.setDrawColor(220);
-  doc.line(margin, y, pageW - margin, y);
-  y += 8;
+  y = Math.max(ly, ry) + 8;
 
-  // ── Line table ────────────────────────────────────────────────────────
-  const cols = [
-    { label: '#', x: margin, w: 8, align: 'left' as const },
-    { label: 'Description', x: margin + 8, w: 58, align: 'left' as const },
-    { label: 'Category', x: margin + 66, w: 22, align: 'left' as const },
-    { label: 'Type', x: margin + 88, w: 18, align: 'left' as const },
-    { label: 'Qty', x: margin + 106, w: 16, align: 'right' as const },
-    { label: 'Rate', x: margin + 122, w: 26, align: 'right' as const },
-    { label: 'Amount', x: margin + 148, w: 34, align: 'right' as const },
+  // ── Line items table ──────────────────────────────────────────────────
+  const anyDisc = lines.some((l) => (l.discountPercent ?? 0) > 0);
+  type Col = { key: string; label: string; w: number; align: 'left' | 'right' };
+  const colsBase: Col[] = [
+    { key: 'idx', label: '#', w: 9, align: 'left' },
+    { key: 'desc', label: 'Description', w: 0, align: 'left' },
+    { key: 'qty', label: 'Qty', w: 18, align: 'right' },
+    { key: 'rate', label: 'Rate', w: 30, align: 'right' },
+    ...(anyDisc ? [{ key: 'disc', label: 'Disc.', w: 14, align: 'right' as const }] : []),
+    { key: 'amt', label: 'Amount', w: 32, align: 'right' },
   ];
+  const fixedW = colsBase.reduce((s, c) => s + c.w, 0);
+  colsBase[1].w = contentW - fixedW;
+  const cols = colsBase.map((c, i) => ({
+    ...c,
+    x: M + colsBase.slice(0, i).reduce((s, cc) => s + cc.w, 0),
+  }));
+  const cellX = (c: (typeof cols)[number]) => (c.align === 'right' ? c.x + c.w - 3 : c.x + 3);
 
-  y = drawTableHeader(doc, cols, y, pageW, margin);
+  const drawHeader = () => {
+    fill(INK);
+    doc.roundedRect(M, y, contentW, 8, 1.5, 1.5, 'F');
+    font('bold', 7.5, [255, 255, 255]);
+    doc.setCharSpace(0.4);
+    for (const c of cols) text(c.label.toUpperCase(), cellX(c), y + 5.3, { align: c.align });
+    doc.setCharSpace(0);
+    y += 8;
+  };
+  const newPage = () => {
+    doc.addPage();
+    fill(ACCENT);
+    doc.rect(0, 0, pageW, 3, 'F');
+    y = 14;
+  };
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(30);
+  drawHeader();
 
+  const descCol = cols[1];
   lines.forEach((line, idx) => {
-    const desc = line.description || '—';
-    const descLines = doc.splitTextToSize(desc, cols[1].w - 1);
-    const rowH = Math.max(6, descLines.length * 3.8 + 2);
-    y = ensureSpace(doc, y, rowH + 2, margin);
-    if (y === margin) {
-      y = drawTableHeader(doc, cols, y, pageW, margin);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(30);
+    font('bold', 9, INK);
+    const descLines = wrap(line.description || '-', descCol.w - 6);
+    const sub = [line.category, billingLabel(line.billingType), (line.taxRate ?? 0) > 0 ? `Tax ${line.taxRate}%` : '']
+      .filter(Boolean)
+      .join('  |  ');
+    const rowH = 4 + descLines.length * 4.2 + 3.8 + 2.5;
+
+    if (y + rowH > bottomLimit) {
+      newPage();
+      drawHeader();
     }
 
-    if (idx % 2 === 1) {
-      doc.setFillColor(250, 251, 252);
-      doc.rect(margin, y - 3.5, pageW - 2 * margin, rowH, 'F');
+    const top = y;
+    const base = top + 5.6;
+    font('normal', 8.5, FAINT);
+    text(String(idx + 1).padStart(2, '0'), cellX(cols[0]), base);
+    font('bold', 9, INK);
+    descLines.forEach((d, i) => text(d, cellX(descCol), base + i * 4.2));
+    font('normal', 7.5, MUTED);
+    text(sub, cellX(descCol), base + descLines.length * 4.2);
+
+    font('normal', 9, BODY);
+    for (const c of cols.slice(2)) {
+      let v = '';
+      if (c.key === 'qty') v = qtyCell(line);
+      if (c.key === 'rate') v = rateCell(line, currency);
+      if (c.key === 'disc') v = (line.discountPercent ?? 0) > 0 ? `${line.discountPercent}%` : '-';
+      if (c.key === 'amt') {
+        font('bold', 9, INK);
+        v = money(lineNet(line), currency);
+      }
+      text(v, cellX(c), base, { align: c.align });
     }
 
-    doc.text(String(idx + 1), cols[0].x, y);
-    doc.text(descLines, cols[1].x, y);
-    doc.text(line.category || '—', cols[2].x, y);
-    doc.text(billingLabel(line.billingType), cols[3].x, y);
-    doc.text(qtyCell(line), cols[4].x + cols[4].w, y, { align: 'right' });
-    doc.text(rateCell(line, currency), cols[5].x + cols[5].w, y, { align: 'right' });
-    doc.text(money(lineNet(line), currency), cols[6].x + cols[6].w, y, { align: 'right' });
-
-    const disc = line.discountPercent ?? 0;
-    const tax = line.taxRate ?? 0;
-    if (disc > 0 || tax > 0) {
-      const extras: string[] = [];
-      if (disc > 0) extras.push(`Disc ${disc}%`);
-      if (tax > 0) extras.push(`Tax ${tax}%`);
-      doc.setFontSize(7);
-      doc.setTextColor(120);
-      doc.text(extras.join(' · '), cols[1].x, y + descLines.length * 3.8);
-      doc.setFontSize(8);
-      doc.setTextColor(30);
-      y += rowH + 1;
-    } else {
-      y += rowH;
-    }
+    y = top + rowH;
+    stroke(RULE);
+    doc.setLineWidth(0.2);
+    doc.line(M, y, pageW - M, y);
   });
 
   if (lines.length === 0) {
-    doc.setTextColor(120);
-    doc.text('No line items', margin, y);
-    y += 6;
+    font('normal', 9, MUTED);
+    text('No line items', M + 3, y + 7);
+    y += 12;
   }
-
-  y += 2;
-  doc.setDrawColor(200);
-  doc.line(margin, y, pageW - margin, y);
-  y += 8;
 
   // ── Totals ────────────────────────────────────────────────────────────
-  y = ensureSpace(doc, y, 40, margin);
-  const totalsX = pageW - margin;
-  const labelX = totalsX - 55;
-  const addTotal = (label: string, value: string, bold = false) => {
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
-    doc.setFontSize(bold ? 11 : 9);
-    doc.setTextColor(bold ? 20 : 80);
-    doc.text(label, labelX, y);
-    doc.text(value, totalsX, y, { align: 'right' });
-    y += bold ? 7 : 5.5;
-  };
-
-  if (totalHours > 0) {
-    addTotal('Total hours', `${totalHours} hrs`);
-  }
-  addTotal('Subtotal', money(quote.subtotal ?? 0, currency));
+  const totalRows: Array<[string, string]> = [['Subtotal', money(quote.subtotal ?? 0, currency)]];
   if ((quote.discountAmount ?? 0) > 0) {
-    addTotal(
+    totalRows.push([
       `Discount${quote.discountPercent ? ` (${quote.discountPercent}%)` : ''}`,
-      `-${money(quote.discountAmount ?? 0, currency)}`
-    );
+      `- ${money(quote.discountAmount ?? 0, currency)}`,
+    ]);
   }
   if ((quote.taxTotal ?? 0) > 0) {
-    addTotal(
-      `Tax${quote.taxCode ? ` (${quote.taxCode})` : ''}`,
-      money(quote.taxTotal ?? 0, currency)
-    );
+    totalRows.push([`Tax${quote.taxCode ? ` (${quote.taxCode})` : ''}`, money(quote.taxTotal ?? 0, currency)]);
   }
+  const totalsH = totalRows.length * 6 + 18;
+  if (y + 6 + totalsH > bottomLimit) newPage();
+  y += 6;
 
-  doc.setDrawColor(24, 32, 48);
-  doc.setLineWidth(0.4);
-  doc.line(labelX, y - 1, totalsX, y - 1);
-  y += 5;
-  addTotal('Grand total', money(quote.total ?? quote.subtotal ?? 0, currency), true);
-  doc.setLineWidth(0.2);
+  const tW = 82;
+  const tX = pageW - M - tW;
+  let ty = y + 4;
+  for (const [label, value] of totalRows) {
+    font('normal', 9, MUTED);
+    text(label, tX + 4, ty);
+    font('normal', 9, INK);
+    text(value, pageW - M - 4, ty, { align: 'right' });
+    ty += 6;
+  }
+  fill(ACCENT);
+  doc.roundedRect(tX, ty - 1, tW, 12, 2, 2, 'F');
+  font('bold', 8, [224, 231, 255]);
+  doc.setCharSpace(0.5);
+  text('TOTAL DUE', tX + 4, ty + 6.4);
+  doc.setCharSpace(0);
+  font('bold', 13, [255, 255, 255]);
+  text(money(quote.total ?? quote.subtotal ?? 0, currency), pageW - M - 4, ty + 6.8, { align: 'right' });
 
-  // ── Notes ─────────────────────────────────────────────────────────────
-  if (quote.notes?.trim()) {
-    y += 6;
-    y = ensureSpace(doc, y, 24, margin);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(40);
-    doc.text('Notes / assumptions', margin, y);
-    y += 5;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(70);
-    const noteLines = doc.splitTextToSize(quote.notes.trim(), pageW - 2 * margin);
-    for (const nl of noteLines) {
-      y = ensureSpace(doc, y, 5, margin);
-      doc.text(nl, margin, y);
-      y += 4;
+  // Left of totals: at-a-glance summary
+  const sW = contentW - tW - 8;
+  fill(ACCENT_SOFT);
+  doc.roundedRect(M, y, sW, totalsH - 3, 2, 2, 'F');
+  eyebrow('At a glance', M + 5, y + 6);
+  font('normal', 8.5, BODY);
+  const glance = [
+    `${lines.length} line item${lines.length === 1 ? '' : 's'}${totalHours > 0 ? `  |  ${totalHours} estimated hours` : ''}`,
+    quote.validUntil
+      ? `This quotation is valid until ${fmtDate(quote.validUntil)}.`
+      : 'Prices are subject to change without notice.',
+    `All amounts in ${currency}.`,
+  ];
+  let gy = y + 11.5;
+  for (const g of glance) {
+    for (const w of wrap(g, sW - 10)) {
+      text(w, M + 5, gy);
+      gy += 4.2;
     }
   }
+
+  y = Math.max(ty + 11, y + totalsH - 3) + 10;
+
+  // ── Notes / terms ─────────────────────────────────────────────────────
+  if (quote.notes?.trim()) {
+    if (y + 16 > bottomLimit) newPage();
+    eyebrow('Notes & terms', M, y);
+    y += 2.5;
+    stroke(ACCENT);
+    doc.setLineWidth(0.6);
+    const noteLinesAll = quote.notes
+      .trim()
+      .split(/\r?\n/)
+      .flatMap((p) => (p.trim() ? wrap(p, contentW - 6) : ['']));
+    font('normal', 8.5, BODY);
+    let blockStart = y;
+    for (const nl of noteLinesAll) {
+      if (y + 6 > bottomLimit) {
+        doc.line(M, blockStart, M, y + 1);
+        newPage();
+        blockStart = y;
+        font('normal', 8.5, BODY);
+        stroke(ACCENT);
+        doc.setLineWidth(0.6);
+      }
+      y += 4.3;
+      if (nl) text(nl, M + 5, y);
+    }
+    doc.line(M, blockStart, M, y + 1.5);
+    doc.setLineWidth(0.2);
+    y += 10;
+  }
+
+  // ── Acceptance ────────────────────────────────────────────────────────
+  if (y + 30 > bottomLimit) newPage();
+  eyebrow('Acceptance', M, y);
+  font('normal', 8, MUTED);
+  text('By signing below, the customer accepts the scope and pricing in this quotation.', M, y + 5);
+  const sigY = y + 22;
+  const sigW = contentW / 2 - 8;
+  stroke(FAINT);
+  doc.setLineWidth(0.3);
+  doc.line(M, sigY, M + sigW, sigY);
+  doc.line(pageW - M - sigW, sigY, pageW - M, sigY);
+  font('bold', 8, INK);
+  text(`For ${issuer.name}`, M, sigY + 4.5);
+  text(`For ${customer.name}`, pageW - M - sigW, sigY + 4.5);
+  font('normal', 7.5, MUTED);
+  text('Authorised signatory  |  Date', M, sigY + 8.5);
+  text('Name, signature  |  Date', pageW - M - sigW, sigY + 8.5);
+  doc.setLineWidth(0.2);
 
   // ── Footer on each page ───────────────────────────────────────────────
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(140);
-    doc.text(
-      `${companyName || 'Quotation'} · ${quote.title || 'Quote'} · Page ${i} of ${pageCount}`,
-      pageW / 2,
-      pageH - 8,
-      { align: 'center' }
-    );
+    stroke(RULE);
+    doc.setLineWidth(0.2);
+    doc.line(M, pageH - 13, pageW - M, pageH - 13);
+    font('normal', 7, FAINT);
+    text([issuer.name, issuer.website].filter(Boolean).join('  |  '), M, pageH - 8);
+    text(quoteNumber(quote), pageW / 2, pageH - 8, { align: 'center' });
+    text(`Page ${i} of ${pageCount}`, pageW - M, pageH - 8, { align: 'right' });
   }
 
   return doc;
 }
 
-function accountOrOrgOrLead(quote: CrmQuote): boolean {
-  return Boolean(quote.accountId || quote.customerOrgId || quote.leadId);
+export function quotePdfFilename(quote: CrmQuote): string {
+  const slug = (quote.title || 'quote').replace(/[^\w-]+/g, '-').replace(/-+/g, '-').slice(0, 60);
+  return `quote-${slug || quote._id}.pdf`;
 }
 
-export function downloadQuotePdf(quote: CrmQuote, companyName?: string): void {
-  const doc = buildQuotePdf(quote, companyName);
-  const safe = (quote.title || 'quote').replace(/[^\w\-]+/g, '-').replace(/-+/g, '-').slice(0, 60);
-  doc.save(`quote-${safe || quote._id}.pdf`);
+export function downloadQuotePdf(quote: CrmQuote, issuer?: QuotePdfIssuer | string): void {
+  buildQuotePdf(quote, issuer).save(quotePdfFilename(quote));
 }
 
 /** Base64 without data: URL prefix — for email attachment. */
-export function quotePdfBase64(quote: CrmQuote, companyName?: string): string {
-  const doc = buildQuotePdf(quote, companyName);
-  return doc.output('datauristring').split(',')[1] ?? '';
-}
-
-export function quotePdfFilename(quote: CrmQuote): string {
-  const safe = (quote.title || 'quote').replace(/[^\w\-]+/g, '-').replace(/-+/g, '-').slice(0, 60);
-  return `quote-${safe || quote._id}.pdf`;
+export function quotePdfBase64(quote: CrmQuote, issuer?: QuotePdfIssuer | string): string {
+  return buildQuotePdf(quote, issuer).output('datauristring').split(',')[1] ?? '';
 }

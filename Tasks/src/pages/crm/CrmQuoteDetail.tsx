@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useAppDisplayName } from '../../hooks/useAppDisplayName';
+import { useAppDisplayName, useAppLogoUrl } from '../../hooks/useAppDisplayName';
 import { canAny } from '../../utils/moduleAccess';
-import { crmApi, type CrmContact, type CrmLead, type CrmQuote } from '../../lib/api';
+import { coreApi, crmApi, type CrmContact, type CrmLead, type CrmQuote } from '../../lib/api';
 import { money } from '../../components/moduleKit';
-import { downloadQuotePdf, quotePdfBase64, quotePdfFilename } from '../../lib/quotePdf';
+import {
+  downloadQuotePdf,
+  imageUrlToDataUrl,
+  issuerFromCompany,
+  quotePdfBase64,
+  quotePdfFilename,
+  type QuotePdfIssuer,
+} from '../../lib/quotePdf';
 import { formatDateDDMMYYYY } from '../../lib/dateFormat';
 
 function refId(
@@ -107,6 +114,24 @@ export default function CrmQuoteDetail() {
   const navigate = useNavigate();
   const { token, user } = useAuth();
   const companyName = useAppDisplayName();
+  const orgLogoUrl = useAppLogoUrl();
+  const [pdfIssuer, setPdfIssuer] = useState<QuotePdfIssuer>({ name: companyName });
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    coreApi
+      .getCompany(token)
+      .catch(() => ({ success: false as const, data: undefined }))
+      .then(async (res) => {
+        const company = res.success ? res.data : undefined;
+        const logo = await imageUrlToDataUrl(company?.logoUrl || orgLogoUrl);
+        if (!cancelled) setPdfIssuer(issuerFromCompany(company, companyName, logo));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, companyName, orgLogoUrl]);
   const canUpdate = canAny(user, 'taskflow.crm.quote.update');
   const canDelete = canAny(user, 'taskflow.crm.quote.delete');
 
@@ -236,7 +261,7 @@ export default function CrmQuoteDetail() {
 
   async function handleDownloadPdf() {
     if (!quote) return;
-    downloadQuotePdf(quote, companyName);
+    downloadQuotePdf(quote, pdfIssuer);
     setActionMsg('PDF downloaded.');
   }
 
@@ -285,7 +310,7 @@ export default function CrmQuoteDetail() {
         message: sendMessage.trim() || undefined,
       };
       if (attachPdf) {
-        body.pdfBase64 = quotePdfBase64(quote, companyName);
+        body.pdfBase64 = quotePdfBase64(quote, pdfIssuer);
         body.pdfFilename = quotePdfFilename(quote);
       }
       const res = await crmApi.sendQuote(quote._id, body, token);
