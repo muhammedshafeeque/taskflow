@@ -240,7 +240,7 @@ export const TASK_FLOW_PERMISSIONS = {
       DASHBOARD: { READ: 'taskflow.resources.dashboard.read' },
       UTILIZATION: { READ: 'taskflow.resources.utilization.read' },
       BENCH: { READ: 'taskflow.resources.bench.read' },
-      ENGAGEMENT: { READ: 'taskflow.resources.engagement.read' },
+      ENGAGEMENT: { READ: 'taskflow.resources.engagement.read', MANAGE: 'taskflow.resources.engagement.manage' },
       FORECAST: { READ: 'taskflow.resources.forecast.read', MANAGE: 'taskflow.resources.forecast.manage' },
       ALLOCATION: { READ: 'taskflow.resources.allocation.read', MANAGE: 'taskflow.resources.allocation.manage' },
       PROFILE: { MANAGE: 'taskflow.resources.profile.manage' },

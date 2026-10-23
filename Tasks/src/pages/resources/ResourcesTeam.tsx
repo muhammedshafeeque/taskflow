@@ -536,7 +536,14 @@ function BulkModal({
   );
 }
 
-type NumKey = Exclude<keyof ResourceSettingsRow, 'includePendingStageEstimates'>;
+type BoolKey = 'includePendingStageEstimates' | 'includeLoggedTime' | 'includeCalendarEvents';
+type NumKey = Exclude<keyof ResourceSettingsRow, BoolKey>;
+
+const SETTING_TOGGLES: Array<{ key: BoolKey; label: string }> = [
+  { key: 'includeLoggedTime', label: 'Count logged time as engagement on past days and today' },
+  { key: 'includeCalendarEvents', label: 'Count calendar meetings a person owns or attends' },
+  { key: 'includePendingStageEstimates', label: 'Count stage estimates still awaiting approval' },
+];
 
 const SETTING_FIELDS: Array<{ key: NumKey; label: string; hint: string; min: number; max: number; step?: number; nullable?: boolean }> = [
   { key: 'defaultCapacityHoursPerWeek', label: 'Default hours / week', hint: 'Used for anyone without a custom capacity.', min: 1, max: 168, step: 0.5 },
@@ -564,7 +571,7 @@ function SettingsModal({
   onSaved: (s: ResourceSettingsRow) => void;
 }) {
   const [form, setForm] = useState<Record<NumKey, string>>({} as Record<NumKey, string>);
-  const [pending, setPending] = useState(true);
+  const [toggles, setToggles] = useState<Record<BoolKey, boolean>>({ includePendingStageEstimates: true, includeLoggedTime: true, includeCalendarEvents: true });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -573,13 +580,17 @@ function SettingsModal({
     const next = {} as Record<NumKey, string>;
     SETTING_FIELDS.forEach((f) => (next[f.key] = settings[f.key] == null ? '' : String(settings[f.key])));
     setForm(next);
-    setPending(settings.includePendingStageEstimates);
+    setToggles({
+      includePendingStageEstimates: settings.includePendingStageEstimates,
+      includeLoggedTime: settings.includeLoggedTime,
+      includeCalendarEvents: settings.includeCalendarEvents,
+    });
     setError('');
   }, [open, settings]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    const body: Partial<ResourceSettingsRow> = { includePendingStageEstimates: pending };
+    const body: Partial<ResourceSettingsRow> = { ...toggles };
     for (const f of SETTING_FIELDS) {
       const raw = form[f.key] ?? '';
       if (raw === '') {
@@ -626,10 +637,15 @@ function SettingsModal({
             </Field>
           ))}
         </div>
-        <label className="flex items-center gap-2 text-xs">
-          <input type="checkbox" checked={pending} onChange={(e) => setPending(e.target.checked)} />
-          Count stage estimates still awaiting approval in engagement
-        </label>
+        <fieldset className="space-y-1.5 text-xs">
+          <legend className="text-[color:var(--text-muted)] font-medium mb-1">Engagement sources</legend>
+          {SETTING_TOGGLES.map((t) => (
+            <label key={t.key} className="flex items-center gap-2">
+              <input type="checkbox" checked={toggles[t.key]} onChange={(e) => setToggles((s) => ({ ...s, [t.key]: e.target.checked }))} />
+              {t.label}
+            </label>
+          ))}
+        </fieldset>
         <div className="flex gap-2 pt-1">
           <button type="submit" disabled={saving} className={`${btnPrimary} px-4 py-2`}>
             {saving ? 'Saving…' : 'Save for workspace'}

@@ -23,6 +23,10 @@ export interface IResourceSettings extends Document {
   defaultTaskHours: number | null;
   /** Count stage estimates still awaiting approval when no approved one exists for the lane. */
   includePendingStageEstimates: boolean;
+  /** Count hours logged on work logs as actual engagement on past days and today. */
+  includeLoggedTime: boolean;
+  /** Count timed calendar events a person owns or attends as engagement. */
+  includeCalendarEvents: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +44,8 @@ const resourceSettingsSchema = new Schema<IResourceSettings>(
     hoursPerStoryPoint: { type: Number, default: null, min: 0, max: 200 },
     defaultTaskHours: { type: Number, default: null, min: 0, max: 200 },
     includePendingStageEstimates: { type: Boolean, default: true },
+    includeLoggedTime: { type: Boolean, default: true },
+    includeCalendarEvents: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

@@ -5,6 +5,9 @@ import { logAudit } from '../auditLogs/logAudit';
 import * as resourcesService from './resources.service';
 import * as engagementService from './engagement.service';
 import * as settingsService from './resourceSettings.service';
+import * as entriesService from './engagementEntries.service';
+import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
+import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 
 type Req = Request & { user?: AuthPayload; activeOrganizationId?: string };
 
@@ -188,5 +191,36 @@ export async function updateSettings(req: Req, res: Response) {
   const actor = uid(req);
   const data = await settingsService.updateResourceSettings(ws(req), req.body ?? {});
   logAudit({ userId: actor, action: 'update', resourceType: 'resource_settings', meta: { fields: Object.keys(req.body ?? {}) } });
+  res.json({ success: true, data });
+}
+
+function entryActor(req: Req): entriesService.EntryActor {
+  const perms = req.user?.permissions ?? [];
+  const R = TASK_FLOW_PERMISSIONS.TASKFLOW.RESOURCES;
+  return {
+    id: uid(req),
+    canManageOthers: [R.ENGAGEMENT.MANAGE, R.ALLOCATION.MANAGE].some((p) => userHasPermission(perms, p)),
+  };
+}
+
+export async function listEngagementEntries(req: Req, res: Response) {
+  uid(req);
+  const q = req.query as Record<string, string | undefined>;
+  const data = await entriesService.listEntries(ws(req), { userId: q.userId, from: q.from, to: q.to, projectId: q.projectId });
+  res.json({ success: true, data });
+}
+
+export async function createEngagementEntry(req: Req, res: Response) {
+  const data = await entriesService.createEntry(ws(req), entryActor(req), req.body ?? {});
+  res.status(201).json({ success: true, data });
+}
+
+export async function updateEngagementEntry(req: Req, res: Response) {
+  const data = await entriesService.updateEntry(ws(req), entryActor(req), req.params.id, req.body ?? {});
+  res.json({ success: true, data });
+}
+
+export async function deleteEngagementEntry(req: Req, res: Response) {
+  const data = await entriesService.deleteEntry(ws(req), entryActor(req), req.params.id);
   res.json({ success: true, data });
 }

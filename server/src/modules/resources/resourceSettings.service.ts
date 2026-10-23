@@ -13,6 +13,8 @@ export interface ResourceSettingsValues {
   hoursPerStoryPoint: number | null;
   defaultTaskHours: number | null;
   includePendingStageEstimates: boolean;
+  includeLoggedTime: boolean;
+  includeCalendarEvents: boolean;
 }
 
 export const RESOURCE_SETTINGS_DEFAULTS: ResourceSettingsValues = {
@@ -26,6 +28,8 @@ export const RESOURCE_SETTINGS_DEFAULTS: ResourceSettingsValues = {
   hoursPerStoryPoint: null,
   defaultTaskHours: null,
   includePendingStageEstimates: true,
+  includeLoggedTime: true,
+  includeCalendarEvents: true,
 };
 
 /** Numeric settings with their allowed range; `nullable` ones may be cleared to turn the feature off. */
@@ -56,6 +60,8 @@ export async function getResourceSettings(workspaceId: string | null | undefined
     hoursPerStoryPoint: doc?.hoursPerStoryPoint ?? null,
     defaultTaskHours: doc?.defaultTaskHours ?? null,
     includePendingStageEstimates: doc?.includePendingStageEstimates ?? true,
+    includeLoggedTime: doc?.includeLoggedTime ?? true,
+    includeCalendarEvents: doc?.includeCalendarEvents ?? true,
   };
 }
 
@@ -77,8 +83,8 @@ export async function updateResourceSettings(
     if (!Number.isFinite(n) || n < min || n > max) throw new ApiError(400, `${field} must be between ${min} and ${max}`);
     update[field] = int ? Math.round(n) : n;
   }
-  if (input.includePendingStageEstimates !== undefined) {
-    update.includePendingStageEstimates = Boolean(input.includePendingStageEstimates);
+  for (const field of ['includePendingStageEstimates', 'includeLoggedTime', 'includeCalendarEvents'] as const) {
+    if (input[field] !== undefined) update[field] = Boolean(input[field]);
   }
 
   const current = await getResourceSettings(workspaceId);

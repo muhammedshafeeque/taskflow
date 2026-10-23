@@ -4,8 +4,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import MetricCard from '../../components/MetricCard';
 import SectionCard from '../../components/SectionCard';
+import { FiEdit2, FiPlus, FiTrash2 } from 'react-icons/fi';
+import ConfirmModal from '../../components/ConfirmModal';
+import { ErrorBanner, Field, Modal, Toast, btnPrimary, btnSecondary, errorOf, inputCls as kitInputCls } from './resourceKit';
 import {
   resourcesApi,
+  type EngagementEntryRow,
   type EngagementDay,
   type EngagementLevel,
   type EngagementPerson,
@@ -174,6 +178,14 @@ export default function ResourcesEngagement() {
   const [reloadTick, setReloadTick] = useState(0);
   const canManageSettings = canAny(user, 'taskflow.resources.settings.manage', 'taskflow.resources.allocation.manage');
   const [tip, setTip] = useState<{ x: number; y: number; person: EngagementPerson; cell: Cell } | null>(null);
+  const canManageOthers = canAny(user, 'taskflow.resources.engagement.manage', 'taskflow.resources.allocation.manage');
+  const [entryDraft, setEntryDraft] = useState<EntryDraft | null>(null);
+  const [toast, setToast] = useState('');
+  const reload = () => setReloadTick((n) => n + 1);
+  const entryPeople = useMemo(
+    () => (data?.people ?? []).filter((p) => canManageOthers || p.userId === user?.id).map((p) => ({ id: p.userId, name: p.name })),
+    [data, canManageOthers, user?.id]
+  );
 
   useEffect(() => {
     if (!token) return;
@@ -266,9 +278,20 @@ export default function ResourcesEngagement() {
         <div>
           <h1 className="text-xl font-semibold">Team engagement</h1>
           <p className="text-[13px] text-[color:var(--text-muted)]">
-            How busy each person is on any date — today or planned ahead — and when they free up.
+            How busy each person is on any date — from allocations, assigned tasks and their estimates, logged time, meetings and
+            manual entries — and when they free up.
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        {entryPeople.length > 0 && (
+          <button
+            type="button"
+            className={btnPrimary}
+            onClick={() => setEntryDraft(blankEntry(canManageOthers ? '' : (user?.id ?? ''), focusDate))}
+          >
+            <FiPlus /> Add engagement
+          </button>
+        )}
         <div className="flex flex-wrap items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] p-1 bg-[color:var(--bg-surface)]">
           {PRESETS.map((p) => {
             const [f, t] = p.range(today);
@@ -288,6 +311,7 @@ export default function ResourcesEngagement() {
               </button>
             );
           })}
+        </div>
         </div>
       </div>
 
@@ -501,7 +525,18 @@ export default function ResourcesEngagement() {
                           {isOpen && (
                             <tr>
                               <td colSpan={cells.length + 1} className="pb-3">
-                                <PersonDetail person={p} today={data.today} />
+                                <PersonDetail
+                                  person={p}
+                                  today={data.today}
+                                  canEditEntries={canManageOthers || p.userId === user?.id}
+                                  onAddEntry={() => setEntryDraft(blankEntry(p.userId, focusDate))}
+                                  onEditEntry={(e) => setEntryDraft(draftFromEntry(p.userId, e))}
+                                  onChanged={(m) => {
+                                    setToast(m);
+                                    reload();
+                                  }}
+                                  token={token}
+                                />
                               </td>
                             </tr>
                           )}
@@ -544,6 +579,22 @@ export default function ResourcesEngagement() {
       </div>
 
       {tip && <CellTooltip {...tip} />}
+      {token && (
+        <EntryModal
+          draft={entryDraft}
+          people={entryPeople}
+          projects={projects}
+          lockPerson={!canManageOthers}
+          token={token}
+          onClose={() => setEntryDraft(null)}
+          onSaved={(m) => {
+            setEntryDraft(null);
+            setToast(m);
+            reload();
+          }}
+        />
+      )}
+      <Toast message={toast} onDone={() => setToast('')} />
     </div>
   );
 }
@@ -624,7 +675,11 @@ function CellTooltip({ x, y, person, cell }: { x: number; y: number; person: Eng
           {single && (
             <>
               <Row k="Allocated" v={`${single.allocatedPct}%${single.softPct ? ` (+${single.softPct}% soft)` : ''}`} />
-              <Row k="Tasks" v={`${single.taskCount} · ${single.taskHours}h of ${single.capacityHours}h`} />
+              {single.date >= localTodayKey() && <Row k="Tasks planned" v={`${single.taskCount} · ${single.taskHours}h`} />}
+              {single.loggedHours > 0 && <Row k="Logged" v={`${single.loggedHours}h`} />}
+              {single.meetingHours > 0 && <Row k="Meetings" v={`${single.meetingCount} · ${single.meetingHours}h`} />}
+              {single.manualHours > 0 && <Row k="Manual entries" v={`${single.manualHours}h`} />}
+              <Row k="Counted" v={`${single.workHours}h of ${single.capacityHours}h (${single.workPct}%)`} />
               {single.overdueHours > 0 && <Row k="Catching up" v={`${single.overdueHours}h overdue work`} />}
               {single.kind === 'half_leave' && <Row k="Note" v="Half-day leave" />}
               {single.note && single.kind === 'work' && <Row k="Note" v={single.note} />}
@@ -681,8 +736,31 @@ function SnapshotGroup({
   );
 }
 
-function PersonDetail({ person, today }: { person: EngagementPerson; today: string }) {
+function PersonDetail({
+  person,
+  today,
+  canEditEntries,
+  onAddEntry,
+  onEditEntry,
+  onChanged,
+  token,
+}: {
+  person: EngagementPerson;
+  today: string;
+  canEditEntries: boolean;
+  onAddEntry: () => void;
+  onEditEntry: (e: EngagementEntryRow) => void;
+  onChanged: (message: string) => void;
+  token: string | null;
+}) {
   const s = person.summary;
+  const [confirm, setConfirm] = useState<EngagementEntryRow | null>(null);
+  async function remove(e: EngagementEntryRow) {
+    setConfirm(null);
+    if (!token) return;
+    const res = await resourcesApi.deleteEngagementEntry(e._id, token);
+    onChanged(res.success ? 'Entry removed.' : errorOf(res, 'Delete failed'));
+  }
   const stats: Array<[string, string]> = [
     ['Avg / peak', `${s.avgEngagement}% / ${s.peakEngagement}%`],
     ['Next available day', s.nextAvailable ? `${fmtDay(s.nextAvailable)} (${relDay(s.nextAvailable, today)})` : 'Not in range'],
@@ -692,6 +770,8 @@ function PersonDetail({ person, today }: { person: EngagementPerson; today: stri
     ['Spare hours', `${s.availableHours}h`],
     ['Busy / free days', `${s.busyDays} / ${s.freeDays}`],
     ['Leave days', String(s.leaveDays)],
+    ['Logged in range', `${s.loggedHours}h`],
+    ['Meetings / manual', `${s.meetingHours}h / ${s.manualHours}h`],
   ];
   const scheduleTone: Record<string, string> = {
     overdue: 'text-red-500',
@@ -782,6 +862,58 @@ function PersonDetail({ person, today }: { person: EngagementPerson; today: stri
           )}
         </div>
       </div>
+
+      <div>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <h4 className="text-xs font-semibold text-[color:var(--text-primary)]">
+            Manual engagement <span className="font-normal text-[color:var(--text-muted)]">({person.entries.length})</span>
+          </h4>
+          {canEditEntries && (
+            <button type="button" className="inline-flex items-center gap-1 text-xs text-[color:var(--accent)] hover:underline" onClick={onAddEntry}>
+              <FiPlus /> Add entry
+            </button>
+          )}
+        </div>
+        {person.entries.length === 0 ? (
+          <p className="text-xs text-[color:var(--text-muted)]">
+            None. Use manual entries for work that isn't a task or meeting — support duty, pre-sales, training, internal work.
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {person.entries.map((e) => (
+              <li key={e._id} className="text-xs flex items-center justify-between gap-2">
+                <span className="truncate text-[color:var(--text-primary)]">
+                  <span className="font-medium">{e.title}</span>
+                  {e.category && <span className="text-[color:var(--text-muted)]"> · {e.category}</span>}
+                  {e.project && <span className="text-[color:var(--text-muted)]"> · {e.project.key ?? e.project.name}</span>}
+                </span>
+                <span className="shrink-0 flex items-center gap-2 tabular-nums text-[color:var(--text-muted)]">
+                  {e.mode === 'hours' ? `${e.value}h/day` : `${e.value}%`} · {fmtDay(e.startDate)}
+                  {e.endDate !== e.startDate ? ` → ${fmtDay(e.endDate)}` : ''}
+                  {canEditEntries && (
+                    <>
+                      <button type="button" className="p-1 rounded hover:text-[color:var(--text-primary)]" title="Edit" aria-label="Edit entry" onClick={() => onEditEntry(e)}>
+                        <FiEdit2 />
+                      </button>
+                      <button type="button" className="p-1 rounded hover:text-red-400" title="Delete" aria-label="Delete entry" onClick={() => setConfirm(e)}>
+                        <FiTrash2 />
+                      </button>
+                    </>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <ConfirmModal
+        open={!!confirm}
+        title="Remove engagement entry?"
+        message={confirm ? `“${confirm.title}” will no longer count toward ${person.name}'s engagement.` : ''}
+        confirmLabel="Remove"
+        onConfirm={() => confirm && void remove(confirm)}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }
@@ -799,6 +931,7 @@ function SummaryTable({ people, today }: { people: EngagementPerson[]; today: st
             <th className="px-3 py-2 font-medium text-right">Spare hours</th>
             <th className="px-3 py-2 font-medium text-right">Open tasks</th>
             <th className="px-3 py-2 font-medium text-right">Work left</th>
+            <th className="px-3 py-2 font-medium text-right">Logged</th>
             <th className="px-3 py-2 font-medium">Next available</th>
             <th className="px-3 py-2 font-medium">Free</th>
           </tr>
@@ -830,6 +963,7 @@ function SummaryTable({ people, today }: { people: EngagementPerson[]; today: st
                   <span className="text-amber-500 text-xs"> (+{p.summary.noEstimateTasks} unestimated)</span>
                 )}
               </td>
+              <td className="px-3 py-2 text-right tabular-nums">{p.summary.loggedHours}h</td>
               <td className="px-3 py-2 text-[13px]">
                 {p.summary.nextAvailable ? `${fmtDay(p.summary.nextAvailable)} · ${relDay(p.summary.nextAvailable, today)}` : '—'}
               </td>
@@ -923,6 +1057,11 @@ function EstimateCoverage({
           </span>
         ))}
         <span className="opacity-80">· deadlines use due date, then sprint end, then milestone</span>
+        <span>
+          · also counted: {report.settings.includeLoggedTime ? `${report.summary.loggedHours}h logged` : 'logged time off'},{' '}
+          {report.settings.includeCalendarEvents ? `${report.summary.meetingHours}h meetings` : 'meetings off'},{' '}
+          {report.summary.manualHours}h from {report.summary.manualEntries} manual entr{report.summary.manualEntries === 1 ? 'y' : 'ies'}
+        </span>
         {canManage && (
           <button type="button" onClick={() => (open ? setOpen(false) : edit())} className="ml-auto text-[color:var(--accent)] hover:underline">
             {open ? 'Close' : 'Estimate settings'}
@@ -954,5 +1093,176 @@ function EstimateCoverage({
         </form>
       )}
     </div>
+  );
+}
+
+/* ─── Manual engagement entries ──────────────────────────────────────────── */
+
+interface EntryDraft {
+  id?: string;
+  userId: string;
+  title: string;
+  category: string;
+  startDate: string;
+  endDate: string;
+  mode: 'hours' | 'percent';
+  value: number;
+  projectId: string;
+  notes: string;
+}
+
+function blankEntry(userId: string, date: string): EntryDraft {
+  return { userId, title: '', category: '', startDate: date, endDate: date, mode: 'hours', value: 2, projectId: '', notes: '' };
+}
+
+function draftFromEntry(userId: string, e: EngagementEntryRow): EntryDraft {
+  return {
+    id: e._id,
+    userId,
+    title: e.title,
+    category: e.category ?? '',
+    startDate: e.startDate,
+    endDate: e.endDate,
+    mode: e.mode,
+    value: e.value,
+    projectId: e.project?.id ?? '',
+    notes: e.notes ?? '',
+  };
+}
+
+function EntryModal({
+  draft,
+  people,
+  projects,
+  lockPerson,
+  token,
+  onClose,
+  onSaved,
+}: {
+  draft: EntryDraft | null;
+  people: Array<{ id: string; name: string }>;
+  projects: Array<{ id: string; name: string; key: string }>;
+  lockPerson: boolean;
+  token: string;
+  onClose: () => void;
+  onSaved: (message: string) => void;
+}) {
+  const [form, setForm] = useState<EntryDraft>(draft ?? blankEntry('', localTodayKey()));
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (draft) {
+      setForm(draft);
+      setError('');
+    }
+  }, [draft]);
+
+  const set = <K extends keyof EntryDraft>(k: K, v: EntryDraft[K]) => setForm((f) => ({ ...f, [k]: v }));
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (form.endDate < form.startDate) {
+      setError('End must be on or after the start.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    const body = {
+      userId: form.userId,
+      title: form.title,
+      category: form.category,
+      startDate: form.startDate,
+      endDate: form.endDate,
+      mode: form.mode,
+      value: Number(form.value),
+      projectId: form.projectId || null,
+      notes: form.notes,
+    };
+    const res = form.id ? await resourcesApi.updateEngagementEntry(form.id, body, token) : await resourcesApi.createEngagementEntry(body, token);
+    setSaving(false);
+    if (!res.success) {
+      setError(errorOf(res, 'Failed to save entry'));
+      return;
+    }
+    onSaved(form.id ? 'Entry updated.' : 'Engagement added.');
+  }
+
+  return (
+    <Modal
+      open={!!draft}
+      onClose={onClose}
+      title={form.id ? 'Edit engagement entry' : 'Add engagement'}
+      subtitle="Work that isn't a task or a meeting. Counted on every working day in the range."
+    >
+      <form onSubmit={submit} className="space-y-3">
+        {error && <ErrorBanner message={error} />}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Person">
+            <select required disabled={lockPerson && !!form.userId} value={form.userId} onChange={(e) => set('userId', e.target.value)} className={kitInputCls}>
+              <option value="">Select…</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Category" hint="Free text, e.g. Support, Pre-sales, Training.">
+            <input value={form.category} onChange={(e) => set('category', e.target.value)} className={kitInputCls} />
+          </Field>
+        </div>
+        <Field label="What">
+          <input required value={form.title} onChange={(e) => set('title', e.target.value)} className={kitInputCls} placeholder="e.g. L2 support rota" />
+        </Field>
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
+          <Field label="From">
+            <input type="date" required value={form.startDate} onChange={(e) => set('startDate', e.target.value)} className={kitInputCls} />
+          </Field>
+          <Field label="To">
+            <input type="date" required min={form.startDate} value={form.endDate} onChange={(e) => set('endDate', e.target.value)} className={kitInputCls} />
+          </Field>
+          <Field label="Measure">
+            <select value={form.mode} onChange={(e) => set('mode', e.target.value as EntryDraft['mode'])} className={kitInputCls}>
+              <option value="hours">Hours / day</option>
+              <option value="percent">% of day</option>
+            </select>
+          </Field>
+          <Field label={form.mode === 'hours' ? 'Hours' : 'Percent'}>
+            <input
+              type="number"
+              required
+              min={0.25}
+              max={form.mode === 'hours' ? 24 : 200}
+              step={form.mode === 'hours' ? 0.25 : 5}
+              value={form.value}
+              onChange={(e) => set('value', Number(e.target.value))}
+              className={kitInputCls}
+            />
+          </Field>
+        </div>
+        <Field label="Project (optional)">
+          <select value={form.projectId} onChange={(e) => set('projectId', e.target.value)} className={kitInputCls}>
+            <option value="">None</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.key} · {p.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Notes">
+          <textarea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} className={kitInputCls} />
+        </Field>
+        <div className="flex gap-2 pt-1">
+          <button type="submit" disabled={saving} className={`${btnPrimary} px-4 py-2`}>
+            {saving ? 'Saving…' : form.id ? 'Save changes' : 'Add'}
+          </button>
+          <button type="button" className={`${btnSecondary} px-4 py-2`} onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

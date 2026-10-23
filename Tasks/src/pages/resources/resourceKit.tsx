@@ -91,6 +91,8 @@ export const DEFAULT_SETTINGS: ResourceSettingsRow = {
   hoursPerStoryPoint: null,
   defaultTaskHours: null,
   includePendingStageEstimates: true,
+  includeLoggedTime: true,
+  includeCalendarEvents: true,
 };
 
 export function loadLevel(pct: number, s: Pick<ResourceSettingsRow, 'benchThresholdPct' | 'busyThresholdPct' | 'overAllocationPct'>): LoadLevel {

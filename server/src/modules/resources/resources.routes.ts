@@ -42,6 +42,12 @@ router.get(
   requireAnyPermission([R.ENGAGEMENT.READ, R.UTILIZATION.READ]),
   asyncHandler(ctrl.getEngagement)
 );
+const ENGAGEMENT_ENTRY = [R.ENGAGEMENT.READ, R.ENGAGEMENT.MANAGE, R.UTILIZATION.READ, R.ALLOCATION.MANAGE];
+router.get('/engagement/entries', requireAnyPermission(ENGAGEMENT_ENTRY), asyncHandler(ctrl.listEngagementEntries));
+// Writes are open to engagement viewers for their own entries; the service limits others' entries to managers.
+router.post('/engagement/entries', requireAnyPermission(ENGAGEMENT_ENTRY), asyncHandler(ctrl.createEngagementEntry));
+router.patch('/engagement/entries/:id', requireAnyPermission(ENGAGEMENT_ENTRY), asyncHandler(ctrl.updateEngagementEntry));
+router.delete('/engagement/entries/:id', requireAnyPermission(ENGAGEMENT_ENTRY), asyncHandler(ctrl.deleteEngagementEntry));
 router.get('/settings', requireAnyPermission([...ANY_READ, R.ALLOCATION.MANAGE, R.SETTINGS.MANAGE]), asyncHandler(ctrl.getSettings));
 router.put('/settings', requireAnyPermission([R.SETTINGS.MANAGE, R.ALLOCATION.MANAGE]), asyncHandler(ctrl.updateSettings));
 

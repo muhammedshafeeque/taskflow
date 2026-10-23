@@ -14,6 +14,8 @@ import { HrmsLeaveRequest } from '../hrms/models/hrmsLeaveRequest.model';
 import { HrmsHoliday, HrmsSettings } from '../hrms/models/hrmsPolicy.model';
 import { ResourceAllocation } from './models/resourceAllocation.model';
 import { ResourceProfile } from './models/resourceProfile.model';
+import { ResourceEngagementEntry } from './models/resourceEngagementEntry.model';
+import { CalendarEvent } from '../calendar/models/calendarEvent.model';
 import { getResourceSettings } from './resourceSettings.service';
 import { requireWorkspaceId, toOrgOid } from './resourcesWorkspace';
 
@@ -21,7 +23,13 @@ import { requireWorkspaceId, toOrgOid } from './resourcesWorkspace';
  * Employee engagement: how busy each person is on each day of a date range (past or future),
  * and when they become available.
  *
- * Per working day, engagement = max(committed allocation %, task hours / daily capacity).
+ * Per working day, engagement = max(committed allocation %, work hours / daily capacity), where work is
+ *   past days   — hours logged that day + fixed load
+ *   today       — hours logged today + remaining task hours placed today + fixed load
+ *   future days — remaining task hours placed that day + fixed load
+ * Fixed load is manual engagement entries plus timed calendar events the person owns or attends. It is
+ * taken out of the day's capacity before task work is spread, so tasks land on the time that is left.
+ * Logged time and calendar events can each be switched off in the workspace resource settings.
  *
  * Task hours come from open, assigned leaf issues, using the most specific data available:
  *   hours  — stage (lane) estimates for lanes the issue hasn't passed yet, credited to the lane's
@@ -53,6 +61,16 @@ export interface EngagementDay {
   overdueHours: number;
   taskCount: number;
   taskPct: number;
+  /** Hours logged on work logs that day (past days and today only). */
+  loggedHours: number;
+  /** Manual engagement entries for the day. */
+  manualHours: number;
+  /** Timed calendar events the person owns or attends. */
+  meetingHours: number;
+  meetingCount: number;
+  /** Total hours counted for the day (see header comment). */
+  workHours: number;
+  workPct: number;
   engagementPct: number;
   level: EngagementLevel;
   note?: string;
@@ -320,6 +338,79 @@ export async function getEngagement(
           .select('employeeId status startDate endDate halfDay')
           .lean();
 
+  const todayKey = dayKey(today);
+  const logsTo = rangeEnd < today ? rangeEnd : new Date(today.getTime() + DAY_MS - 1);
+  const [entries, logRows, events] = await Promise.all([
+    ResourceEngagementEntry.find({
+      taskflowOrganizationId: orgOid,
+      userId: { $in: memberIds },
+      startDate: { $lte: rangeEnd },
+      endDate: { $gte: calStart },
+      ...(query.projectId ? { projectId: query.projectId } : {}),
+    })
+      .sort({ startDate: 1 })
+      .lean(),
+    !settings.includeLoggedTime || from > logsTo
+      ? []
+      : WorkLog.aggregate<{ _id: { author: mongoose.Types.ObjectId; day: string; issue: mongoose.Types.ObjectId }; minutes: number }>([
+          { $match: { author: { $in: memberIds }, date: { $gte: from, $lte: logsTo } } },
+          {
+            $group: {
+              _id: { author: '$author', day: { $dateToString: { format: '%Y-%m-%d', date: '$date' } }, issue: '$issue' },
+              minutes: { $sum: '$minutesSpent' },
+            },
+          },
+        ]),
+    !settings.includeCalendarEvents
+      ? []
+      : CalendarEvent.find({
+          taskflowOrganizationId: orgOid,
+          allDay: { $ne: true },
+          start: { $lte: rangeEnd },
+          $and: [
+            { $or: [{ end: { $gte: calStart } }, { start: { $gte: calStart } }] },
+            { $or: [{ attendeeIds: { $in: memberIds } }, { ownerId: { $in: memberIds } }] },
+          ],
+          ...(query.projectId ? { projectId: query.projectId } : {}),
+        })
+          .select('title start end attendeeIds ownerId')
+          .lean(),
+  ]);
+
+  // Logged time only counts against the projects in scope.
+  let scopedLogs = logRows;
+  if (query.projectId && logRows.length > 0) {
+    const inScope = new Set(
+      (await Issue.find({ _id: { $in: logRows.map((r) => r._id.issue) }, project: query.projectId }).distinct('_id')).map(String)
+    );
+    scopedLogs = logRows.filter((r) => inScope.has(String(r._id.issue)));
+  }
+  const loggedByUserDay = new Map<string, number>();
+  for (const r of scopedLogs) {
+    const k = `${String(r._id.author)}|${r._id.day}`;
+    loggedByUserDay.set(k, (loggedByUserDay.get(k) ?? 0) + r.minutes / 60);
+  }
+
+  // Meeting hours per person per day; events with no end count as one hour.
+  const meetingsByUserDay = new Map<string, { hours: number; count: number }>();
+  for (const ev of events) {
+    const start = new Date(ev.start);
+    const end = ev.end && new Date(ev.end) > start ? new Date(ev.end) : new Date(start.getTime() + 60 * 60 * 1000);
+    const people = new Set([...(ev.attendeeIds ?? []).map(String), ...(ev.ownerId ? [String(ev.ownerId)] : [])]);
+    for (let t = startOfUtcDay(start).getTime(); t < end.getTime(); t += DAY_MS) {
+      const hours = (Math.min(end.getTime(), t + DAY_MS) - Math.max(start.getTime(), t)) / 3_600_000;
+      if (hours <= 0) continue;
+      const key = dayKey(new Date(t));
+      for (const uid of people) {
+        if (!memberSet.has(uid)) continue;
+        const cur = meetingsByUserDay.get(`${uid}|${key}`) ?? { hours: 0, count: 0 };
+        cur.hours += hours;
+        cur.count += 1;
+        meetingsByUserDay.set(`${uid}|${key}`, cur);
+      }
+    }
+  }
+
   const weekendDays = new Set<number>((hrSettings as { weekendDays?: number[] } | null)?.weekendDays ?? [0, 6]);
   const workingDaysPerWeek = Math.max(1, 7 - weekendDays.size);
   const holidayByDay = new Map(holidays.map((h) => [dayKey(startOfUtcDay(h.date as Date)), String(h.name)]));
@@ -365,6 +456,31 @@ export async function getEngagement(
       return kind === 'work' ? dailyCapacity : kind === 'half_leave' ? dailyCapacity / 2 : 0;
     }
 
+    const myEntries = entries.filter((e) => String(e.userId) === uid);
+
+    /** Manual entries on a day, scaled to the day's capacity (so half-day leave halves an hours entry). */
+    function manualOn(d: Date): number {
+      const cap = capacityOn(d);
+      if (cap <= 0) return 0;
+      return myEntries.reduce((sum, e) => {
+        if (d < startOfUtcDay(e.startDate) || d > startOfUtcDay(e.endDate)) return sum;
+        return sum + (e.mode === 'percent' ? (cap * e.value) / 100 : (e.value * cap) / dailyCapacity);
+      }, 0);
+    }
+
+    /** Meeting hours on a working day, never more than the day's capacity. */
+    function meetingsOn(d: Date): { hours: number; count: number } {
+      const cap = capacityOn(d);
+      const m = meetingsByUserDay.get(`${uid}|${dayKey(d)}`);
+      if (!m || cap <= 0) return { hours: 0, count: m?.count ?? 0 };
+      return { hours: Math.min(cap, m.hours), count: m.count };
+    }
+
+    /** Capacity left for task work once manual entries and meetings are taken out. */
+    function taskCapacityOn(d: Date): number {
+      return Math.max(0, capacityOn(d) - manualOn(d) - meetingsOn(d).hours);
+    }
+
     const items = workItems.filter((w) => w.userId === uid);
     const taskHoursByDay = new Map<string, number>();
     const overdueByDay = new Map<string, number>();
@@ -388,7 +504,7 @@ export async function getEngagement(
       const spanStart = s > end ? end : s < today ? today : s;
       const span: Array<{ key: string; cap: number }> = [];
       for (let t = spanStart.getTime(); t <= end.getTime(); t += DAY_MS) {
-        const cap = capacityOn(new Date(t));
+        const cap = taskCapacityOn(new Date(t));
         if (cap > 0) span.push({ key: dayKey(new Date(t)), cap });
       }
       if (span.length === 0) {
@@ -407,7 +523,7 @@ export async function getEngagement(
       for (let t = today.getTime(); t <= to.getTime() && left > 0.01; t += DAY_MS) {
         const d = new Date(t);
         const key = dayKey(d);
-        const spare = capacityOn(d) - (taskHoursByDay.get(key) ?? 0);
+        const spare = taskCapacityOn(d) - (taskHoursByDay.get(key) ?? 0);
         if (spare <= 0.01) continue;
         const take = Math.min(spare, left);
         addHours(key, take, item.schedule === 'overdue');
@@ -446,8 +562,15 @@ export async function getEngagement(
 
       const taskHours = taskHoursByDay.get(key) ?? 0;
       const taskPct = capacityHours > 0 ? (taskHours / capacityHours) * 100 : 0;
+      const loggedHours = key <= todayKey ? (loggedByUserDay.get(`${uid}|${key}`) ?? 0) : 0;
+      const manualHours = manualOn(d);
+      const meetings = meetingsOn(d);
+      const fixed = manualHours + meetings.hours;
+      const workHours =
+        key < todayKey ? loggedHours + fixed : taskHours + fixed + (key === todayKey ? loggedHours : 0);
+      const workPct = capacityHours > 0 ? (workHours / capacityHours) * 100 : 0;
       const working = kind === 'work' || kind === 'half_leave';
-      const engagementPct = working ? Math.round(Math.max(allocatedPct, taskPct)) : 0;
+      const engagementPct = working ? Math.round(Math.max(allocatedPct, workPct)) : 0;
 
       return {
         date: key,
@@ -459,6 +582,12 @@ export async function getEngagement(
         overdueHours: round1(overdueByDay.get(key) ?? 0),
         taskCount: taskCountByDay.get(key) ?? 0,
         taskPct: Math.round(taskPct),
+        loggedHours: round1(loggedHours),
+        manualHours: round1(manualHours),
+        meetingHours: round1(meetings.hours),
+        meetingCount: meetings.count,
+        workHours: round1(workHours),
+        workPct: Math.round(workPct),
         engagementPct,
         level: levelFor(kind, engagementPct, threshold, settings.busyThresholdPct, settings.overAllocationPct),
         ...(note ? { note } : {}),
@@ -545,6 +674,9 @@ export async function getEngagement(
         unplacedHours,
         unscheduledTasks: unscheduled.length,
         unscheduledHours: round1(unscheduled.reduce((s, t) => s + t.remainingHours, 0)),
+        loggedHours: round1(dayRows.reduce((s, r) => s + r.loggedHours, 0)),
+        manualHours: round1(dayRows.reduce((s, r) => s + r.manualHours, 0)),
+        meetingHours: round1(dayRows.reduce((s, r) => s + r.meetingHours, 0)),
         nextAvailable,
         freeFrom,
         busyThroughRangeEnd,
@@ -553,13 +685,27 @@ export async function getEngagement(
         openEndedAllocation,
       },
       allocations: myAllocations,
+      entries: myEntries.map((e) => {
+        const proj = e.projectId ? projectById.get(String(e.projectId)) : undefined;
+        return {
+          _id: String(e._id),
+          title: e.title,
+          category: e.category,
+          startDate: dayKey(startOfUtcDay(e.startDate)),
+          endDate: dayKey(startOfUtcDay(e.endDate)),
+          mode: e.mode,
+          value: e.value,
+          notes: e.notes,
+          project: e.projectId ? { id: String(e.projectId), name: proj?.name, key: proj?.key } : null,
+        };
+      }),
       tasks,
       days: dayRows,
     };
   });
 
   const filteredPeople = query.projectId
-    ? people.filter((p) => p.allocations.length > 0 || p.tasks.length > 0)
+    ? people.filter((p) => p.allocations.length > 0 || p.tasks.length > 0 || p.entries.length > 0 || p.summary.loggedHours > 0)
     : people;
 
   const team = days.map((d, i) => {
@@ -598,6 +744,10 @@ export async function getEngagement(
       overdueTasks: allTasks.filter((t) => t.schedule === 'overdue').length,
       unscheduledTasks: allTasks.filter((t) => t.schedule === 'unscheduled').length,
       noEstimateTasks: allTasks.filter((t) => t.hoursSource === 'none').length,
+      loggedHours: round1(filteredPeople.reduce((s, p) => s + p.summary.loggedHours, 0)),
+      manualHours: round1(filteredPeople.reduce((s, p) => s + p.summary.manualHours, 0)),
+      meetingHours: round1(filteredPeople.reduce((s, p) => s + p.summary.meetingHours, 0)),
+      manualEntries: filteredPeople.reduce((s, p) => s + p.entries.length, 0),
       hoursSources: (['stage', 'estimate', 'points', 'default', 'none'] as const).map((source) => ({
         source,
         tasks: allTasks.filter((t) => t.hoursSource === source).length,

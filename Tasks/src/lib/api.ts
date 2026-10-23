@@ -3779,6 +3779,8 @@ export interface ResourceSettingsRow {
   hoursPerStoryPoint: number | null;
   defaultTaskHours: number | null;
   includePendingStageEstimates: boolean;
+  includeLoggedTime: boolean;
+  includeCalendarEvents: boolean;
 }
 
 export interface EngagementDay {
@@ -3792,9 +3794,28 @@ export interface EngagementDay {
   overdueHours: number;
   taskCount: number;
   taskPct: number;
+  loggedHours: number;
+  manualHours: number;
+  meetingHours: number;
+  meetingCount: number;
+  workHours: number;
+  workPct: number;
   engagementPct: number;
   level: EngagementLevel;
   note?: string;
+}
+
+/** A manually entered block of engagement (support duty, training, pre-sales…). */
+export interface EngagementEntryRow {
+  _id: string;
+  title: string;
+  category?: string;
+  startDate: string;
+  endDate: string;
+  mode: 'hours' | 'percent';
+  value: number;
+  notes?: string;
+  project: { id: string; name?: string; key?: string } | null;
 }
 
 export interface EngagementPerson {
@@ -3820,6 +3841,9 @@ export interface EngagementPerson {
     unplacedHours: number;
     unscheduledTasks: number;
     unscheduledHours: number;
+    loggedHours: number;
+    manualHours: number;
+    meetingHours: number;
     nextAvailable: string | null;
     freeFrom: string | null;
     busyThroughRangeEnd: boolean;
@@ -3838,6 +3862,7 @@ export interface EngagementPerson {
     endDate: string | null;
     roleLabel?: string;
   }>;
+  entries: EngagementEntryRow[];
   tasks: Array<{
     issueId: string;
     key?: string;
@@ -3878,6 +3903,10 @@ export interface EngagementReport {
     overdueTasks: number;
     unscheduledTasks: number;
     noEstimateTasks: number;
+    loggedHours: number;
+    manualHours: number;
+    meetingHours: number;
+    manualEntries: number;
     hoursSources: Array<{ source: EngagementHoursSource; tasks: number }>;
   };
   team: Array<{
@@ -3926,6 +3955,10 @@ export const resourcesApi = {
     token: string,
     params: { from?: string; to?: string; userId?: string; projectId?: string; threshold?: string } = {}
   ) => api.get<EngagementReport>(`/resources/engagement${resourceQs(params)}`, token),
+  createEngagementEntry: (data: Record<string, unknown>, token: string) => api.post('/resources/engagement/entries', data, token),
+  updateEngagementEntry: (id: string, data: Record<string, unknown>, token: string) =>
+    api.patch(`/resources/engagement/entries/${id}`, data, token),
+  deleteEngagementEntry: (id: string, token: string) => api.delete(`/resources/engagement/entries/${id}`, token),
   settings: (token: string) => api.get<ResourceSettingsRow>('/resources/settings', token),
   updateSettings: (data: Partial<ResourceSettingsRow>, token: string) =>
     api.put<ResourceSettingsRow>('/resources/settings', data, token),
