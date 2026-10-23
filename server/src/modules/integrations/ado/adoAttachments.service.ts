@@ -1,4 +1,3 @@
-import fs from 'fs';
 import path from 'path';
 import {
   type AdoConnection,
@@ -7,15 +6,9 @@ import {
   adoAuthHeader,
 } from './adoClient.service';
 import * as attachmentsService from '../../attachments/attachments.service';
+import { getStorage } from '../../../services/storage';
 
 const MAX_BYTES = 50 * 1024 * 1024;
-const uploadRoot = path.join(process.cwd(), 'uploads');
-
-function ensureUploadDir(): void {
-  if (!fs.existsSync(uploadRoot)) {
-    fs.mkdirSync(uploadRoot, { recursive: true });
-  }
-}
 
 function extractAttachmentId(url: string): string | null {
   const m = /\/attachments\/([^/?]+)/i.exec(url);
@@ -58,7 +51,6 @@ export async function syncAdoAttachmentsToIssue(
   const attached = rels.filter((r) => r.rel === 'AttachedFile');
   if (attached.length === 0) return 0;
 
-  ensureUploadDir();
   let imported = 0;
 
   for (const rel of attached) {
@@ -85,7 +77,7 @@ export async function syncAdoAttachmentsToIssue(
       const ext = path.extname(originalName);
       const base = path.basename(originalName, ext);
       const diskName = `${Date.now()}-ado-${adoAttachmentId.slice(0, 8)}-${safeFilename(base)}${ext}`;
-      fs.writeFileSync(path.join(uploadRoot, diskName), buffer);
+      await getStorage().put(diskName, buffer, mimeType);
 
       const publicPath = `/api/uploads/${encodeURIComponent(diskName)}`;
       const added = await attachmentsService.createFromAdoSync(issueId, uploadedByUserId, {
