@@ -400,8 +400,8 @@ export default function TaskDetailsSidebar({
   const recentLogs = workLogs.slice(0, 3);
 
   return (
-    <aside className="lg:order-none order-first w-full lg:max-w-[340px] lg:min-h-0 lg:flex lg:flex-col lg:overflow-hidden">
-      <div className="space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+    <aside className="lg:order-none order-first w-full lg:max-w-[340px] lg:min-h-0 lg:flex lg:flex-col lg:overflow-clip">
+      <div className="space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
         <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b-2 border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
             <span className="type-label-caps">Details</span>

@@ -571,10 +571,10 @@ export default function IssueDetail() {
   const projectName = typeof issue.project === 'object' && issue.project ? issue.project.name : '';
 
   return (
-    <div className="flex flex-1 flex-col min-h-0 lg:overflow-hidden animate-fade-in">
+    <div className="flex flex-1 flex-col min-h-0 lg:overflow-clip animate-fade-in">
       <div className="flex flex-1 min-h-0 w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-6">
-        <div className="grid flex-1 min-h-0 grid-cols-1 lg:grid-cols-[1fr_minmax(260px,340px)] gap-4 lg:gap-6 lg:overflow-hidden">
-          <div className="flex min-w-0 flex-col lg:min-h-0 lg:overflow-hidden">
+        <div className="grid flex-1 min-h-0 grid-cols-1 lg:grid-cols-[1fr_minmax(260px,340px)] gap-4 lg:gap-6 lg:overflow-clip">
+          <div className="flex min-w-0 flex-col lg:min-h-0 lg:overflow-clip">
             <div className="shrink-0 pb-3 lg:border-b border-[color:var(--border-subtle)]/60 bg-[color:var(--bg-page)]">
               <TaskHeader
                 issue={issue}
@@ -591,7 +591,7 @@ export default function IssueDetail() {
                 onDelete={() => setConfirmDelete(true)}
               />
             </div>
-            <div className="space-y-4 pt-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+            <div className="space-y-4 pt-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
               <TaskDescription issue={issue} onUpdateDescription={updateDescription} />
               {token && projectId && <IssueAiPanel key={issue._id} issueId={issue._id} projectId={projectId} token={token} />}
               <DevLinksPanel links={issue.devLinks} />
