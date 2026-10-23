@@ -26,6 +26,7 @@ import { CrmContact } from '../crm/models/crmContact.model';
 import { HrmsEmployee } from '../hrms/models/hrmsEmployee.model';
 import { ServiceTicket } from '../service-desk/models/serviceTicket.model';
 import { AuditLog } from '../auditLogs/auditLog.model';
+import { flushAuditLogs } from '../auditLogs/logAudit';
 import { PaChatBinding } from './paChatBinding.model';
 import { resetPaServiceAccountCacheForTests } from './paServiceAccount';
 import { setStorageForTests, type StorageDriver } from '../../services/storage';
@@ -133,6 +134,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   setStorageForTests(null);
+  // Fire-and-forget audit rows from the last requests must finish before Mongo closes.
+  await flushAuditLogs();
   await mongoose.disconnect();
   await mongo.stop();
 });
