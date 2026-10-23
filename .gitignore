@@ -3,3 +3,6 @@ node_modules/
 # Atrium Workbench local issue packets & downloads
 .atrium/
 
+
+# Generated internal service key (server ↔ WhatsApp PA)
+.atrium-internal/

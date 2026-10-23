@@ -1,49 +1,32 @@
-import crypto from 'crypto';
 import { Request } from 'express';
 import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError';
 import { Project } from '../projects/project.model';
-import { Organization } from '../organizations/organization.model';
 
-export function timingSafeSecretEqual(provided: string, configured: string): boolean {
-  const a = Buffer.from(provided);
-  const b = Buffer.from(configured);
-  if (a.length !== b.length || a.length === 0) return false;
-  return crypto.timingSafeEqual(a, b);
-}
-
+/**
+ * PA ingest endpoints sit behind `requirePaInternalService` (internal key +
+ * owner/system actor). This re-check keeps a controller safe even if it is
+ * ever mounted without the guard.
+ */
 export function assertPaIngestSecret(req: Request): void {
-  const configured = String(process.env.PA_INGEST_SECRET ?? '').trim();
-  if (!configured) {
-    throw new ApiError(503, 'PA ingest is not configured (PA_INGEST_SECRET)');
-  }
-  const provided = String(req.headers['x-pa-ingest-secret'] ?? '').trim();
-  if (!provided || !timingSafeSecretEqual(provided, configured)) {
-    throw new ApiError(401, 'Invalid ingest secret');
+  const ctx = req.paContext;
+  if (!ctx || (ctx.actor !== 'owner' && ctx.actor !== 'system')) {
+    throw new ApiError(401, 'PA internal authentication required');
   }
 }
 
-export async function resolvePaOrganizationId(
-  req: Request,
-  body?: Record<string, unknown>
-): Promise<string> {
-  const organizationId = String(
-    body?.organizationId ??
-      req.headers['x-organization-id'] ??
-      process.env.PA_DEFAULT_ORG_ID ??
-      ''
-  ).trim();
-  if (!organizationId) {
-    throw new ApiError(400, 'organizationId is required');
-  }
-  if (!mongoose.Types.ObjectId.isValid(organizationId)) {
-    throw new ApiError(400, 'Invalid organizationId');
-  }
-  const exists = await Organization.exists({ _id: organizationId, status: { $ne: 'archived' } });
-  if (!exists) {
-    throw new ApiError(404, 'Organization not found');
-  }
+/** Workspace resolved by internal auth (x-organization-id, else the PA workspace). */
+export async function resolvePaOrganizationId(req: Request, _body?: Record<string, unknown>): Promise<string> {
+  const organizationId = req.paContext?.organizationId;
+  if (!organizationId) throw new ApiError(401, 'PA internal authentication required');
   return organizationId;
+}
+
+/** PA service account id — the actor recorded on records PA creates. */
+export function paActorUserId(req: Request): string {
+  const id = req.paContext?.serviceAccountId;
+  if (!id) throw new ApiError(401, 'PA internal authentication required');
+  return id;
 }
 
 /** Ensure a project belongs to the ingest organization (cross-tenant guard). */

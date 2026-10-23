@@ -120,6 +120,7 @@ export function permissionGroup(code: string): string {
   if (code.startsWith('taskflow.calendar.')) return 'Calendar';
   if (code.startsWith('taskflow.mail.')) return 'Mail';
   if (code.startsWith('taskflow.service.')) return 'Service Desk';
+  if (code.startsWith('taskflow.pa.')) return 'WhatsApp PA';
   if (code.startsWith('taskflow.customer_portal.')) return 'Customer Portal';
   if (code.startsWith('taskflow.platform.')) return 'Platform';
   if (code.startsWith('taskflow.')) return 'Project Manager';

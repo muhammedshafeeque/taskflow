@@ -14,7 +14,7 @@ import { HrmsLeaveRequest } from '../hrms/models/hrmsLeaveRequest.model';
 import { HrmsHoliday, HrmsSettings } from '../hrms/models/hrmsPolicy.model';
 import { ResourceAllocation } from './models/resourceAllocation.model';
 import { ResourceProfile } from './models/resourceProfile.model';
-import { ResourceSettings } from './models/resourceSettings.model';
+import { getResourceSettings } from './resourceSettings.service';
 import { requireWorkspaceId, toOrgOid } from './resourcesWorkspace';
 
 /**
@@ -35,7 +35,6 @@ import { requireWorkspaceId, toOrgOid } from './resourcesWorkspace';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_RANGE_DAYS = 184;
-const BUSY_PCT = 80;
 
 export type EngagementDayKind = 'work' | 'weekend' | 'holiday' | 'leave' | 'half_leave';
 export type EngagementLevel = 'off' | 'free' | 'partial' | 'busy' | 'over';
@@ -100,52 +99,15 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-function levelFor(kind: EngagementDayKind, pct: number, threshold: number): EngagementLevel {
+function levelFor(kind: EngagementDayKind, pct: number, threshold: number, busyPct: number, overPct: number): EngagementLevel {
   if (kind !== 'work' && kind !== 'half_leave') return 'off';
-  if (pct > 100) return 'over';
-  if (pct >= BUSY_PCT) return 'busy';
+  if (pct > overPct) return 'over';
+  if (pct >= busyPct) return 'busy';
   if (pct >= threshold) return 'partial';
   return 'free';
 }
 
 type ProjectStatusLike = { name?: string; order?: number; isClosed?: boolean; userInLane?: string };
-
-export async function getResourceSettings(workspaceId: string | null | undefined) {
-  const orgOid = toOrgOid(requireWorkspaceId(workspaceId));
-  const doc = await ResourceSettings.findOne({ taskflowOrganizationId: orgOid }).lean();
-  return {
-    hoursPerStoryPoint: doc?.hoursPerStoryPoint ?? null,
-    defaultTaskHours: doc?.defaultTaskHours ?? null,
-    includePendingStageEstimates: doc?.includePendingStageEstimates ?? true,
-  };
-}
-
-export async function updateResourceSettings(
-  workspaceId: string | null | undefined,
-  input: { hoursPerStoryPoint?: number | null; defaultTaskHours?: number | null; includePendingStageEstimates?: boolean }
-) {
-  const orgOid = toOrgOid(requireWorkspaceId(workspaceId));
-  const update: Record<string, unknown> = {};
-  for (const field of ['hoursPerStoryPoint', 'defaultTaskHours'] as const) {
-    if (input[field] === undefined) continue;
-    if (input[field] === null || (input[field] as unknown) === '') {
-      update[field] = null;
-      continue;
-    }
-    const n = Number(input[field]);
-    if (!Number.isFinite(n) || n < 0 || n > 200) throw new ApiError(400, `${field} must be between 0 and 200`);
-    update[field] = n;
-  }
-  if (input.includePendingStageEstimates !== undefined) {
-    update.includePendingStageEstimates = Boolean(input.includePendingStageEstimates);
-  }
-  await ResourceSettings.findOneAndUpdate(
-    { taskflowOrganizationId: orgOid },
-    { $set: update, $setOnInsert: { taskflowOrganizationId: orgOid } },
-    { upsert: true }
-  );
-  return getResourceSettings(workspaceId);
-}
 
 export async function getEngagement(
   workspaceId: string | null | undefined,
@@ -160,7 +122,10 @@ export async function getEngagement(
   if ((to.getTime() - from.getTime()) / DAY_MS + 1 > MAX_RANGE_DAYS) {
     throw new ApiError(400, `Date range cannot exceed ${MAX_RANGE_DAYS} days`);
   }
-  const threshold = Number.isFinite(query.threshold) ? Math.min(100, Math.max(0, Number(query.threshold))) : 20;
+  const settings = await getResourceSettings(orgId);
+  const threshold = Number.isFinite(query.threshold)
+    ? Math.min(100, Math.max(0, Number(query.threshold)))
+    : settings.benchThresholdPct;
   const rangeEnd = new Date(to.getTime() + DAY_MS - 1);
   // Overdue work fills capacity from today, so calendar facts are needed from today even if the range starts later.
   const calStart = today < from ? today : from;
@@ -183,11 +148,10 @@ export async function getEngagement(
     projects.map((p) => [String(p._id), new Set(getClosedStatusNamesFromStatuses(statusesByProject.get(String(p._id))))])
   );
 
-  const [users, profiles, hrSettings, settings, holidays, employees, allocations, stageRows] = await Promise.all([
+  const [users, profiles, hrSettings, holidays, employees, allocations, stageRows] = await Promise.all([
     User.find({ _id: { $in: memberIds } }).select('name email').sort({ name: 1 }).lean(),
     ResourceProfile.find({ taskflowOrganizationId: orgOid, userId: { $in: memberIds } }).lean(),
     HrmsSettings.findOne({ taskflowOrganizationId: orgOid }).select('weekendDays').lean(),
-    getResourceSettings(orgId),
     HrmsHoliday.find({ taskflowOrganizationId: orgOid, optional: { $ne: true }, date: { $gte: calStart, $lte: rangeEnd } })
       .select('date name')
       .lean(),
@@ -371,7 +335,7 @@ export async function getEngagement(
   const people = users.map((u) => {
     const uid = String(u._id);
     const profile = profileByUser.get(uid);
-    const weeklyCapacity = profile?.capacityHoursPerWeek ?? 40;
+    const weeklyCapacity = profile?.capacityHoursPerWeek ?? settings.defaultCapacityHoursPerWeek;
     const dailyCapacity = weeklyCapacity / workingDaysPerWeek;
 
     const leaveByDay = new Map<string, { half: boolean; pending: boolean }>();
@@ -496,7 +460,7 @@ export async function getEngagement(
         taskCount: taskCountByDay.get(key) ?? 0,
         taskPct: Math.round(taskPct),
         engagementPct,
-        level: levelFor(kind, engagementPct, threshold),
+        level: levelFor(kind, engagementPct, threshold, settings.busyThresholdPct, settings.overAllocationPct),
         ...(note ? { note } : {}),
       };
     });
@@ -618,7 +582,8 @@ export async function getEngagement(
     to: dayKey(to),
     today: dayKey(today),
     threshold,
-    busyPct: BUSY_PCT,
+    busyPct: settings.busyThresholdPct,
+    overPct: settings.overAllocationPct,
     weekendDays: [...weekendDays],
     settings,
     summary: {

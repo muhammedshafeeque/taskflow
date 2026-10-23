@@ -67,9 +67,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const handler = () => logout();
-    window.addEventListener('auth:unauthorized', handler);
-    return () => window.removeEventListener('auth:unauthorized', handler);
+    const onUnauthorized = () => logout();
+    const onRefreshed = (ev: Event) => {
+      const accessToken = (ev as CustomEvent<{ accessToken?: string }>).detail?.accessToken;
+      if (accessToken) {
+        setToken(accessToken);
+        localStorage.setItem(ACCESS_KEY, accessToken);
+      }
+    };
+    window.addEventListener('auth:unauthorized', onUnauthorized);
+    window.addEventListener('auth:tokens-refreshed', onRefreshed);
+    return () => {
+      window.removeEventListener('auth:unauthorized', onUnauthorized);
+      window.removeEventListener('auth:tokens-refreshed', onRefreshed);
+    };
   }, [logout]);
 
   const updateUser = useCallback((next: AuthUser) => {

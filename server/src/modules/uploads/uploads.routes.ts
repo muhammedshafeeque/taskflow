@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import jwt from 'jsonwebtoken';
 import { authMiddleware } from '../../middleware/auth.middleware';
+import { hasInternalKey } from '../../middleware/internalAuth';
 import { customerAuthMiddleware } from '../customer-portal/middleware/customerAuth.middleware';
 import { ApiError } from '../../utils/ApiError';
 import { asyncHandler } from '../../utils/asyncHandler';
@@ -10,6 +11,11 @@ import { isAllowedType, MAX_UPLOAD_BYTES, PUBLIC_INLINE_EXT } from './fileValida
 import { saveUpload, sendStoredFile } from './files.service';
 
 function staffOrCustomerAuth(req: Request, res: Response, next: NextFunction): void {
+  // The PA authenticates with the internal key (handled inside authMiddleware).
+  if (hasInternalKey(req)) {
+    void authMiddleware(req, res, next);
+    return;
+  }
   // Authorization header only — never accept JWT via ?token= (logs/Referer leak).
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;

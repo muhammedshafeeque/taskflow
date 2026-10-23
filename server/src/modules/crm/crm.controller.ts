@@ -207,9 +207,8 @@ export async function createLead(req: Request & { user?: AuthPayload }, res: Res
 }
 
 /**
- * PA / WhatsApp bot ingest — shared secret, no user JWT.
- * Header: x-pa-ingest-secret
- * Body: lead fields + organizationId (or rely on PA_DEFAULT_ORG_ID)
+ * PA / WhatsApp bot lead capture — internal key (requirePaInternalService), no user JWT.
+ * Workspace: x-organization-id, else the PA workspace.
  */
 export async function ingestWhatsappLead(req: Request, res: Response) {
   assertPaIngestSecret(req);
@@ -223,7 +222,7 @@ export async function ingestWhatsappLead(req: Request, res: Response) {
 }
 
 /**
- * PA bot updates an existing CRM lead with new WhatsApp details (shared secret).
+ * PA bot updates an existing CRM lead with new WhatsApp details (internal key).
  */
 export async function ingestWhatsappLeadUpdate(req: Request, res: Response) {
   assertPaIngestSecret(req);
@@ -237,8 +236,7 @@ export async function ingestWhatsappLeadUpdate(req: Request, res: Response) {
 }
 
 /**
- * PA Control Center — list workspace projects via ingest secret (no JWT).
- * Header: x-pa-ingest-secret; optional x-organization-id (else PA_DEFAULT_ORG_ID).
+ * PA Control Center — list workspace projects via the internal key (no JWT).
  */
 export async function ingestListProjects(req: Request, res: Response) {
   assertPaIngestSecret(req);

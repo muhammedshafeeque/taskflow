@@ -16,12 +16,23 @@ import {
   assertAccessTokenClaims,
   type JwtAuthClaims,
 } from './assertAccessToken';
+import { authenticateInternal, hasInternalKey } from './internalAuth';
 
 export async function authMiddleware(
   req: Request,
-  _res: Response,
+  res: Response,
   next: NextFunction
 ): Promise<void> {
+  // First-party WhatsApp PA on the private network (no user token involved).
+  if (hasInternalKey(req)) {
+    try {
+      next((await authenticateInternal(req, res, authenticateStaffUser)) ?? undefined);
+    } catch (err) {
+      next(err instanceof ApiError ? err : new ApiError(401, 'Internal authentication failed'));
+    }
+    return;
+  }
+
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
 
@@ -121,10 +132,14 @@ export async function authMiddleware(
 }
 
 /** Load a staff user, resolve permissions and the active workspace onto `req`. Returns an error instead of throwing. */
-async function authenticateStaffUser(req: Request, userId: string, tokenOrgId?: string): Promise<ApiError | null> {
+export async function authenticateStaffUser(req: Request, userId: string, tokenOrgId?: string): Promise<ApiError | null> {
     const user = await User.findById(userId).populate('roleId', 'permissions').lean();
     if (!user) {
       return new ApiError(401, 'User not found');
+    }
+    // Service accounts only ever authenticate through the internal key.
+    if ((user as { isServiceAccount?: boolean }).isServiceAccount) {
+      return new ApiError(401, 'Service accounts cannot use user tokens');
     }
     const u = user as { enabled?: boolean };
     if (u.enabled === false) {

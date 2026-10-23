@@ -14,11 +14,11 @@ export default function PortalRoute() {
     );
   }
 
-  if (!token) {
+  if (!token || !user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (user?.userType === 'taskflow') {
+  if (user.userType === 'taskflow') {
     return <Navigate to="/" replace />;
   }
 

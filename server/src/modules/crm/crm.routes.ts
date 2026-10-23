@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import { paIngestLimiter } from '../../middleware/rateLimit';
+import { requirePaInternalService } from '../../middleware/internalAuth';
 import { requirePermission, requireAnyPermission } from '../../middleware/requirePermission';
 import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import { asyncHandler } from '../../utils/asyncHandler';
@@ -10,14 +11,15 @@ import * as crm from './crm.controller';
 const P = TASK_FLOW_PERMISSIONS.TASKFLOW.CRM;
 const router = Router();
 
-/** WhatsApp PA bot — shared secret, before JWT auth. */
-router.post('/ingest/whatsapp-lead', paIngestLimiter, asyncHandler(crm.ingestWhatsappLead));
+/** WhatsApp PA (internal key, owner/system actor) — before JWT auth. */
+router.post('/ingest/whatsapp-lead', paIngestLimiter, requirePaInternalService, asyncHandler(crm.ingestWhatsappLead));
 router.patch(
   '/ingest/whatsapp-lead/:id',
   paIngestLimiter,
+  requirePaInternalService,
   asyncHandler(crm.ingestWhatsappLeadUpdate)
 );
-router.get('/ingest/projects', paIngestLimiter, asyncHandler(crm.ingestListProjects));
+router.get('/ingest/projects', paIngestLimiter, requirePaInternalService, asyncHandler(crm.ingestListProjects));
 
 router.use(authMiddleware);
 router.use(requireTaskflowUser);

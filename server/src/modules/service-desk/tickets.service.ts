@@ -60,6 +60,9 @@ export async function createTicket(
   if (input.projectId && mongoose.Types.ObjectId.isValid(String(input.projectId))) {
     ticketData.projectId = input.projectId;
   }
+  if (input.customerOrgId && mongoose.Types.ObjectId.isValid(String(input.customerOrgId))) {
+    ticketData.customerOrgId = input.customerOrgId;
+  }
   if (input.workClassification) ticketData.workClassification = input.workClassification;
   if (input.source) ticketData.source = input.source;
   if (input.whatsappGroupId) ticketData.whatsappGroupId = input.whatsappGroupId;

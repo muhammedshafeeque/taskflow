@@ -145,13 +145,15 @@ export async function findAllForUser(
   userId: string,
   _permissions: string[],
   activeTaskflowOrganizationId: string,
-  opts: PaginationOptions = { page: 1, limit: 20 }
+  opts: PaginationOptions = { page: 1, limit: 20 },
+  /** Workspace-wide service actors (the WhatsApp PA) are not project members but see every project. */
+  allInWorkspace = false
 ): Promise<PaginatedResult<unknown>> {
   // Only show projects the user is a member of (accepted invitation or added as member).
   const userObjectId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
-  const projectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
+  const projectIds = allInWorkspace ? [] : await ProjectMember.find({ user: userObjectId }).distinct('project');
   const orgFilter = {
-    _id: { $in: projectIds },
+    ...(allInWorkspace ? {} : { _id: { $in: projectIds } }),
     taskflowOrganizationId: activeTaskflowOrganizationId,
   };
   const skip = (opts.page - 1) * opts.limit;

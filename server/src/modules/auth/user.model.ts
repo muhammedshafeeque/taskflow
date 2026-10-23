@@ -45,6 +45,10 @@ export interface IUser extends Document {
   twoFactorEnabled?: boolean;
   /** SHA-256 hashes of unused one-time recovery codes. */
   twoFactorRecoveryHashes?: string[];
+  /** Non-human actor (e.g. the WhatsApp PA). Cannot sign in; hidden from user lists. */
+  isServiceAccount?: boolean;
+  /** What the service account is for, e.g. 'pa'. */
+  serviceKind?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -79,6 +83,8 @@ const userSchema = new Schema<IUser>(
     passwordResetToken: { type: String, select: false },
     passwordResetExpires: { type: Date, select: false },
     refreshTokenJti: { type: String, select: false, default: null },
+    isServiceAccount: { type: Boolean, default: false, index: true },
+    serviceKind: { type: String, default: null },
   },
   { timestamps: true }
 );

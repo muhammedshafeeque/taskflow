@@ -2,6 +2,7 @@ import http from "http";
 import app from "./app";
 import { connectDb } from "./config/db";
 import { env, validateRuntimeConfig } from "./config/env";
+import { internalSecretFilePath, loadOrCreateInternalSecret } from "./config/internalSecret";
 import { initWebSocket } from "./websocket";
 import { startAdoAutoSyncScheduler } from "./modules/integrations/ado/adoAutoSync.scheduler";
 import { startMonitorUptimeScheduler } from "./modules/monitor/uptime.scheduler";
@@ -12,6 +13,9 @@ import { monitorError, monitorLog } from "./shared/monitorClient";
 async function startServer() {
   try {
     validateRuntimeConfig();
+    // Zero-config service auth for the WhatsApp PA: create the shared key if missing.
+    loadOrCreateInternalSecret();
+    console.log(`[internal] PA service key ready (${process.env.ATRIUM_INTERNAL_SECRET ? 'env' : internalSecretFilePath()})`);
     await connectDb();
 
     const server = http.createServer(app);

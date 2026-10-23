@@ -49,7 +49,9 @@ export async function getProjects(req: Request & { user?: AuthPayload }, res: Re
   const limit = Math.min(parseInt(String(req.query.limit), 10) || 20, 100);
   const activeOrg = req.activeOrganizationId;
   if (!activeOrg) throw new ApiError(400, 'Active workspace is required');
-  const result = await projectsService.findAllForUser(userId, permissions, activeOrg, { page, limit });
+  // The PA acting as itself (owner context, no signed-in human) works across the whole workspace.
+  const serviceActor = req.paContext?.actor === 'owner' && !req.paContext.onBehalfOf;
+  const result = await projectsService.findAllForUser(userId, permissions, activeOrg, { page, limit }, serviceActor);
   res.status(200).json({ success: true, data: result });
 }
 

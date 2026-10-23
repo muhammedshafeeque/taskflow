@@ -12,6 +12,8 @@ export interface IResourceAllocation extends Document {
   softBooked: boolean;
   roleLabel?: string;
   notes?: string;
+  /** Staffing demand this allocation fulfils, if any. */
+  demandId?: mongoose.Types.ObjectId | null;
   createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -29,6 +31,7 @@ const resourceAllocationSchema = new Schema<IResourceAllocation>(
     softBooked: { type: Boolean, default: false },
     roleLabel: { type: String, trim: true },
     notes: { type: String },
+    demandId: { type: Schema.Types.ObjectId, ref: 'ResourceDemand', default: null, index: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

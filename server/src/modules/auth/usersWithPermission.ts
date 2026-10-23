@@ -13,6 +13,7 @@ export async function usersWithPermission(permission: string, workspaceId?: stri
   const roleIds = await Role.find({ permissions: { $in: [permission, ...prefixes] } }).distinct('_id');
   const users = await User.find({
     enabled: { $ne: false },
+    isServiceAccount: { $ne: true },
     'permissionOverrides.revoked': { $ne: permission },
     $or: [{ roleId: { $in: roleIds } }, { 'permissionOverrides.granted': permission }, { role: 'admin' }],
   })

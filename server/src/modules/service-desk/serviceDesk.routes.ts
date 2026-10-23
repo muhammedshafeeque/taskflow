@@ -8,8 +8,8 @@ import { requireAnyPermission, requirePermission } from '../../middleware/requir
 import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
+import { requirePaInternalService } from '../../middleware/internalAuth';
 import * as sd from './serviceDesk.controller';
-import * as ingest from './serviceIngest.controller';
 import * as requestIngest from '../customer-portal/customer-request/customerRequestIngest.controller';
 import * as ecoIngest from './paEcosystemIngest.controller';
 import { getCsatReport } from './tickets.service';
@@ -19,15 +19,13 @@ const router = Router();
 
 router.get('/kb/portal', asyncHandler(sd.listKbPortal));
 
-/** WhatsApp PA bot — shared secret, before JWT auth. */
+/**
+ * WhatsApp PA (internal key, owner/system actor), before JWT auth. Client
+ * chats use the scoped /api/internal/pa/client API instead.
+ */
 const ingestRouter = Router();
-ingestRouter.use(paIngestLimiter);
-ingestRouter.get('/project-context', asyncHandler(ingest.ingestProjectContext));
-ingestRouter.get('/tickets', asyncHandler(ingest.ingestListTickets));
-ingestRouter.post('/tickets', asyncHandler(ingest.ingestCreateTicket));
-ingestRouter.patch('/tickets/:id', asyncHandler(ingest.ingestPatchTicket));
+ingestRouter.use(paIngestLimiter, requirePaInternalService);
 ingestRouter.get('/requests', asyncHandler(requestIngest.ingestListRequests));
-ingestRouter.post('/requests', asyncHandler(ecoIngest.ingestCreateRequest));
 ingestRouter.get('/requests/:id', asyncHandler(requestIngest.ingestGetRequest));
 ingestRouter.post(
   '/requests/:id/approve',
@@ -45,13 +43,7 @@ ingestRouter.patch(
   '/service-tickets/:id',
   asyncHandler(requestIngest.ingestUpdateServiceTicket)
 );
-ingestRouter.get('/kb/search', asyncHandler(ecoIngest.ingestKbSearch));
 ingestRouter.get('/customer-orgs', asyncHandler(ecoIngest.ingestListCustomerOrgs));
-ingestRouter.get('/issues/by-key', asyncHandler(ecoIngest.ingestIssueByKey));
-ingestRouter.get('/billing/summary', asyncHandler(ecoIngest.ingestBillingSummary));
-ingestRouter.get('/hrms/me', asyncHandler(ecoIngest.ingestHrmsMe));
-ingestRouter.get('/assets/search', asyncHandler(ecoIngest.ingestAssetsSearch));
-ingestRouter.get('/procurement/pos', asyncHandler(ecoIngest.ingestProcurementPos));
 router.use('/ingest', ingestRouter);
 
 router.use(authMiddleware, requireTaskflowUser);

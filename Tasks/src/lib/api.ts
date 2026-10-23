@@ -4,6 +4,9 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 // Same origin by default (works behind the bundled nginx); override with VITE_WS_URL.
 export const WS_URL = import.meta.env.VITE_WS_URL || (import.meta.env.DEV ? 'http://localhost:5000' : window.location.origin);
 
+const ACCESS_STORAGE_KEY = 'pm_access_token';
+const REFRESH_STORAGE_KEY = 'pm_refresh_token';
+
 /** Persisted active Atrium workspace; sent as `X-Organization-Id` on API requests. */
 export const TASKFLOW_ACTIVE_ORG_STORAGE_KEY = 'taskflow_active_organization_id';
 
@@ -17,6 +20,53 @@ function taskflowOrgHeaders(): Record<string, string> {
   return {};
 }
 
+/** Login/refresh endpoints must not recurse into silent refresh on 401. */
+function isAuthBootstrapPath(path: string): boolean {
+  return /^\/auth\/(login|register|refresh|oauth\/exchange|2fa\/verify|sso\/|forgot-password|reset-password|public-config)/.test(
+    path
+  );
+}
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+/** Exchange refresh token for a new access (+ rotated refresh). Returns new access token or null. */
+async function tryRefreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    const refreshToken = localStorage.getItem(REFRESH_STORAGE_KEY);
+    if (!refreshToken) return null;
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...taskflowOrgHeaders(),
+        },
+        body: JSON.stringify({ refreshToken }),
+        cache: 'no-store',
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        data?: { tokens?: { accessToken?: string; refreshToken?: string } };
+      };
+      const accessToken = json?.data?.tokens?.accessToken;
+      const nextRefresh = json?.data?.tokens?.refreshToken;
+      if (!res.ok || !json?.success || !accessToken) return null;
+      localStorage.setItem(ACCESS_STORAGE_KEY, accessToken);
+      if (nextRefresh) localStorage.setItem(REFRESH_STORAGE_KEY, nextRefresh);
+      window.dispatchEvent(
+        new CustomEvent('auth:tokens-refreshed', { detail: { accessToken } })
+      );
+      return accessToken;
+    } catch {
+      return null;
+    }
+  })().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
@@ -26,9 +76,9 @@ export interface ApiResponse<T = unknown> {
 
 async function request<T>(
   path: string,
-  options: RequestInit & { token?: string } = {}
+  options: RequestInit & { token?: string; _retried?: boolean } = {}
 ): Promise<ApiResponse<T>> {
-  const { token, ...init } = options;
+  const { token, _retried, ...init } = options;
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...taskflowOrgHeaders(),
@@ -55,7 +105,13 @@ async function request<T>(
   const json = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    if (res.status === 401) {
+    if (res.status === 401 && !_retried && token && !isAuthBootstrapPath(path)) {
+      const nextAccess = await tryRefreshAccessToken();
+      if (nextAccess) {
+        return request<T>(path, { ...options, token: nextAccess, _retried: true });
+      }
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    } else if (res.status === 401 && !isAuthBootstrapPath(path)) {
       window.dispatchEvent(new CustomEvent('auth:unauthorized'));
     }
     const errJson = json as ApiResponse<T>;
@@ -89,7 +145,11 @@ export const api = {
     request<T>(path, { method: 'DELETE', body: JSON.stringify(body), token }),
 };
 
-export async function uploadFile(file: File, token?: string): Promise<ApiResponse<{ url: string; originalName: string; mimeType: string; size: number }>> {
+export async function uploadFile(
+  file: File,
+  token?: string,
+  _retried = false
+): Promise<ApiResponse<{ url: string; originalName: string; mimeType: string; size: number }>> {
   const formData = new FormData();
   formData.append('file', file);
 
@@ -107,7 +167,13 @@ export async function uploadFile(file: File, token?: string): Promise<ApiRespons
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    if (res.status === 401) {
+    if (res.status === 401 && token && !_retried) {
+      const nextAccess = await tryRefreshAccessToken();
+      if (nextAccess) {
+        return uploadFile(file, nextAccess, true);
+      }
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    } else if (res.status === 401) {
       window.dispatchEvent(new CustomEvent('auth:unauthorized'));
     }
     return {
@@ -3552,6 +3618,19 @@ export interface ResourceAllocation {
   softBooked: boolean;
   roleLabel?: string;
   notes?: string;
+  demandId?: { _id: string; title: string; status: string } | string | null;
+}
+
+export interface AllocationCheck {
+  overlappingCount: number;
+  committedPercent: number;
+  peakWithSoftPercent: number;
+  existingPeakPercent: number;
+  overAllocated: boolean;
+  softRisk: boolean;
+  overAllocationPct: number;
+  headroomPercent: number;
+  windows: Array<{ start: string; end: string; peakPercent: number }>;
 }
 
 export interface ResourceDemand {
@@ -3566,6 +3645,29 @@ export interface ResourceDemand {
   status: 'open' | 'partially_filled' | 'filled' | 'cancelled';
   skills: string[];
   notes?: string;
+  fulfilledHours?: number;
+  remainingHours?: number;
+  fillPct?: number;
+  allocationCount?: number;
+  assignees?: Array<{ allocationId: string; userId: string; name?: string; percent: number; softBooked: boolean }>;
+}
+
+export interface DemandCandidate {
+  userId: string;
+  name: string;
+  email: string;
+  department?: string;
+  seniority?: string;
+  skills: string[];
+  matchedSkills: string[];
+  missingSkills: string[];
+  roleMatch: boolean;
+  capacityHoursPerWeek: number;
+  peakCommittedPercent: number;
+  freeHours: number;
+  availableFrom: string | null;
+  suggestedPercent: number;
+  score: number;
 }
 
 export interface ResourceProfileRow {
@@ -3580,12 +3682,100 @@ export interface ResourceProfileRow {
   availableFrom?: string | null;
   notes?: string;
   profileId?: string | null;
+  committedPercent?: number;
+  softPercent?: number;
+  activeProjects?: Array<{ id: string; name?: string; key?: string; percent: number; softBooked: boolean }>;
+  upcomingCount?: number;
+}
+
+export interface ResourceOptions {
+  users: Array<{ id: string; name: string; email: string; department?: string; skills?: string[] }>;
+  projects: Array<{ id: string; name: string; key: string }>;
+  demands: Array<{ id: string; title: string; projectId: string | null }>;
+  departments: string[];
+  settings: ResourceSettingsRow;
+}
+
+export interface ResourceConflict {
+  id: string;
+  severity: 'over' | 'soft_risk' | 'inactive_member';
+  userId: string;
+  userName: string;
+  userEmail?: string;
+  start: string;
+  end: string;
+  days: number;
+  peakPercent: number;
+  hardPercent: number;
+  startsInDays: number;
+  allocations: ResourceAllocation[];
+}
+
+export interface ResourceConflictReport {
+  from: string;
+  to: string;
+  lookaheadDays: number;
+  overAllocationPct: number;
+  conflicts: ResourceConflict[];
+  count: number;
+  overCount: number;
+  softRiskCount: number;
+  inactiveCount: number;
+  peopleAffected: number;
+}
+
+export interface ResourceWeekRow {
+  weekStart: string;
+  capacityHours: number;
+  committedHours: number;
+  softHours: number;
+  overHours: number;
+  availableHours: number;
+  demandHours: number;
+  gapHours: number;
+  committedPct: number;
+  softPct: number;
+}
+
+export interface ResourceSchedule {
+  from: string;
+  to: string;
+  weeks: string[];
+  settings: ResourceSettingsRow;
+  departments: string[];
+  people: Array<{
+    userId: string;
+    name: string;
+    email: string;
+    department?: string;
+    capacityHoursPerWeek: number;
+    weeks: Array<{ weekStart: string; hardPct: number; softPct: number; peakPct: number }>;
+    allocations: ResourceAllocation[];
+  }>;
+  projects: Array<{ projectId: string; name?: string; key?: string; people: number; weeksFte: number[] }>;
+}
+
+export interface ResourceSkillRow {
+  skill: string;
+  people: Array<{ userId: string; name: string; committedPercent: number; available: boolean; department?: string }>;
+  demands: Array<{ demandId: string; title: string; remainingHours: number; priority: string }>;
+  demandHours: number;
+  peopleCount: number;
+  availablePeople: number;
+  gap: boolean;
 }
 
 export type EngagementLevel = 'off' | 'free' | 'partial' | 'busy' | 'over';
 export type EngagementHoursSource = 'stage' | 'estimate' | 'points' | 'default' | 'none';
 
 export interface ResourceSettingsRow {
+  defaultCapacityHoursPerWeek: number;
+  benchThresholdPct: number;
+  busyThresholdPct: number;
+  overAllocationPct: number;
+  forecastHorizonWeeks: number;
+  conflictLookaheadDays: number;
+  freeingSoonDays: number;
   hoursPerStoryPoint: number | null;
   defaultTaskHours: number | null;
   includePendingStageEstimates: boolean;
@@ -3676,6 +3866,7 @@ export interface EngagementReport {
   today: string;
   threshold: number;
   busyPct: number;
+  overPct?: number;
   weekendDays: number[];
   settings: ResourceSettingsRow;
   summary: {
@@ -3701,56 +3892,71 @@ export interface EngagementReport {
   people: EngagementPerson[];
 }
 
+function resourceQs(params?: Record<string, string | number | boolean | null | undefined>) {
+  const sp = new URLSearchParams();
+  Object.entries(params ?? {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') sp.set(k, String(v));
+  });
+  const q = sp.toString();
+  return q ? `?${q}` : '';
+}
+
 export const resourcesApi = {
   dashboard: (token: string) => api.get('/resources/dashboard', token),
-  options: (token: string) =>
-    api.get<{ users: Array<{ id: string; name: string; email: string }>; projects: Array<{ id: string; name: string; key: string }> }>(
-      '/resources/options',
-      token
-    ),
-  listAllocations: (token: string, params?: { userId?: string; projectId?: string; activeOnly?: string }) => {
-    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
-    return api.get<ResourceAllocation[]>(`/resources/allocations${q}`, token);
-  },
+  options: (token: string) => api.get<ResourceOptions>('/resources/options', token),
+  listAllocations: (
+    token: string,
+    params?: { userId?: string; projectId?: string; demandId?: string; activeOnly?: string; status?: string; from?: string; to?: string }
+  ) => api.get<ResourceAllocation[]>(`/resources/allocations${resourceQs(params)}`, token),
+  checkAllocation: (
+    token: string,
+    params: { userId: string; startDate: string; endDate?: string; percent?: number; softBooked?: boolean; excludeId?: string }
+  ) => api.get<AllocationCheck>(`/resources/allocations/check${resourceQs(params)}`, token),
   createAllocation: (data: Record<string, unknown>, token: string) =>
-    api.post<{ allocation: ResourceAllocation; conflicts: { overAllocated: boolean; committedPercent: number } }>(
-      '/resources/allocations',
-      data,
-      token
-    ),
+    api.post<{ allocation: ResourceAllocation; conflicts: AllocationCheck }>('/resources/allocations', data, token),
   updateAllocation: (id: string, data: Record<string, unknown>, token: string) =>
-    api.patch(`/resources/allocations/${id}`, data, token),
+    api.patch<{ allocation: ResourceAllocation; conflicts: AllocationCheck }>(`/resources/allocations/${id}`, data, token),
   deleteAllocation: (id: string, token: string) => api.delete(`/resources/allocations/${id}`, token),
-  conflicts: (token: string) => api.get('/resources/conflicts', token),
-  utilization: (token: string, params?: { from?: string; to?: string }) => {
-    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
-    return api.get(`/resources/utilization${q}`, token);
-  },
+  conflicts: (token: string) => api.get<ResourceConflictReport>('/resources/conflicts', token),
+  schedule: (token: string, params?: { from?: string; weeks?: number; projectId?: string; department?: string }) =>
+    api.get<ResourceSchedule>(`/resources/schedule${resourceQs(params)}`, token),
+  utilization: (token: string, params?: { from?: string; to?: string; department?: string }) =>
+    api.get(`/resources/utilization${resourceQs(params)}`, token),
   engagement: (
     token: string,
     params: { from?: string; to?: string; userId?: string; projectId?: string; threshold?: string } = {}
-  ) => {
-    const sp = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v) sp.set(k, v);
-    });
-    const q = sp.toString();
-    return api.get<EngagementReport>(`/resources/engagement${q ? `?${q}` : ''}`, token);
-  },
+  ) => api.get<EngagementReport>(`/resources/engagement${resourceQs(params)}`, token),
   settings: (token: string) => api.get<ResourceSettingsRow>('/resources/settings', token),
   updateSettings: (data: Partial<ResourceSettingsRow>, token: string) =>
     api.put<ResourceSettingsRow>('/resources/settings', data, token),
-  bench: (token: string, threshold?: number) =>
-    api.get(`/resources/bench${threshold != null ? `?threshold=${threshold}` : ''}`, token),
+  bench: (token: string, params?: { threshold?: number; days?: number }) =>
+    api.get(`/resources/bench${resourceQs(params)}`, token),
+  skills: (token: string) =>
+    api.get<{ skills: ResourceSkillRow[]; summary: { skills: number; gaps: number; peopleWithoutSkills: number; singlePointSkills: number } }>(
+      '/resources/skills',
+      token
+    ),
   forecast: (token: string) => api.get('/resources/forecast', token),
-  listDemands: (token: string, status?: string) =>
-    api.get<ResourceDemand[]>(`/resources/demands${status ? `?status=${status}` : ''}`, token),
+  listDemands: (token: string, status?: string) => api.get<ResourceDemand[]>(`/resources/demands${resourceQs({ status })}`, token),
   createDemand: (data: Record<string, unknown>, token: string) => api.post<ResourceDemand>('/resources/demands', data, token),
   updateDemand: (id: string, data: Record<string, unknown>, token: string) =>
     api.patch<ResourceDemand>(`/resources/demands/${id}`, data, token),
   deleteDemand: (id: string, token: string) => api.delete(`/resources/demands/${id}`, token),
+  demandCandidates: (id: string, token: string) =>
+    api.get<{ demand: ResourceDemand; period: { from: string; to: string; days: number }; candidates: DemandCandidate[] }>(
+      `/resources/demands/${id}/candidates`,
+      token
+    ),
+  fulfilDemand: (id: string, data: Record<string, unknown>, token: string) =>
+    api.post<{ allocation: ResourceAllocation; conflicts: AllocationCheck; demand: ResourceDemand }>(
+      `/resources/demands/${id}/fulfil`,
+      data,
+      token
+    ),
   listProfiles: (token: string) => api.get<ResourceProfileRow[]>('/resources/profiles', token),
   upsertProfile: (data: Record<string, unknown>, token: string) => api.put('/resources/profiles', data, token),
+  bulkUpdateProfiles: (data: Record<string, unknown>, token: string) =>
+    api.put<{ updated: number; skipped: number }>('/resources/profiles/bulk', data, token),
 };
 
 const monitorQs = (params?: Record<string, string | undefined>) => {

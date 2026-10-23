@@ -52,7 +52,7 @@ import { commissionRoutes } from '../modules/crm/commissions/commissions';
 import { statusPageRoutes, postmortemRoutes, publicStatusRoutes } from '../modules/monitor/statusPage';
 import { publicCsatRoutes } from '../modules/service-desk/publicCsat.routes';
 import { monitorStaffRoutes, monitorIngestRoutes } from '../modules/monitor/monitor.routes';
-import { monitorPaRoutes } from '../modules/monitor/monitor.pa.routes';
+import { internalPaRoutes } from '../modules/internal/pa.internal.routes';
 import { customerRoleRoutes } from '../modules/customer-portal/customer-role/customerRole.routes';
 import { customerUserRoutes } from '../modules/customer-portal/customer-user/customerUser.routes';
 import { customerProjectMappingRoutes } from '../modules/customer-portal/customer-project-mapping/customerProjectMapping.routes';
@@ -156,9 +156,9 @@ router.use('/calendar', calendarEnabled, calendarRoutes);
 router.use('/monitor/status-pages', monitorEnabled, statusPageRoutes);
 router.use('/monitor/postmortems', monitorEnabled, postmortemRoutes);
 router.use('/monitor', ingestLimiter, monitorEnabled, monitorIngestRoutes);
-// PA service API (x-pa-ingest-secret) — must precede staff routes, which require a JWT.
-router.use('/monitor/pa', monitorEnabled, monitorPaRoutes);
 router.use('/monitor', monitorEnabled, monitorStaffRoutes);
+// First-party WhatsApp PA (internal key, private network only — nginx never routes /api/internal).
+router.use('/internal/pa', internalPaRoutes);
 router.use('/search', searchRoutes);
 
 export const apiRoutes = router;

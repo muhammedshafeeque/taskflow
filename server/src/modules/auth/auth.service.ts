@@ -275,6 +275,9 @@ export async function login(input: LoginInput): Promise<{ user: AuthUser | Recor
     if (u.enabled === false) {
       throw new ApiError(401, 'Account is disabled');
     }
+    if ((tfUser as { isServiceAccount?: boolean }).isServiceAccount) {
+      throw new ApiError(401, 'Invalid email or password');
+    }
     if (!tfUser.password) {
       throw new ApiError(401, 'Use single sign-on or set a password from your profile');
     }

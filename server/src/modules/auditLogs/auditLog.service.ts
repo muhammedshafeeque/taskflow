@@ -1,10 +1,14 @@
 import mongoose from 'mongoose';
-import { AuditLog } from './auditLog.model';
+import { AuditLog, type AuditActorType } from './auditLog.model';
 import { Project } from '../projects/project.model';
 import { OrganizationMember } from '../organizations/organizationMember.model';
 
 export interface CreateAuditLogInput {
-  userId: string;
+  /** Omit only for system events with no user / service account. */
+  userId?: string;
+  actorType?: AuditActorType;
+  actorLabel?: string;
+  onBehalfOf?: string;
   action: string;
   resourceType: string;
   resourceId?: string;
@@ -16,6 +20,9 @@ export interface CreateAuditLogInput {
 export async function create(input: CreateAuditLogInput): Promise<void> {
   await AuditLog.create({
     user: input.userId,
+    actorType: input.actorType ?? 'user',
+    actorLabel: input.actorLabel,
+    onBehalfOf: input.onBehalfOf,
     action: input.action,
     resourceType: input.resourceType,
     resourceId: input.resourceId,
@@ -76,6 +83,7 @@ export async function findAll(
   const [data, total] = await Promise.all([
     AuditLog.find(mongoFilter)
       .populate('user', 'name email')
+      .populate('onBehalfOf', 'name email')
       .populate('projectId', 'name key')
       .sort({ createdAt: -1 })
       .skip(skip)

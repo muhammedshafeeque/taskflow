@@ -1,7 +1,16 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+/** Who performed the action: a person, an AI agent (the WhatsApp PA), or the platform itself. */
+export type AuditActorType = 'user' | 'ai' | 'system';
+
 export interface IAuditLog extends Document {
-  user: mongoose.Types.ObjectId;
+  /** Human user, or the service account an AI/system actor runs as. Optional for pure system events. */
+  user?: mongoose.Types.ObjectId;
+  actorType: AuditActorType;
+  /** Display name for non-human actors, e.g. "WhatsApp PA". */
+  actorLabel?: string;
+  /** Human the AI acted for (owner in the PA apps / on their own WhatsApp number). */
+  onBehalfOf?: mongoose.Types.ObjectId;
   action: string;
   resourceType: string;
   resourceId?: string;
@@ -13,7 +22,10 @@ export interface IAuditLog extends Document {
 
 const auditLogSchema = new Schema<IAuditLog>(
   {
-    user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    user: { type: Schema.Types.ObjectId, ref: 'User' },
+    actorType: { type: String, enum: ['user', 'ai', 'system'], default: 'user', index: true },
+    actorLabel: { type: String },
+    onBehalfOf: { type: Schema.Types.ObjectId, ref: 'User' },
     action: { type: String, required: true },
     resourceType: { type: String, required: true },
     resourceId: { type: String },

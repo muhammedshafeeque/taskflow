@@ -161,15 +161,15 @@ export function AccountsExpenses() {
                 <td className="px-4 py-2.5">
                   <p className="font-medium">{x.description}</p>
                   <p className="text-[11px] text-[color:var(--text-muted)]">{x.reference}</p>
-                  {typeof x.vendorAccountId === 'object' && x.vendorAccountId._id && (
+                  {x.vendorAccountId && typeof x.vendorAccountId === 'object' && x.vendorAccountId._id && (
                     <Link to={`/crm/accounts/${x.vendorAccountId._id}`} className="text-[11px] text-[color:var(--accent)] hover:underline">
                       {x.vendorAccountId.name}
                     </Link>
                   )}
-                  {typeof x.purchaseOrderId === 'object' && x.purchaseOrderId._id && (
+                  {x.purchaseOrderId && typeof x.purchaseOrderId === 'object' && x.purchaseOrderId._id && (
                     <p className="text-[11px]"><Link to="/procurement/pos" className="text-[color:var(--accent)] hover:underline">{x.purchaseOrderId.poNumber ?? 'PO'}</Link></p>
                   )}
-                  {typeof x.projectId === 'object' && x.projectId._id && (
+                  {x.projectId && typeof x.projectId === 'object' && x.projectId._id && (
                     <p className="text-[11px]"><Link to={`/projects/${x.projectId._id}/dashboard`} className="text-[color:var(--accent)] hover:underline">{x.projectId.key ?? 'Project'}</Link></p>
                   )}
                 </td>

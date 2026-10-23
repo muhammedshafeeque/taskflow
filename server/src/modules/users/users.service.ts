@@ -83,13 +83,13 @@ export async function findAll(
   }
 
   const [rawData, total, projectCounts] = await Promise.all([
-    User.find({ _id: { $in: memberUserIds } })
+    User.find({ _id: { $in: memberUserIds }, isServiceAccount: { $ne: true } })
       .select('-password')
       .populate('roleId', 'name permissions')
       .lean()
       .skip(skip)
       .limit(limit),
-    User.countDocuments({ _id: { $in: memberUserIds } }),
+    User.countDocuments({ _id: { $in: memberUserIds }, isServiceAccount: { $ne: true } }),
     ProjectMember.aggregate<{ _id: unknown; count: number }>([
       { $match: { user: { $in: memberUserIds } } },
       {
@@ -366,7 +366,7 @@ export async function invite(
   }
 
   if (process.env.MAX_USERS && parseInt(process.env.MAX_USERS) > 0) {
-    const count = await User.countDocuments();
+    const count = await User.countDocuments({ isServiceAccount: { $ne: true } });
     if (count >= parseInt(process.env.MAX_USERS)) {
       throw new ApiError(403, 'User limit reached. Cannot invite more users.');
     }

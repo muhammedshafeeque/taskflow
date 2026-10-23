@@ -1,41 +1,18 @@
 import { Request, Response } from 'express';
-import mongoose from 'mongoose';
 import { ApiError } from '../../../utils/ApiError';
-import { User } from '../../auth/user.model';
 import { ServiceTicket } from '../../service-desk/models/serviceTicket.model';
 import * as ticketsService from '../../service-desk/tickets.service';
 import {
   assertPaIngestSecret,
+  paActorUserId,
   resolvePaOrganizationId,
 } from '../../service-desk/paIngestAuth';
 import { CustomerRequest } from './customerRequest.model';
 import * as customerRequestService from './customerRequest.service';
 
-async function resolvePaActorUserId(): Promise<string> {
-  const fromEnv = String(process.env.PA_INGEST_ACTOR_USER_ID ?? '').trim();
-  if (fromEnv && mongoose.Types.ObjectId.isValid(fromEnv)) {
-    return fromEnv;
-  }
-  const admin = await User.findOne({
-    enabled: true,
-    userType: 'taskflow',
-    role: 'admin',
-  })
-    .select('_id')
-    .sort({ createdAt: 1 })
-    .lean();
-  if (admin?._id) return String(admin._id);
-
-  const any = await User.findOne({ enabled: true, userType: 'taskflow' })
-    .select('_id')
-    .sort({ createdAt: 1 })
-    .lean();
-  if (any?._id) return String(any._id);
-
-  throw new ApiError(
-    503,
-    'No TaskFlow user for PA ingest actor. Set PA_INGEST_ACTOR_USER_ID.'
-  );
+/** The signed-in owner the PA app acts for, else the PA service account. */
+function resolvePaActorUserId(req: Request): string {
+  return req.paContext?.onBehalfOf || paActorUserId(req);
 }
 
 /** GET /service/ingest/requests?status=&page=&limit=&pendingOnly=1 */
@@ -80,7 +57,7 @@ export async function ingestApproveRequest(req: Request, res: Response) {
   assertPaIngestSecret(req);
   const body = (req.body || {}) as Record<string, unknown>;
   const orgId = await resolvePaOrganizationId(req, body);
-  const actorId = await resolvePaActorUserId();
+  const actorId = resolvePaActorUserId(req);
   const workClassification = body.workClassification as
     | 'billable_change'
     | 'fix'
@@ -102,7 +79,7 @@ export async function ingestRejectRequest(req: Request, res: Response) {
   assertPaIngestSecret(req);
   const body = (req.body || {}) as Record<string, unknown>;
   const orgId = await resolvePaOrganizationId(req, body);
-  const actorId = await resolvePaActorUserId();
+  const actorId = resolvePaActorUserId(req);
   const note = body.note != null ? String(body.note) : undefined;
   const reason = body.reason != null ? String(body.reason) : undefined;
 

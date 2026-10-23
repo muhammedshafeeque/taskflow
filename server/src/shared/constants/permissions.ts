@@ -243,6 +243,8 @@ export const TASK_FLOW_PERMISSIONS = {
       ENGAGEMENT: { READ: 'taskflow.resources.engagement.read' },
       FORECAST: { READ: 'taskflow.resources.forecast.read', MANAGE: 'taskflow.resources.forecast.manage' },
       ALLOCATION: { READ: 'taskflow.resources.allocation.read', MANAGE: 'taskflow.resources.allocation.manage' },
+      PROFILE: { MANAGE: 'taskflow.resources.profile.manage' },
+      SETTINGS: { MANAGE: 'taskflow.resources.settings.manage' },
     },
     PROCUREMENT: {
       DASHBOARD: { READ: 'taskflow.procurement.dashboard.read' },
@@ -362,6 +364,10 @@ export const TASK_FLOW_PERMISSIONS = {
       SLA: { MANAGE: 'taskflow.service.sla.manage' },
       /** Saved replies, assignment rules, business hours */
       SETTINGS: { MANAGE: 'taskflow.service.settings.manage' },
+    },
+    /** WhatsApp PA assistant: holders use the PA apps and get owner (full) access from their own WhatsApp number */
+    PA: {
+      ASSISTANT: { OWNER: 'taskflow.pa.assistant.owner' },
     },
     MONITOR: {
       PROJECT: { READ: 'taskflow.monitor.project.read', MANAGE: 'taskflow.monitor.project.manage' },
