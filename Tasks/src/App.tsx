@@ -167,14 +167,13 @@ import {
 } from './pages/assets/AssetsSections';
 import ResourcesDashboard from './pages/resources/ResourcesDashboard';
 import ResourcesEngagement from './pages/resources/ResourcesEngagement';
-import {
-  ResourcesUtilization,
-  ResourcesBench,
-  ResourcesAllocations,
-  ResourcesForecast,
-  ResourcesConflicts,
-  ResourcesTeam,
-} from './pages/resources/ResourcesSections';
+import ResourcesUtilization from './pages/resources/ResourcesUtilization';
+import ResourcesBench from './pages/resources/ResourcesBench';
+import ResourcesAllocations from './pages/resources/ResourcesAllocations';
+import ResourcesSchedule from './pages/resources/ResourcesSchedule';
+import ResourcesForecast from './pages/resources/ResourcesForecast';
+import ResourcesConflicts from './pages/resources/ResourcesConflicts';
+import ResourcesTeam from './pages/resources/ResourcesTeam';
 import ProcurementDashboard from './pages/procurement/ProcurementDashboard';
 import {
   ProcurementVendors,
@@ -427,6 +426,7 @@ function AppRoutes() {
           <Route path="/resources/engagement" element={<ResourcesEngagement />} />
           <Route path="/resources/bench" element={<ResourcesBench />} />
           <Route path="/resources/allocations" element={<ResourcesAllocations />} />
+          <Route path="/resources/schedule" element={<ResourcesSchedule />} />
           <Route path="/resources/forecast" element={<ResourcesForecast />} />
           <Route path="/resources/conflicts" element={<ResourcesConflicts />} />
           <Route path="/resources/team" element={<ResourcesTeam />} />

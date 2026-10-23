@@ -172,7 +172,7 @@ export default function ResourcesEngagement() {
   const [loadedKey, setLoadedKey] = useState('');
   const [error, setError] = useState('');
   const [reloadTick, setReloadTick] = useState(0);
-  const canManageSettings = canAny(user, 'taskflow.resources.allocation.manage');
+  const canManageSettings = canAny(user, 'taskflow.resources.settings.manage', 'taskflow.resources.allocation.manage');
   const [tip, setTip] = useState<{ x: number; y: number; person: EngagementPerson; cell: Cell } | null>(null);
 
   useEffect(() => {

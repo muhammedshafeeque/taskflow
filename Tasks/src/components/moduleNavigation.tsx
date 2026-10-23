@@ -12,6 +12,7 @@ import {
   TimesheetIcon,
   PackageIcon,
   BoardsIcon,
+  GanttIcon,
 } from './icons/NavigationIcons';
 
 export interface NavItem {
@@ -495,6 +496,9 @@ export function buildResourcesNav(user: NavUser): NavItem[] {
   if (allow(user, 'taskflow.resources.allocation.read', 'taskflow.resources.allocation.manage')) {
     nav.push({ to: '/resources/allocations', label: 'Allocations', icon: <ProjectsIcon /> });
   }
+  if (allow(user, 'taskflow.resources.allocation.read', 'taskflow.resources.utilization.read')) {
+    nav.push({ to: '/resources/schedule', label: 'Schedule', icon: <GanttIcon /> });
+  }
   if (allow(user, 'taskflow.resources.utilization.read')) {
     nav.push({ to: '/resources/utilization', label: 'Utilization', icon: <TimesheetIcon /> });
   }
@@ -516,7 +520,9 @@ export function buildResourcesNav(user: NavUser): NavItem[] {
       'taskflow.resources.allocation.read',
       'taskflow.resources.allocation.manage',
       'taskflow.resources.bench.read',
-      'taskflow.resources.utilization.read'
+      'taskflow.resources.utilization.read',
+      'taskflow.resources.profile.manage',
+      'taskflow.resources.settings.manage'
     )
   ) {
     nav.push({ to: '/resources/team', label: 'Team', icon: <UsersIcon /> });

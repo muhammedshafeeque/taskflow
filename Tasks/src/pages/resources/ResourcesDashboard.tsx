@@ -32,6 +32,7 @@ type ResourcesDash = {
     partiallyBooked: number;
   };
   avgUtilization: number;
+  settings?: { benchThresholdPct: number };
   charts: {
     loadDistribution: Array<{ name: string; count: number }>;
     topLoaded: Array<{ userId: string; name: string; plannedPercent: number }>;
@@ -170,7 +171,7 @@ export default function ResourcesDashboard() {
           />
         </Link>
         <Link to="/resources/bench" className="block">
-          <MetricCard title="On bench" value={data.counts.onBench} helperText="Under 20% allocated" />
+          <MetricCard title="On bench" value={data.counts.onBench} helperText={`Under ${data.settings?.benchThresholdPct ?? 20}% allocated`} />
         </Link>
         <Link to="/resources/conflicts" className="block">
           <MetricCard
