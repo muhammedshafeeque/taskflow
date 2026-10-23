@@ -1,12 +1,14 @@
 import { Request, Response } from 'express';
-import crypto from 'crypto';
 import { asyncHandler } from '../utils/asyncHandler';
 import { handleAdoWebhook } from '../modules/integrations/ado/adoSync.service';
 
 export async function azureDevOpsWebhook(req: Request, res: Response): Promise<void> {
   const projectId = req.params.projectId;
-  const headerSecret = String(req.headers['x-ado-webhook-secret'] ?? '');
-  const querySecret = String(req.query.secret ?? '');
+  const headerSecret = String(req.headers['x-ado-webhook-secret'] ?? '').trim();
+  // Prefer header; query fallback only for legacy ADO hooks that cannot set headers.
+  const querySecret = headerSecret
+    ? ''
+    : String(req.query.secret ?? '').trim();
   const secret = headerSecret || querySecret;
   const payload = (req.body ?? {}) as Record<string, unknown>;
 

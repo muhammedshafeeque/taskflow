@@ -259,12 +259,13 @@ async function sendEmail(
 export interface InviteEmailParams {
   name: string;
   email: string;
-  password: string;
   appUrl: string;
+  /** One-time link to set password (preferred over emailing a temp password). */
+  resetLink: string;
 }
 
 export function renderInviteEmail(params: InviteEmailParams): string {
-  const { name, email, password, appUrl } = params;
+  const { name, email, appUrl, resetLink } = params;
   return `
 <!DOCTYPE html>
 <html>
@@ -272,10 +273,10 @@ export function renderInviteEmail(params: InviteEmailParams): string {
 <body style="font-family: system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
   <h2 style="color: #4f46e5;">Welcome to Atrium</h2>
   <p>Hi ${escapeHtml(name)},</p>
-  <p>Your Atrium account has been created. Use the credentials below to sign in:</p>
-  <p><strong>Email:</strong> ${escapeHtml(email)}<br><strong>Password:</strong> <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">${escapeHtml(password)}</code></p>
-  <p>Please change your password after your first login (from your profile or Forgot password).</p>
-  <p><a href="${escapeHtml(appUrl)}/login" style="color: #4f46e5;">Sign in to Atrium</a></p>
+  <p>Your Atrium account has been created for <strong>${escapeHtml(email)}</strong>.</p>
+  <p>Click the link below to choose your password (expires in 24 hours):</p>
+  <p><a href="${escapeHtml(resetLink)}" style="color: #4f46e5;">Set your password</a></p>
+  <p>After that, you can sign in at <a href="${escapeHtml(appUrl)}/login" style="color: #4f46e5;">Atrium</a>.</p>
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
   <p style="font-size: 12px; color: #64748b;">This is an automated message. Do not reply.</p>
 </body>
@@ -736,9 +737,9 @@ ${crCtaBlock(listUrl, 'Back to your requests')}`;
 export function renderCustomerOrgAdminInviteEmail(
   name: string,
   email: string,
-  password: string,
   orgName: string,
-  appUrl: string
+  appUrl: string,
+  resetLink: string
 ): string {
   return `
 <!DOCTYPE html>
@@ -747,10 +748,10 @@ export function renderCustomerOrgAdminInviteEmail(
 <body style="font-family: system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
   <h2 style="color: #4f46e5;">Welcome to ${escapeHtml(orgName)} on Atrium</h2>
   <p>Hi ${escapeHtml(name)},</p>
-  <p>Your customer portal account has been created as the Organization Admin for <strong>${escapeHtml(orgName)}</strong>. Use the credentials below to sign in:</p>
-  <p><strong>Email:</strong> ${escapeHtml(email)}<br><strong>Temporary Password:</strong> <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">${escapeHtml(password)}</code></p>
-  <p>Please change your password after your first login.</p>
-  <p><a href="${escapeHtml(appUrl)}/login" style="color: #4f46e5;">Sign in to Customer Portal</a></p>
+  <p>Your customer portal account has been created as the Organization Admin for <strong>${escapeHtml(orgName)}</strong> (${escapeHtml(email)}).</p>
+  <p>Click the link below to choose your password (expires in 24 hours):</p>
+  <p><a href="${escapeHtml(resetLink)}" style="color: #4f46e5;">Set your password</a></p>
+  <p>Then sign in at <a href="${escapeHtml(appUrl)}/login" style="color: #4f46e5;">Customer Portal</a>.</p>
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
   <p style="font-size: 12px; color: #64748b;">This is an automated message. Do not reply.</p>
 </body>
@@ -761,9 +762,9 @@ export function renderCustomerOrgAdminInviteEmail(
 export function renderCustomerMemberInviteEmail(
   name: string,
   email: string,
-  password: string,
   orgName: string,
-  appUrl: string
+  appUrl: string,
+  resetLink: string
 ): string {
   return `
 <!DOCTYPE html>
@@ -772,10 +773,10 @@ export function renderCustomerMemberInviteEmail(
 <body style="font-family: system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
   <h2 style="color: #4f46e5;">You've been invited to ${escapeHtml(orgName)}</h2>
   <p>Hi ${escapeHtml(name)},</p>
-  <p>You've been invited to join the <strong>${escapeHtml(orgName)}</strong> customer portal. Use the credentials below to sign in:</p>
-  <p><strong>Email:</strong> ${escapeHtml(email)}<br><strong>Temporary Password:</strong> <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">${escapeHtml(password)}</code></p>
-  <p>Please change your password after your first login.</p>
-  <p><a href="${escapeHtml(appUrl)}/login" style="color: #4f46e5;">Sign in to Customer Portal</a></p>
+  <p>You've been invited to join the <strong>${escapeHtml(orgName)}</strong> customer portal (${escapeHtml(email)}).</p>
+  <p>Click the link below to choose your password (expires in 24 hours):</p>
+  <p><a href="${escapeHtml(resetLink)}" style="color: #4f46e5;">Set your password</a></p>
+  <p>Then sign in at <a href="${escapeHtml(appUrl)}/login" style="color: #4f46e5;">Customer Portal</a>.</p>
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
   <p style="font-size: 12px; color: #64748b;">This is an automated message. Do not reply.</p>
 </body>

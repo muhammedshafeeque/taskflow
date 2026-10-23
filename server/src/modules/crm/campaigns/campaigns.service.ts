@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { CrmCampaign, CRM_CAMPAIGN_STATUSES, CRM_CAMPAIGN_TYPES } from '../models/crmCampaign.model';
 import { CrmLead } from '../models/crmLead.model';
 import { ApiError } from '../../../utils/ApiError';
+import { escapeRegex } from '../../../utils/safeUrl';
 import { requireWorkspaceId, toOrgOid } from '../crmWorkspace';
 
 function slugCode(name: string, fallback?: string): string {
@@ -43,7 +44,7 @@ export async function listCampaigns(
   const filter: Record<string, unknown> = { taskflowOrganizationId: orgOid };
   if (opts.status) filter.status = opts.status;
   if (opts.search?.trim()) {
-    const q = opts.search.trim();
+    const q = escapeRegex(opts.search.trim());
     filter.$or = [
       { name: { $regex: q, $options: 'i' } },
       { code: { $regex: q, $options: 'i' } },

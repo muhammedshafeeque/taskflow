@@ -5,6 +5,10 @@ import { env } from '../../../config/env';
 import { CustomerUser } from '../customer-user/customerUser.model';
 import { mapLegacyCustomerPermissions } from '../../../shared/constants/legacyPermissionMap';
 import { ALL_CUSTOMER_PERMISSIONS } from '../../../shared/constants/permissions';
+import {
+  assertAccessTokenClaims,
+  type JwtAuthClaims,
+} from '../../../middleware/assertAccessToken';
 
 export async function customerAuthMiddleware(
   req: Request,
@@ -20,19 +24,16 @@ export async function customerAuthMiddleware(
   }
 
   try {
-    const decoded = jwt.verify(token, env.jwtSecret) as {
-      sub?: string;
-      userType?: string;
-      orgId?: string;
-    };
-
-    if (decoded.userType !== 'customer') {
-      next(new ApiError(403, 'Forbidden'));
+    const decoded = jwt.verify(token, env.jwtSecret) as JwtAuthClaims;
+    try {
+      assertAccessTokenClaims(decoded);
+    } catch (err) {
+      next(err instanceof ApiError ? err : new ApiError(401, 'Invalid token'));
       return;
     }
 
-    if (!decoded.sub) {
-      next(new ApiError(401, 'Invalid token'));
+    if (decoded.userType !== 'customer') {
+      next(new ApiError(403, 'Forbidden'));
       return;
     }
 

@@ -1,14 +1,16 @@
 import crypto from 'crypto';
 import type { NextFunction, Request, Response } from 'express';
+import { issueAdminSseTicket, verifyAdminSseTicket } from './sseTicket';
 
 /**
  * Admin API auth. Two ways in:
- *  1. `x-pa-admin-secret` — the shared secret (legacy; full access).
+ *  1. `x-pa-admin-secret` — the shared secret (header only; full access).
  *  2. `Authorization: Bearer <Atrium token>` — a personal API token (atr_…) or an
  *     Atrium session JWT. PA asks
  *     Atrium who it belongs to and allows it only if that user holds the
  *     permission in PA_ADMIN_PERMISSION (default: taskflow.service.ticket.update)
  *     or is listed in PA_ADMIN_EMAILS. Results are cached for 5 minutes.
+ *  3. Short-lived `?ticket=` SSE tickets (from POST /api/admin/events-ticket).
  */
 const TOKEN_CACHE_MS = 5 * 60 * 1000;
 const tokenCache = new Map<string, { at: number; ok: boolean; email?: string }>();
@@ -59,19 +61,31 @@ async function verifyAtriumToken(token: string): Promise<{ ok: boolean; email?: 
 
 export function requireAdminSecret(req: Request, res: Response, next: NextFunction): void {
   const configured = process.env.PA_ADMIN_SECRET?.trim();
-  const provided = String(
-    req.headers['x-pa-admin-secret'] ?? (typeof req.query.secret === 'string' ? req.query.secret : '') ?? ''
-  ).trim();
-  if (configured && provided && safeEqual(provided, configured)) {
+  // Shared admin secret: header only (never accept via query — leaks in logs/Referer).
+  const headerSecret = String(req.headers['x-pa-admin-secret'] ?? '').trim();
+  if (configured && headerSecret && safeEqual(headerSecret, configured)) {
+    next();
+    return;
+  }
+
+  const queryTicket =
+    typeof req.query.ticket === 'string' ? req.query.ticket.trim() : '';
+  if (
+    configured &&
+    queryTicket &&
+    verifyAdminSseTicket(queryTicket, configured)
+  ) {
     next();
     return;
   }
 
   const auth = req.headers.authorization;
-  // Any Atrium credential works: a personal token (atr_…) or a signed-in session JWT
-  // (e.g. from the VS Code extension). SSE clients can't set headers, so a personal
-  // token may also arrive as ?secret=atr_…
-  const bearer = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : provided.startsWith('atr_') ? provided : '';
+  // Personal API tokens (atr_…) may arrive as ?ticket= for EventSource clients that
+  // cannot set headers. Never put PA_ADMIN_SECRET or session JWTs in the query.
+  const queryToken = queryTicket.startsWith('atr_') ? queryTicket : '';
+  const bearer = auth?.startsWith('Bearer ')
+    ? auth.slice(7).trim()
+    : queryToken;
   if (bearer) {
     void verifyAtriumToken(bearer).then((r) => {
       if (r.ok) {
@@ -89,4 +103,20 @@ export function requireAdminSecret(req: Request, res: Response, next: NextFuncti
     return;
   }
   res.status(401).json({ success: false, error: 'Unauthorized' });
+}
+
+/** Exchange header admin secret for a short-lived SSE query ticket. */
+export function issueEventsTicket(req: Request, res: Response): void {
+  const configured = process.env.PA_ADMIN_SECRET?.trim();
+  const headerSecret = String(req.headers['x-pa-admin-secret'] ?? '').trim();
+  if (!configured) {
+    res.status(503).json({ success: false, error: 'PA_ADMIN_SECRET is not configured' });
+    return;
+  }
+  if (!headerSecret || !safeEqual(headerSecret, configured)) {
+    res.status(401).json({ success: false, error: 'Unauthorized' });
+    return;
+  }
+  const data = issueAdminSseTicket(configured);
+  res.json({ success: true, data });
 }

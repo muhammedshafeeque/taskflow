@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const registerSchema = z.object({
   body: z.object({
     email: z.string().email(),
-    password: z.string().min(6),
+    password: z.string().min(8),
     name: z.string().min(1),
     // role is never accepted from public signup — always 'user'
   }),
@@ -25,13 +25,14 @@ export const refreshSchema = z.object({
 export const changePasswordSchema = z.object({
   body: z.object({
     currentPassword: z.string().min(1),
-    newPassword: z.string().min(6),
+    newPassword: z.string().min(8),
   }),
 });
 
 export const setPasswordSchema = z.object({
   body: z.object({
-    newPassword: z.string().min(6),
+    newPassword: z.string().min(8),
+    currentPassword: z.string().min(1).optional(),
   }),
 });
 
@@ -44,7 +45,7 @@ export const forgotPasswordSchema = z.object({
 export const resetPasswordSchema = z.object({
   body: z.object({
     token: z.string().min(1),
-    newPassword: z.string().min(6),
+    newPassword: z.string().min(8),
   }),
 });
 
@@ -64,6 +65,7 @@ export const microsoftSsoSchema = z.object({
   body: z.object({
     code: z.string().min(1),
     redirectUri: z.string().url().optional(),
+    state: z.string().min(8).optional(),
   }),
 });
 

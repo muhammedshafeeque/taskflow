@@ -38,6 +38,8 @@ export interface IUser extends Document {
   providerEmail?: string | null;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
+  /** Current refresh-token jti (rotation); mismatch ⇒ revoked. */
+  refreshTokenJti?: string | null;
   /** Encrypted TOTP secret; present once 2FA is enabled (or being set up). */
   twoFactorSecret?: string | null;
   twoFactorEnabled?: boolean;
@@ -76,6 +78,7 @@ const userSchema = new Schema<IUser>(
     providerEmail: { type: String },
     passwordResetToken: { type: String, select: false },
     passwordResetExpires: { type: Date, select: false },
+    refreshTokenJti: { type: String, select: false, default: null },
   },
   { timestamps: true }
 );

@@ -37,11 +37,12 @@ async function forgotPasswordHandler(req: Request, res: Response): Promise<void>
 
   if (user) {
     const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const expires = new Date(Date.now() + 60 * 60 * 1000);
     await CustomerUser.findByIdAndUpdate(user._id, {
-      $set: { passwordResetToken: token, passwordResetExpires: expires },
+      $set: { passwordResetToken: tokenHash, passwordResetExpires: expires },
     });
-    const resetLink = `${env.appUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    const resetLink = `${env.appUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
     sendCustomerEmail(
       user.email,
       'Reset your Customer Portal password',
@@ -70,8 +71,9 @@ async function forgotPasswordHandler(req: Request, res: Response): Promise<void>
 async function resetPasswordHandler(req: Request, res: Response): Promise<void> {
   const { token, newPassword } = req.body as { token: string; newPassword: string };
 
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const user = await CustomerUser.findOne({
-    passwordResetToken: token,
+    passwordResetToken: tokenHash,
     passwordResetExpires: { $gt: new Date() },
   })
     .select('+passwordResetToken +passwordResetExpires')

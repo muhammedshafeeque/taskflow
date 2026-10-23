@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import type { AuthPayload } from '../../types/express';
 import { ApiError } from '../../utils/ApiError';
 import { authMiddleware } from '../../middleware/auth.middleware';
+import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { globalSearch } from './search.service';
 
@@ -16,7 +17,7 @@ async function search(req: Request & { user?: AuthPayload; activeOrganizationId?
 }
 
 const router = Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requireTaskflowUser);
 router.get('/', asyncHandler(search));
 
 export const searchRoutes = router;

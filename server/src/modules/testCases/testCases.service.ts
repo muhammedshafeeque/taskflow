@@ -40,7 +40,16 @@ export async function update(
 ): Promise<unknown | null> {
   const isMember = await ProjectMember.exists({ user: userId, project: projectId });
   if (!isMember) throw new ApiError(403, 'Access denied');
-  const updateData: Record<string, unknown> = { ...input };
+  const { pickUpdateFields } = await import('../../utils/pickUpdateFields');
+  const updateData = pickUpdateFields(input as Record<string, unknown>, [
+    'title',
+    'steps',
+    'expectedResult',
+    'status',
+    'priority',
+    'type',
+    'linkedIssueId',
+  ]);
   if (input.linkedIssueId === null) updateData.linkedIssueId = null;
   const doc = await TestCase.findOneAndUpdate(
     { _id: testCaseId, project: projectId },

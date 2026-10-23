@@ -342,9 +342,27 @@ export type ServiceTicketRow = {
   updatedAt?: string
 }
 
-/** SSE URL for live support events (secret via query — EventSource cannot set headers). */
-export function supportEventsUrl(): string {
-  const secret = encodeURIComponent(getStoredSecret())
-  const base = baseUrl()
-  return `${base}/api/admin/support/events?secret=${secret}`
+/** Short-lived SSE ticket (never put PA_ADMIN_SECRET in the query). */
+async function fetchAdminSseTicket(): Promise<string> {
+  const secret = getStoredSecret()
+  if (!secret) throw new Error('Admin secret required')
+  const res = await fetch(`${baseUrl()}/api/admin/events-ticket`, {
+    method: 'POST',
+    headers: { 'x-pa-admin-secret': secret },
+  })
+  const json = (await res.json().catch(() => ({}))) as {
+    success?: boolean
+    data?: { ticket?: string }
+    error?: string
+  }
+  if (!res.ok || !json.data?.ticket) {
+    throw new Error(json.error || 'Failed to issue SSE ticket')
+  }
+  return json.data.ticket
+}
+
+/** SSE URL for live support events (ticket via query — EventSource cannot set headers). */
+export async function supportEventsUrl(): Promise<string> {
+  const ticket = encodeURIComponent(await fetchAdminSseTicket())
+  return `${baseUrl()}/api/admin/support/events?ticket=${ticket}`
 }

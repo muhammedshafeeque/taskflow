@@ -27,11 +27,24 @@ const app = express();
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-const origin =
-  process.env.CONTROL_CENTER_ORIGIN?.trim() || 'http://localhost:5174';
+const corsOrigins = new Set<string>();
+const addOrigin = (u?: string) => {
+  const v = (u || '').trim().replace(/\/$/, '');
+  if (v) corsOrigins.add(v);
+};
+addOrigin(process.env.CONTROL_CENTER_ORIGIN || 'http://localhost:5174');
+for (const extra of (process.env.CONTROL_CENTER_ORIGIN_ALLOWLIST || '').split(',')) {
+  addOrigin(extra);
+}
+// Local defaults only outside production
+if (process.env.NODE_ENV !== 'production') {
+  addOrigin('http://127.0.0.1:5174');
+  addOrigin('http://localhost:5173');
+  addOrigin('http://127.0.0.1:5173');
+}
 app.use(
   cors({
-    origin: [origin, 'http://127.0.0.1:5174', 'http://localhost:5173'],
+    origin: [...corsOrigins],
     allowedHeaders: [
       'Content-Type',
       'x-pa-admin-secret',

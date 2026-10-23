@@ -21,8 +21,32 @@ export function isCommandAllowed(
   return allowCommands.some((a) => a.trim() === c);
 }
 
+export function workspaceRootsFromEnv(
+  env: NodeJS.ProcessEnv = process.env
+): string[] {
+  return (env.AGENT_WORKSPACE_ROOTS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export function requireWorkspaceRoots(
+  roots: string[],
+  env: NodeJS.ProcessEnv = process.env
+): void {
+  const required =
+    env.NODE_ENV === 'production' ||
+    env.AGENT_WORKSPACE_ROOTS_REQUIRED === '1' ||
+    env.AGENT_WORKSPACE_ROOTS_REQUIRED === 'true';
+  if (required && roots.length === 0) {
+    throw new Error(
+      'Path jail: AGENT_WORKSPACE_ROOTS must be set (comma-separated absolute roots)'
+    );
+  }
+}
+
 /**
- * Ensure localPath is absolute, has no `..`, and (if roots provided)
+ * Ensure localPath is absolute, has no `..`, and (if roots provided / required)
  * sits under one of them.
  */
 export function assertPathJail(
@@ -44,6 +68,22 @@ export function assertPathJail(
     if (!ok) throw new Error('Path jail: workspace outside allowed roots');
   }
   return resolved;
+}
+
+/**
+ * Devices may only shrink the allowlist on heartbeat (cannot add new commands).
+ * Empty server list allows a one-time bootstrap from the device.
+ */
+export function mergeAllowCommands(
+  existing: string[],
+  proposed: string[] | undefined
+): string[] {
+  const current = (existing || []).map((c) => c.trim()).filter(Boolean);
+  if (!proposed) return current;
+  const next = proposed.map((c) => String(c).trim()).filter(Boolean);
+  if (!current.length) return next;
+  const allowed = new Set(current);
+  return next.filter((c) => allowed.has(c));
 }
 
 /** Split allowlisted command into argv (no shell). */

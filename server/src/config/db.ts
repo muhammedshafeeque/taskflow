@@ -5,6 +5,7 @@ import { migrateTaskNotificationEmailDefaultsIfNeeded } from '../migrations/migr
 import { migrateFixVersionToArrayIfNeeded } from '../migrations/migrateFixVersionToArray';
 import { migrateOrganizationTenancyIfNeeded } from '../migrations/migrateOrganizationTenancy';
 import { migrateUserOAuthIndexesIfNeeded } from '../migrations/migrateUserOAuthIndexes';
+import { migrateProjectMemberCommentPermissionsIfNeeded } from '../migrations/migrateProjectMemberCommentPermissions';
 import '../modules/projects/projectDesignation.model';
 import '../modules/organizations/organization.model';
 import '../modules/organizations/organizationMember.model';
@@ -22,6 +23,9 @@ export async function connectDb(): Promise<void> {
   );
   await migrateOrganizationTenancyIfNeeded().catch((e) => console.error('[migrate] organizations failed:', e));
   await migrateUserOAuthIndexesIfNeeded().catch((e) => console.error('[migrate] users OAuth indexes failed:', e));
+  await migrateProjectMemberCommentPermissionsIfNeeded().catch((e) =>
+    console.error('[migrate] project member comment permissions failed:', e)
+  );
 }
 
 export async function disconnectDb(): Promise<void> {

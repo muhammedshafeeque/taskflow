@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { applyLeaveUsage, getBalances, workingDaysFor } from './policy.service';
 import { HrmsLeaveType } from './models/hrmsPolicy.model';
 import { ApiError } from '../../utils/ApiError';
+import { escapeRegex } from '../../utils/safeUrl';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { HrmsEmployee } from './models/hrmsEmployee.model';
 import { HrmsLeaveRequest } from './models/hrmsLeaveRequest.model';
@@ -29,7 +30,7 @@ export async function listEmployees(
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
   if (query.status) filter.status = query.status;
   if (query.department) filter.department = query.department;
-  if (query.search) filter.name = new RegExp(query.search, 'i');
+  if (query.search) filter.name = new RegExp(escapeRegex(query.search), 'i');
   return HrmsEmployee.find(filter).sort({ name: 1 }).lean();
 }
 

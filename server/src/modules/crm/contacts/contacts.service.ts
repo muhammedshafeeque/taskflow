@@ -2,6 +2,7 @@ import { CrmContact, type CrmContactOrigin } from '../models/crmContact.model';
 import { CustomerOrg } from '../../customer-portal/customer-org/customerOrg.model';
 import { CustomerUser } from '../../customer-portal/customer-user/customerUser.model';
 import { ApiError } from '../../../utils/ApiError';
+import { escapeRegex } from '../../../utils/safeUrl';
 import { requireWorkspaceId, toOrgOid } from '../crmWorkspace';
 
 export type UpsertContactInput = {
@@ -106,10 +107,11 @@ export async function listContacts(
   if (opts.customerOrgId) filter.customerOrgId = opts.customerOrgId;
   if (opts.origin && opts.origin !== 'all') filter.origin = opts.origin;
   if (opts.search?.trim()) {
+    const q = escapeRegex(opts.search.trim());
     filter.$or = [
-      { name: { $regex: opts.search.trim(), $options: 'i' } },
-      { email: { $regex: opts.search.trim(), $options: 'i' } },
-      { phone: { $regex: opts.search.trim(), $options: 'i' } },
+      { name: { $regex: q, $options: 'i' } },
+      { email: { $regex: q, $options: 'i' } },
+      { phone: { $regex: q, $options: 'i' } },
     ];
   }
   return CrmContact.find(filter).populate('customerOrgId', 'name').sort({ name: 1 }).lean();

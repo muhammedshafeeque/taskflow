@@ -372,7 +372,11 @@ export async function invite(
     }
   }
 
-  const plainPassword = crypto.randomBytes(10).toString('base64').replace(/[+/=]/g, '').slice(0, 14);
+  // Random unguessable password — never emailed; invitee sets via reset link.
+  const plainPassword = crypto.randomBytes(32).toString('hex');
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  const resetHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+  const resetExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   const rolePerms = Array.isArray(role.permissions) ? role.permissions : [];
   const initialPerms = mergeTaskflowPermissionFloor(
@@ -391,13 +395,17 @@ export async function invite(
     roleId: input.roleId,
     mustChangePassword: true,
     permissions: initialPerms,
+    passwordResetToken: resetHash,
+    passwordResetExpires: resetExpires,
   });
 
+  const appUrl = (process.env.FRONTEND_URL ?? '').replace(/\/$/, '');
+  const resetLink = `${appUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
   await sendInviteEmail({
     name: input.name.trim(),
     email: input.email.trim(),
-    password: plainPassword,
-    appUrl: process.env.FRONTEND_URL ?? '',
+    appUrl,
+    resetLink,
   }).catch((err) => console.error('Failed to send invite email:', err));
 
   await inboxService
@@ -405,7 +413,7 @@ export async function invite(
       toUser: user._id.toString(),
       type: 'welcome',
       title: 'Welcome to Atrium',
-      body: 'Your account has been created. Please change your password from your profile or use Forgot password after signing out.',
+      body: 'Your account has been created. Use the set-password link in your invite email to choose a password.',
     })
     .catch((err) => console.error('Failed to create welcome message:', err));
 

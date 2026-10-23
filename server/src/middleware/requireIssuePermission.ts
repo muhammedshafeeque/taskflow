@@ -2,15 +2,22 @@ import { Request, Response, NextFunction } from 'express';
 import { Issue } from '../modules/issues/issue.model';
 import { ApiError } from '../utils/ApiError';
 import { requireProjectPermission, getProjectPermissionsForUser, hasProjectFullAccess } from './requireProjectPermission';
-import { LEGACY_COLON_TO_DOT, LEGACY_CUSTOMER_COLON_TO_DOT } from '../shared/constants/legacyPermissionMap';
+import {
+  LEGACY_COLON_TO_DOT,
+  LEGACY_CUSTOMER_COLON_TO_DOT,
+  userHasPermission,
+} from '../shared/constants/legacyPermissionMap';
 
 function normalizePermission(p: string): string {
   return LEGACY_COLON_TO_DOT[p] ?? LEGACY_CUSTOMER_COLON_TO_DOT[p] ?? p;
 }
 
-/** Middleware: resolve issueId from params → project → check project-scoped permission. */
-export function requireIssuePermission(permission: string, issueIdParam = 'id') {
-  const required = normalizePermission(permission);
+/**
+ * Middleware: resolve issueId from params → project → check project-scoped permission.
+ * Pass several permissions to accept any one of them.
+ */
+export function requireIssuePermission(permission: string | string[], issueIdParam = 'id') {
+  const required = (Array.isArray(permission) ? permission : [permission]).map(normalizePermission);
 
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     if (!req.user) {
@@ -45,7 +52,7 @@ export function requireIssuePermission(permission: string, issueIdParam = 'id') 
       authUser.permissions,
       req.activeOrganizationId
     );
-    if (!perms.includes(required)) {
+    if (!required.some((p) => userHasPermission(perms, p))) {
       next(new ApiError(403, 'Insufficient permissions for this project'));
       return;
     }

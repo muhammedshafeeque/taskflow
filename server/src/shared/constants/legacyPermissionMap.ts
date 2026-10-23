@@ -74,8 +74,29 @@ export const LEGACY_CUSTOMER_COLON_TO_DOT: Record<string, string> = {
   'projects:view': CF.LEGACY.PROJECT_VIEW,
 };
 
+/**
+ * Permissions that only make sense together. Writing to a comment thread you can't read leaves the
+ * user posting blind (and the issue page showing no comments), so any comment action implies reading.
+ * `issue.issue.comment` is the older "comment on issue" code and implies creating comments.
+ */
+const IMPLIED_PERMISSIONS: Array<{ ifAny: string[]; grant: string[] }> = [
+  { ifAny: [PF.ISSUE.ISSUE.COMMENT], grant: [PF.ISSUE.COMMENT.CREATE] },
+  {
+    ifAny: [PF.ISSUE.ISSUE.COMMENT, PF.ISSUE.COMMENT.CREATE, PF.ISSUE.COMMENT.UPDATE, PF.ISSUE.COMMENT.DELETE, PF.ISSUE.COMMENT.LIST],
+    grant: [PF.ISSUE.COMMENT.READ, PF.ISSUE.COMMENT.LIST],
+  },
+];
+
+export function withImpliedPermissions(perms: string[]): string[] {
+  const set = new Set(perms);
+  for (const rule of IMPLIED_PERMISSIONS) {
+    if (rule.ifAny.some((p) => set.has(p))) rule.grant.forEach((p) => set.add(p));
+  }
+  return [...set];
+}
+
 export function mapLegacyProjectOrGlobalPermissions(perms: string[]): string[] {
-  return [...new Set(perms.map((p) => LEGACY_COLON_TO_DOT[p] ?? p))];
+  return withImpliedPermissions([...new Set(perms.map((p) => LEGACY_COLON_TO_DOT[p] ?? p))]);
 }
 
 export function mapLegacyCustomerPermissions(perms: string[]): string[] {

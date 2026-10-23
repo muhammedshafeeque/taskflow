@@ -471,6 +471,7 @@ export function buildResourcesNav(user: NavUser): NavItem[] {
       'taskflow.resources.dashboard.read',
       'taskflow.resources.utilization.read',
       'taskflow.resources.bench.read',
+      'taskflow.resources.engagement.read',
       'taskflow.resources.allocation.read',
       'taskflow.resources.forecast.read',
       'taskflow.analytics.view'
@@ -496,6 +497,9 @@ export function buildResourcesNav(user: NavUser): NavItem[] {
   }
   if (allow(user, 'taskflow.resources.utilization.read')) {
     nav.push({ to: '/resources/utilization', label: 'Utilization', icon: <TimesheetIcon /> });
+  }
+  if (allow(user, 'taskflow.resources.engagement.read', 'taskflow.resources.utilization.read')) {
+    nav.push({ to: '/resources/engagement', label: 'Engagement', icon: <BoardsIcon /> });
   }
   if (allow(user, 'taskflow.resources.bench.read')) {
     nav.push({ to: '/resources/bench', label: 'Bench', icon: <UsersIcon /> });

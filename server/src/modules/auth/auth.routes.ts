@@ -35,7 +35,7 @@ router.post('/2fa/verify', authLimiter, twoFactorVerifyHandler);
 router.post('/2fa/setup', twoFactorSetupHandler);
 router.post('/2fa/confirm', authLimiter, twoFactorConfirmHandler);
 router.post('/2fa/disable', authLimiter, twoFactorDisableHandler);
-router.post('/refresh', refreshHandler);
+router.post('/refresh', authLimiter, refreshHandler);
 router.get('/me', meHandler);
 router.get('/debug-permissions/:id', debugPermissionsHandler);
 router.patch('/me', updateProfileHandler);

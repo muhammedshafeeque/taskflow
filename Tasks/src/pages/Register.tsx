@@ -80,7 +80,7 @@ export default function Register() {
           </div>
           <div className="relative">
             <FiLock className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[color:var(--text-muted)]" />
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required placeholder="Password" className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] py-3 pl-11 pr-4" />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required placeholder="Password" className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] py-3 pl-11 pr-4" />
           </div>
           <button type="submit" disabled={loading} className="btn-primary btn-primary-lg w-full">
             {loading ? 'Creating account…' : 'Sign up'}

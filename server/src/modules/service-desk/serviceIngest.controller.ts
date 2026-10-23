@@ -6,33 +6,10 @@ import { Issue } from '../issues/issue.model';
 import * as issuesService from '../issues/issues.service';
 import { ServiceTicket } from './models/serviceTicket.model';
 import * as ticketsService from './tickets.service';
-
-function assertPaIngestSecret(req: Request) {
-  const configured = String(process.env.PA_INGEST_SECRET ?? '').trim();
-  if (!configured) {
-    throw new ApiError(503, 'PA ingest is not configured (PA_INGEST_SECRET)');
-  }
-  const provided = String(req.headers['x-pa-ingest-secret'] ?? '').trim();
-  if (!provided || provided !== configured) {
-    throw new ApiError(401, 'Invalid ingest secret');
-  }
-}
-
-function resolvePaOrganizationId(req: Request, body?: Record<string, unknown>) {
-  const organizationId = String(
-    body?.organizationId ??
-      req.headers['x-organization-id'] ??
-      process.env.PA_DEFAULT_ORG_ID ??
-      ''
-  ).trim();
-  if (!organizationId) {
-    throw new ApiError(400, 'organizationId is required');
-  }
-  if (!mongoose.Types.ObjectId.isValid(organizationId)) {
-    throw new ApiError(400, 'Invalid organizationId');
-  }
-  return organizationId;
-}
+import {
+  assertPaIngestSecret,
+  resolvePaOrganizationId,
+} from './paIngestAuth';
 
 function parseProjectIds(req: Request): string[] {
   const raw =
@@ -47,38 +24,43 @@ function parseProjectIds(req: Request): string[] {
 /** GET /service/ingest/project-context?projectIds=a,b */
 export async function ingestProjectContext(req: Request, res: Response) {
   assertPaIngestSecret(req);
-  const orgId = resolvePaOrganizationId(req);
+  const orgId = await resolvePaOrganizationId(req);
   const projectIds = parseProjectIds(req);
   if (!projectIds.length) {
     res.json({ success: true, data: { projects: [], tickets: [], recentIssues: [] } });
     return;
   }
 
-  const oidList = projectIds.map((id) => new mongoose.Types.ObjectId(id));
-  const [projects, tickets, recentIssues] = await Promise.all([
-    Project.find({
-      _id: { $in: oidList },
-      taskflowOrganizationId: orgId,
-    })
-      .select('_id name key description')
-      .lean(),
-    ServiceTicket.find({
-      taskflowOrganizationId: orgId,
-      projectId: { $in: oidList },
-      status: { $in: ['open', 'pending', 'in_progress'] },
-    })
-      .select(
-        '_id subject description status priority projectId queue linkedIssueId source'
-      )
-      .populate('linkedIssueId', 'key title')
-      .sort({ updatedAt: -1 })
-      .limit(40)
-      .lean(),
-    Issue.find({ project: { $in: oidList } })
-      .select('_id key title status')
-      .sort({ updatedAt: -1 })
-      .limit(30)
-      .lean(),
+  const projects = await Project.find({
+    _id: { $in: projectIds.map((id) => new mongoose.Types.ObjectId(id)) },
+    taskflowOrganizationId: orgId,
+  })
+    .select('_id name key description')
+    .lean();
+  // Only query issues/tickets for projects proven to belong to this org
+  const scopedOidList = projects.map((p) => p._id);
+  const [tickets, recentIssues] = await Promise.all([
+    scopedOidList.length
+      ? ServiceTicket.find({
+          taskflowOrganizationId: orgId,
+          projectId: { $in: scopedOidList },
+          status: { $in: ['open', 'pending', 'in_progress'] },
+        })
+          .select(
+            '_id subject description status priority projectId queue linkedIssueId source'
+          )
+          .populate('linkedIssueId', 'key title')
+          .sort({ updatedAt: -1 })
+          .limit(40)
+          .lean()
+      : Promise.resolve([]),
+    scopedOidList.length
+      ? Issue.find({ project: { $in: scopedOidList } })
+          .select('_id key title status')
+          .sort({ updatedAt: -1 })
+          .limit(30)
+          .lean()
+      : Promise.resolve([]),
   ]);
 
   res.json({
@@ -126,7 +108,7 @@ export async function ingestProjectContext(req: Request, res: Response) {
 /** GET /service/ingest/tickets?projectId= */
 export async function ingestListTickets(req: Request, res: Response) {
   assertPaIngestSecret(req);
-  const orgId = resolvePaOrganizationId(req);
+  const orgId = await resolvePaOrganizationId(req);
   const projectId = String(req.query.projectId || '').trim();
   const filter: Record<string, unknown> = {
     taskflowOrganizationId: orgId,
@@ -172,7 +154,7 @@ export async function ingestListTickets(req: Request, res: Response) {
 export async function ingestCreateTicket(req: Request, res: Response) {
   assertPaIngestSecret(req);
   const body = (req.body ?? {}) as Record<string, unknown>;
-  const orgId = resolvePaOrganizationId(req, body);
+  const orgId = await resolvePaOrganizationId(req, body);
   const subject = String(body.subject ?? '').trim();
   if (!subject) throw new ApiError(400, 'subject is required');
 
@@ -309,7 +291,7 @@ async function resolveServiceTicketRef(orgId: string, ref: string) {
 export async function ingestPatchTicket(req: Request, res: Response) {
   assertPaIngestSecret(req);
   const body = (req.body ?? {}) as Record<string, unknown>;
-  const orgId = resolvePaOrganizationId(req, body);
+  const orgId = await resolvePaOrganizationId(req, body);
   const ref = decodeURIComponent(req.params.id);
 
   const ticket = await resolveServiceTicketRef(orgId, ref);

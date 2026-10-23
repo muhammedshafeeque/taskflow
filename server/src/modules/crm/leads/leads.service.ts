@@ -8,6 +8,7 @@ import { CrmCampaign } from '../models/crmCampaign.model';
 import { CustomerOrg } from '../../customer-portal/customer-org/customerOrg.model';
 import { upsertContactByEmail } from '../contacts/contacts.service';
 import { ApiError } from '../../../utils/ApiError';
+import { escapeRegex } from '../../../utils/safeUrl';
 import { requireWorkspaceId, toOrgOid } from '../crmWorkspace';
 import { logAudit } from '../../auditLogs/logAudit';
 import {
@@ -299,7 +300,7 @@ export async function listLeads(
   }
   if (opts.serviceInterest?.trim()) filter.serviceInterest = opts.serviceInterest.trim();
   if (opts.search?.trim()) {
-    const q = opts.search.trim();
+    const q = escapeRegex(opts.search.trim());
     filter.$or = [
       { title: { $regex: q, $options: 'i' } },
       { companyName: { $regex: q, $options: 'i' } },

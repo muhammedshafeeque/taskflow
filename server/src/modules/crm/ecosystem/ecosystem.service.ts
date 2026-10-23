@@ -65,6 +65,7 @@ export async function dispatchWebhook(
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-TaskFlow-Signature': sig },
         body,
+        redirect: 'error',
         signal: AbortSignal.timeout(10000),
       });
     })

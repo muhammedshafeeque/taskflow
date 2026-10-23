@@ -15,7 +15,14 @@ import {
   type AgentJobDoc,
   type AgentJobType,
 } from './models/AgentJob';
-import { assertPathJail, isCommandAllowed, redactLogLine } from './security';
+import {
+  assertPathJail,
+  isCommandAllowed,
+  mergeAllowCommands,
+  redactLogLine,
+  requireWorkspaceRoots,
+  workspaceRootsFromEnv,
+} from './security';
 
 const PAIRING_TTL_MS = 10 * 60 * 1000;
 const ONLINE_TTL_MS = 90 * 1000;
@@ -157,10 +164,8 @@ export async function heartbeatDevice(
     name?: string;
   }
 ) {
-  const roots = (process.env.AGENT_WORKSPACE_ROOTS || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const roots = workspaceRootsFromEnv();
+  requireWorkspaceRoots(roots);
 
   const workspaces = (body.workspaces || device.workspaces || []).map((w) => ({
     projectKey: String(w.projectKey || '').trim().toUpperCase(),
@@ -168,9 +173,11 @@ export async function heartbeatDevice(
     localPath: assertPathJail(String(w.localPath || ''), roots),
   }));
 
-  const allowCommands = (body.allowCommands || device.allowCommands || [])
-    .map((c) => String(c).trim())
-    .filter(Boolean);
+  // Devices cannot widen allowCommands after bootstrap — only shrink or keep.
+  const allowCommands = mergeAllowCommands(
+    device.allowCommands || [],
+    body.allowCommands
+  );
 
   const update: Record<string, unknown> = {
     lastSeenAt: new Date(),

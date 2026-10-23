@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware';
+import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { validate } from '../../middleware/validate';
 import {
@@ -14,7 +15,7 @@ import { z } from 'zod';
 
 const router = Router();
 
-router.use(authMiddleware);
+router.use(authMiddleware, requireTaskflowUser);
 
 const orgIdParams = validate(organizationIdParam, 'params');
 const memberUserIdParams = validate(

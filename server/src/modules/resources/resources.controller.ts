@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import type { AuthPayload } from '../../types/express';
 import { ApiError } from '../../utils/ApiError';
 import * as resourcesService from './resources.service';
+import * as engagementService from './engagement.service';
 
 function ws(req: Request & { user?: AuthPayload; activeOrganizationId?: string }) {
   return req.activeOrganizationId;
@@ -109,5 +110,30 @@ export async function upsertProfile(req: Request & { user?: AuthPayload }, res: 
 export async function listOptions(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
   const data = await resourcesService.listTeamOptions(ws(req));
+  res.json({ success: true, data });
+}
+
+export async function getEngagement(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const q = req.query as { from?: string; to?: string; userId?: string; projectId?: string; threshold?: string };
+  const data = await engagementService.getEngagement(ws(req), {
+    from: q.from,
+    to: q.to,
+    userId: q.userId,
+    projectId: q.projectId,
+    threshold: q.threshold ? Number(q.threshold) : undefined,
+  });
+  res.json({ success: true, data });
+}
+
+export async function getSettings(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await engagementService.getResourceSettings(ws(req));
+  res.json({ success: true, data });
+}
+
+export async function updateSettings(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await engagementService.updateResourceSettings(ws(req), req.body ?? {});
   res.json({ success: true, data });
 }

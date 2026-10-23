@@ -12,6 +12,10 @@ import { mergeTaskflowPermissionFloor } from '../modules/auth/permissionMerge';
 import { mapLegacyCustomerPermissions } from '../shared/constants/legacyPermissionMap';
 import { OrganizationMember } from '../modules/organizations/organizationMember.model';
 import { API_TOKEN_PREFIX, resolveApiToken } from '../modules/apiTokens/apiToken.service';
+import {
+  assertAccessTokenClaims,
+  type JwtAuthClaims,
+} from './assertAccessToken';
 
 export async function authMiddleware(
   req: Request,
@@ -43,11 +47,8 @@ export async function authMiddleware(
   }
 
   try {
-    const decoded = jwt.verify(token, env.jwtSecret) as {
-      sub: string;
-      userType?: string;
-      activeOrganizationId?: string;
-    };
+    const decoded = jwt.verify(token, env.jwtSecret) as JwtAuthClaims;
+    assertAccessTokenClaims(decoded);
 
     if (decoded.userType === 'customer') {
       const customerUser = await CustomerUser.findById(decoded.sub).populate('roleId', 'permissions').lean();
@@ -108,9 +109,13 @@ export async function authMiddleware(
       return;
     }
 
-    const err = await authenticateStaffUser(req, decoded.sub, decoded.activeOrganizationId);
+    const err = await authenticateStaffUser(req, decoded.sub!, decoded.activeOrganizationId);
     next(err ?? undefined);
-  } catch {
+  } catch (err) {
+    if (err instanceof ApiError) {
+      next(err);
+      return;
+    }
     next(new ApiError(401, 'Invalid or expired token'));
   }
 }

@@ -1,5 +1,6 @@
 import { KbArticle } from './models/kbArticle.model';
 import { ApiError } from '../../utils/ApiError';
+import { escapeRegex } from '../../utils/safeUrl';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 
 function slugify(title: string): string {
@@ -41,9 +42,19 @@ export async function createKbArticle(
 
 export async function updateKbArticle(id: string, workspaceId: string | null | undefined, input: Record<string, unknown>) {
   const orgId = requireWorkspaceId(workspaceId);
+  const { pickUpdateFields } = await import('../../utils/pickUpdateFields');
+  const $set = pickUpdateFields(input, [
+    'title',
+    'slug',
+    'category',
+    'body',
+    'published',
+    'tags',
+    'summary',
+  ]);
   const updated = await KbArticle.findOneAndUpdate(
     { _id: id, taskflowOrganizationId: toOrgOid(orgId) },
-    { $set: input },
+    { $set },
     { new: true }
   ).lean();
   if (!updated) throw new ApiError(404, 'Article not found');
@@ -52,7 +63,7 @@ export async function updateKbArticle(id: string, workspaceId: string | null | u
 
 export async function searchKbArticles(workspaceId: string | null | undefined, q: string) {
   const orgId = requireWorkspaceId(workspaceId);
-  const term = q.trim();
+  const term = escapeRegex(q.trim());
   if (!term) return listKbArticles(orgId, true);
   return KbArticle.find({
     taskflowOrganizationId: toOrgOid(orgId),

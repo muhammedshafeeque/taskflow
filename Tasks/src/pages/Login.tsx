@@ -82,7 +82,7 @@ export default function Login() {
       }
 
       setSsoLoading(true);
-      const result = await microsoftSso(oauthCode, msRedirectUri);
+      const result = await microsoftSso(oauthCode, msRedirectUri, oauthState || undefined);
       setSsoLoading(false);
       if (!result.ok) {
         setError(result.error ?? 'Microsoft sign-in failed');

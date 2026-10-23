@@ -50,3 +50,7 @@ export const authLimiter = rateLimit('auth', { max: 10, windowSec: 60 }, (req) =
 export const publicLimiter = rateLimit('public', { max: 60, windowSec: 60 });
 /** Telemetry ingest — generous, but stops a runaway client. */
 export const ingestLimiter = rateLimit('ingest', { max: 1200, windowSec: 60 }, (req) => String(req.headers['x-monitor-key'] ?? ''));
+/** PA / service-desk shared-secret ingest — slows secret brute-force. */
+export const paIngestLimiter = rateLimit('pa_ingest', { max: 120, windowSec: 60 }, (req) =>
+  String(req.headers['x-pa-ingest-secret'] ?? '').slice(0, 16)
+);

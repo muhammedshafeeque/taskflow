@@ -10,6 +10,7 @@ import {
   LEGACY_COLON_TO_DOT,
   LEGACY_CUSTOMER_COLON_TO_DOT,
   mapLegacyProjectOrGlobalPermissions,
+  userHasPermission,
 } from '../shared/constants/legacyPermissionMap';
 
 export type ProjectIdSource = { param?: string; query?: string; body?: string };
@@ -125,7 +126,7 @@ export function requireProjectPermission(
       permissions = mapLegacyProjectOrGlobalPermissions(permissions);
     }
 
-    if (!permissions.includes(required)) {
+    if (!userHasPermission(permissions, required)) {
       next(new ApiError(403, 'Insufficient permissions for this project'));
       return;
     }

@@ -84,6 +84,7 @@ export const MODULE_ACCESS: Record<ModuleId, readonly string[]> = {
     'taskflow.resources.dashboard.read',
     'taskflow.resources.utilization.read',
     'taskflow.resources.bench.read',
+    'taskflow.resources.engagement.read',
     'taskflow.resources.allocation.read',
     'taskflow.resources.forecast.read',
     'taskflow.analytics.view',

@@ -3,6 +3,10 @@ import mongoose from 'mongoose';
 import type { AuthPayload } from '../../types/express';
 import { ApiError } from '../../utils/ApiError';
 import { Project } from '../projects/project.model';
+import {
+  assertPaIngestSecret,
+  resolvePaOrganizationId,
+} from '../service-desk/paIngestAuth';
 import * as accountsService from './accounts/accounts.service';
 import * as contactsService from './contacts/contacts.service';
 import * as activitiesService from './activities/activities.service';
@@ -23,34 +27,6 @@ function uid(req: Request & { user?: AuthPayload }) {
   const id = req.user?.id;
   if (!id) throw new ApiError(401, 'Unauthorized');
   return id;
-}
-
-/** Shared secret for WhatsApp PA → Taskflow (no JWT). Header: x-pa-ingest-secret */
-function assertPaIngestSecret(req: Request) {
-  const configured = String(process.env.PA_INGEST_SECRET ?? '').trim();
-  if (!configured) {
-    throw new ApiError(503, 'PA ingest is not configured (PA_INGEST_SECRET)');
-  }
-  const provided = String(req.headers['x-pa-ingest-secret'] ?? '').trim();
-  if (!provided || provided !== configured) {
-    throw new ApiError(401, 'Invalid ingest secret');
-  }
-}
-
-function resolvePaOrganizationId(req: Request, body?: Record<string, unknown>) {
-  const organizationId = String(
-    body?.organizationId ??
-      req.headers['x-organization-id'] ??
-      process.env.PA_DEFAULT_ORG_ID ??
-      ''
-  ).trim();
-  if (!organizationId) {
-    throw new ApiError(400, 'organizationId is required');
-  }
-  if (!mongoose.Types.ObjectId.isValid(organizationId)) {
-    throw new ApiError(400, 'Invalid organizationId');
-  }
-  return organizationId;
 }
 
 export async function getDashboard(req: Request & { user?: AuthPayload }, res: Response) {
@@ -239,7 +215,7 @@ export async function ingestWhatsappLead(req: Request, res: Response) {
   assertPaIngestSecret(req);
 
   const body = (req.body ?? {}) as Record<string, unknown>;
-  const organizationId = resolvePaOrganizationId(req, body);
+  const organizationId = await resolvePaOrganizationId(req, body);
 
   const { organizationId: _omit, ...leadInput } = body;
   const data = await leadsService.createLead(organizationId, leadInput);
@@ -253,7 +229,7 @@ export async function ingestWhatsappLeadUpdate(req: Request, res: Response) {
   assertPaIngestSecret(req);
 
   const body = (req.body ?? {}) as Record<string, unknown>;
-  const organizationId = resolvePaOrganizationId(req, body);
+  const organizationId = await resolvePaOrganizationId(req, body);
 
   const { organizationId: _omit, ...leadInput } = body;
   const data = await leadsService.updateLead(req.params.id, organizationId, leadInput);
@@ -266,7 +242,7 @@ export async function ingestWhatsappLeadUpdate(req: Request, res: Response) {
  */
 export async function ingestListProjects(req: Request, res: Response) {
   assertPaIngestSecret(req);
-  const organizationId = resolvePaOrganizationId(req);
+  const organizationId = await resolvePaOrganizationId(req);
 
   const rows = await Project.find({
     taskflowOrganizationId: organizationId,

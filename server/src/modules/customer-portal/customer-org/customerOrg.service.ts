@@ -91,9 +91,12 @@ export async function createOrg(
     isSystemRole: true,
   });
 
-  // Generate temp password
-  const tempPassword = crypto.randomBytes(8).toString('hex');
+  // Random password never emailed — admin sets via one-time reset link.
+  const tempPassword = crypto.randomBytes(32).toString('hex');
   const hashedPassword = await bcrypt.hash(tempPassword, SALT_ROUNDS);
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  const resetHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+  const resetExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   const adminUser = await CustomerUser.create({
     customerOrgId: org._id,
@@ -105,18 +108,21 @@ export async function createOrg(
     status: 'active',
     mustChangePassword: true,
     invitedBy: createdBy,
+    passwordResetToken: resetHash,
+    passwordResetExpires: resetExpires,
   });
 
-  // Send invite email
+  const appBase = env.appUrl.replace(/\/$/, '');
+  const resetLink = `${appBase}/reset-password?token=${encodeURIComponent(resetToken)}`;
   sendCustomerEmail(
     input.adminEmail,
     `Welcome to ${input.name} Customer Portal`,
     renderCustomerOrgAdminInviteEmail(
       input.adminName,
       input.adminEmail,
-      tempPassword,
       input.name,
-      env.appUrl
+      appBase,
+      resetLink
     )
   ).catch((err) => console.error('Failed to send org admin invite email:', err));
 

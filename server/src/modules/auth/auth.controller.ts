@@ -136,8 +136,8 @@ export async function changePassword(req: import('express').Request, res: Respon
 export async function setPassword(req: import('express').Request, res: Response): Promise<void> {
   const userId = req.user?.id;
   if (!userId) throw new ApiError(401, 'Unauthorized');
-  const { newPassword } = req.body;
-  const user = await authService.setPassword(userId, newPassword);
+  const { newPassword, currentPassword } = req.body;
+  const user = await authService.setPassword(userId, newPassword, currentPassword);
   res.status(200).json({ success: true, data: { user } });
 }
 

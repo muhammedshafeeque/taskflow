@@ -4,6 +4,7 @@ import { requireIssuePermission } from '../../middleware/requireIssuePermission'
 import { requireProjectPermission, getProjectPermissionsForUser, hasProjectFullAccess } from '../../middleware/requireProjectPermission';
 import { requirePermission } from '../../middleware/requirePermission';
 import { requireModuleEnabled } from '../../middleware/requireModuleEnabled';
+import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { ApiError } from '../../utils/ApiError';
 import { PROJECT_PERMISSIONS, TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
@@ -40,7 +41,7 @@ function requireAiEnabled(_req: Request, _res: Response, next: NextFunction) {
 }
 
 const router = Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requireTaskflowUser);
 
 router.get('/status', (_req, res) => {
   res.json({ success: true, data: getAiStatus() });

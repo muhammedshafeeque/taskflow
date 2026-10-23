@@ -7,6 +7,11 @@ import { ProjectMember } from './modules/projects/projectMember.model';
 import { MonitorProject } from './modules/monitor/monitor.models';
 import { OrganizationMember } from './modules/organizations/organizationMember.model';
 import { User } from './modules/auth/user.model';
+import {
+  assertAccessTokenClaims,
+  type JwtAuthClaims,
+} from './middleware/assertAccessToken';
+import { ApiError } from './utils/ApiError';
 
 let io: Server | null = null;
 
@@ -54,19 +59,19 @@ export function initWebSocket(server: HttpServer): void {
   });
 
   io.use((socket: Socket, next) => {
-    const token =
-      (socket.handshake.auth?.token as string) ||
-      (socket.handshake.query?.token as string);
+    // Prefer handshake.auth — never accept JWT from query (logs/Referer).
+    const token = socket.handshake.auth?.token as string | undefined;
     if (!token) {
       return next(new Error('Authentication required'));
     }
     try {
-      const decoded = jwt.verify(token, env.jwtSecret) as { sub?: string; userType?: string };
-      if (!decoded.sub) return next(new Error('Invalid token'));
+      const decoded = jwt.verify(token, env.jwtSecret) as JwtAuthClaims;
+      assertAccessTokenClaims(decoded);
       if (decoded.userType === 'customer') return next(new Error('Staff access required'));
-      (socket as Socket & { userId: string }).userId = decoded.sub;
+      (socket as Socket & { userId: string }).userId = decoded.sub!;
       next();
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError) return next(new Error(err.message));
       next(new Error('Invalid token'));
     }
   });

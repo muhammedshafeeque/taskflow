@@ -26,6 +26,17 @@ router.get('/conflicts', requirePermission(R.ALLOCATION.READ), asyncHandler(ctrl
 
 router.get('/utilization', requirePermission(R.UTILIZATION.READ), asyncHandler(ctrl.getUtilization));
 router.get('/bench', requirePermission(R.BENCH.READ), asyncHandler(ctrl.getBench));
+router.get(
+  '/engagement',
+  requireAnyPermission([R.ENGAGEMENT.READ, R.UTILIZATION.READ]),
+  asyncHandler(ctrl.getEngagement)
+);
+router.get(
+  '/settings',
+  requireAnyPermission([R.ENGAGEMENT.READ, R.UTILIZATION.READ, R.ALLOCATION.MANAGE]),
+  asyncHandler(ctrl.getSettings)
+);
+router.put('/settings', requirePermission(R.ALLOCATION.MANAGE), asyncHandler(ctrl.updateSettings));
 
 router.get('/forecast', requirePermission(R.FORECAST.READ), asyncHandler(ctrl.getForecast));
 router.get('/demands', requirePermission(R.FORECAST.READ), asyncHandler(ctrl.listDemands));

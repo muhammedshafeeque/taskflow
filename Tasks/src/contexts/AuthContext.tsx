@@ -35,7 +35,7 @@ interface AuthContextValue {
   ) => Promise<{ ok: boolean; error?: string; userType?: string; twoFactorChallenge?: string }>;
   verifyTwoFactor: (challengeToken: string, code: string) => Promise<{ ok: boolean; error?: string; userType?: string }>;
   register: (name: string, email: string, password: string) => Promise<{ ok: boolean; error?: string; userType?: string }>;
-  microsoftSso: (code: string, redirectUri?: string) => Promise<{ ok: boolean; error?: string }>;
+  microsoftSso: (code: string, redirectUri?: string, state?: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
   updateUser: (user: AuthUser) => void;
   setAccessToken: (accessToken: string) => void;
@@ -160,8 +160,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const microsoftSso = useCallback(async (code: string, redirectUri?: string) => {
-    const res = await authApi.microsoftSso(code, redirectUri);
+  const microsoftSso = useCallback(async (code: string, redirectUri?: string, state?: string) => {
+    const res = await authApi.microsoftSso(code, redirectUri, state);
     if (!res.success || !res.data) {
       return { ok: false, error: (res as { message?: string }).message ?? 'SSO login failed' };
     }

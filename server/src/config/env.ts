@@ -17,7 +17,13 @@ export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   mongodbUri: process.env.MONGODB_URI ?? 'mongodb://localhost:27017/pm-tool',
   jwtSecret: cleanEnvValue(process.env.JWT_SECRET) || (process.env.NODE_ENV === 'production' ? '' : 'dev-secret-change-me'),
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
+  /** Prefer a dedicated secret; falls back to JWT_SECRET for migration. */
+  jwtRefreshSecret:
+    cleanEnvValue(process.env.JWT_REFRESH_SECRET) ||
+    cleanEnvValue(process.env.JWT_SECRET) ||
+    (process.env.NODE_ENV === 'production' ? '' : 'dev-secret-change-me'),
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '1h',
+  jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '30d',
   integrationEncryptionKey: cleanEnvValue(process.env.INTEGRATION_ENCRYPTION_KEY),
   appUrl: process.env.APP_URL ?? 'http://localhost:5174',
   isPublicSignupEnabled: bool(process.env.IS_PUBLIC_SIGNUP_ENABLED),
@@ -207,6 +213,14 @@ export function validateRuntimeConfig(): void {
       throw new Error('[config] JWT_SECRET must be set to a strong secret in production');
     }
     console.warn('[config] JWT_SECRET is using the insecure development default — set JWT_SECRET before production.');
+  }
+  if (
+    env.nodeEnv === 'production' &&
+    (!env.jwtRefreshSecret || env.jwtRefreshSecret === env.jwtSecret)
+  ) {
+    console.warn(
+      '[config] Set JWT_REFRESH_SECRET distinct from JWT_SECRET for stronger refresh-token isolation.'
+    );
   }
 
   assertRequiredWhenEnabled(env.isSmtpEnabled, 'SMTP', [

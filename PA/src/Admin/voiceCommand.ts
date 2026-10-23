@@ -119,7 +119,7 @@ function matchExplicitOps(text: string): OpsIntent {
 async function findChatByQuery(
   q: string
 ): Promise<{ chatId: string; label: string } | null> {
-  const query = q.trim();
+  const query = q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   if (!query) return null;
   const docs = await Conversation.find({
     $or: [

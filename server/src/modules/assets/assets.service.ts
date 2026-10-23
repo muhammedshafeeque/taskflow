@@ -1,4 +1,5 @@
 import { ApiError } from '../../utils/ApiError';
+import { escapeRegex } from '../../utils/safeUrl';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { Asset } from './models/asset.model';
 import { AssetLicense } from './models/assetLicense.model';
@@ -25,7 +26,7 @@ export async function listAssets(
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
   if (query.category) filter.category = query.category;
   if (query.status) filter.status = query.status;
-  if (query.search) filter.name = new RegExp(query.search, 'i');
+  if (query.search) filter.name = new RegExp(escapeRegex(query.search), 'i');
   if (query.warrantyWithinDays) {
     const days = Number(query.warrantyWithinDays);
     const until = new Date();

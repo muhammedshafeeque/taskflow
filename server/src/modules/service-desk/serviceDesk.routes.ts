@@ -3,7 +3,9 @@ import * as desk from './desk.service';
 import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware';
+import { paIngestLimiter } from '../../middleware/rateLimit';
 import { requireAnyPermission, requirePermission } from '../../middleware/requirePermission';
+import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as sd from './serviceDesk.controller';
@@ -18,40 +20,41 @@ const router = Router();
 router.get('/kb/portal', asyncHandler(sd.listKbPortal));
 
 /** WhatsApp PA bot — shared secret, before JWT auth. */
-router.get('/ingest/project-context', asyncHandler(ingest.ingestProjectContext));
-router.get('/ingest/tickets', asyncHandler(ingest.ingestListTickets));
-router.post('/ingest/tickets', asyncHandler(ingest.ingestCreateTicket));
-router.patch('/ingest/tickets/:id', asyncHandler(ingest.ingestPatchTicket));
-
-router.get('/ingest/requests', asyncHandler(requestIngest.ingestListRequests));
-router.post('/ingest/requests', asyncHandler(ecoIngest.ingestCreateRequest));
-router.get('/ingest/requests/:id', asyncHandler(requestIngest.ingestGetRequest));
-router.post(
-  '/ingest/requests/:id/approve',
+const ingestRouter = Router();
+ingestRouter.use(paIngestLimiter);
+ingestRouter.get('/project-context', asyncHandler(ingest.ingestProjectContext));
+ingestRouter.get('/tickets', asyncHandler(ingest.ingestListTickets));
+ingestRouter.post('/tickets', asyncHandler(ingest.ingestCreateTicket));
+ingestRouter.patch('/tickets/:id', asyncHandler(ingest.ingestPatchTicket));
+ingestRouter.get('/requests', asyncHandler(requestIngest.ingestListRequests));
+ingestRouter.post('/requests', asyncHandler(ecoIngest.ingestCreateRequest));
+ingestRouter.get('/requests/:id', asyncHandler(requestIngest.ingestGetRequest));
+ingestRouter.post(
+  '/requests/:id/approve',
   asyncHandler(requestIngest.ingestApproveRequest)
 );
-router.post(
-  '/ingest/requests/:id/reject',
+ingestRouter.post(
+  '/requests/:id/reject',
   asyncHandler(requestIngest.ingestRejectRequest)
 );
-router.get(
-  '/ingest/service-tickets',
+ingestRouter.get(
+  '/service-tickets',
   asyncHandler(ecoIngest.ingestListServiceTicketsFiltered)
 );
-router.patch(
-  '/ingest/service-tickets/:id',
+ingestRouter.patch(
+  '/service-tickets/:id',
   asyncHandler(requestIngest.ingestUpdateServiceTicket)
 );
+ingestRouter.get('/kb/search', asyncHandler(ecoIngest.ingestKbSearch));
+ingestRouter.get('/customer-orgs', asyncHandler(ecoIngest.ingestListCustomerOrgs));
+ingestRouter.get('/issues/by-key', asyncHandler(ecoIngest.ingestIssueByKey));
+ingestRouter.get('/billing/summary', asyncHandler(ecoIngest.ingestBillingSummary));
+ingestRouter.get('/hrms/me', asyncHandler(ecoIngest.ingestHrmsMe));
+ingestRouter.get('/assets/search', asyncHandler(ecoIngest.ingestAssetsSearch));
+ingestRouter.get('/procurement/pos', asyncHandler(ecoIngest.ingestProcurementPos));
+router.use('/ingest', ingestRouter);
 
-router.get('/ingest/kb/search', asyncHandler(ecoIngest.ingestKbSearch));
-router.get('/ingest/customer-orgs', asyncHandler(ecoIngest.ingestListCustomerOrgs));
-router.get('/ingest/issues/by-key', asyncHandler(ecoIngest.ingestIssueByKey));
-router.get('/ingest/billing/summary', asyncHandler(ecoIngest.ingestBillingSummary));
-router.get('/ingest/hrms/me', asyncHandler(ecoIngest.ingestHrmsMe));
-router.get('/ingest/assets/search', asyncHandler(ecoIngest.ingestAssetsSearch));
-router.get('/ingest/procurement/pos', asyncHandler(ecoIngest.ingestProcurementPos));
-
-router.use(authMiddleware);
+router.use(authMiddleware, requireTaskflowUser);
 
 router.get('/dashboard', requirePermission(T.TICKET.LIST), asyncHandler(sd.getDashboard));
 

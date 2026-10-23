@@ -40,9 +40,18 @@ export async function createSlaPolicy(workspaceId: string | null | undefined, in
 
 export async function updateSlaPolicy(id: string, workspaceId: string | null | undefined, input: Record<string, unknown>) {
   const orgId = requireWorkspaceId(workspaceId);
+  const { pickUpdateFields } = await import('../../utils/pickUpdateFields');
+  const $set = pickUpdateFields(input, [
+    'name',
+    'targets',
+    'enabled',
+    'priority',
+    'businessHours',
+    'calendarId',
+  ]);
   const updated = await SlaPolicy.findOneAndUpdate(
     { _id: id, taskflowOrganizationId: toOrgOid(orgId) },
-    { $set: input },
+    { $set },
     { new: true }
   ).lean();
   if (!updated) throw new ApiError(404, 'SLA policy not found');

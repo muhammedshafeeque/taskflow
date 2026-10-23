@@ -17,7 +17,7 @@ import {
   reconnectWhatsApp,
   sendWhatsAppText,
 } from '../Whatsap';
-import { requireAdminSecret } from './auth';
+import { issueEventsTicket, requireAdminSecret } from './auth';
 import { buildChatAnalytics } from './analytics';
 import { broadcastRouter } from './broadcasts';
 import {
@@ -47,6 +47,11 @@ import { agentAdminRouter } from '../Agent/adminRoutes';
 import { monitorAdminRouter, pushAdminRouter } from './monitorAdmin';
 
 export const adminRouter = Router();
+
+/** Header secret → short-lived SSE ticket (no admin middleware; validates secret itself). */
+adminRouter.post('/events-ticket', (req, res) => {
+  issueEventsTicket(req, res);
+});
 
 adminRouter.use(requireAdminSecret);
 adminRouter.use('/agent', agentAdminRouter);
@@ -125,7 +130,8 @@ adminRouter.patch('/settings', async (req, res) => {
 adminRouter.get('/conversations', async (req, res) => {
   const q = String(req.query.q ?? '')
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const limit = Math.min(
     200,
     Math.max(1, parseInt(String(req.query.limit ?? '50'), 10) || 50)

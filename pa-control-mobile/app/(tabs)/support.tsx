@@ -70,25 +70,37 @@ export default function SupportScreen() {
 
   useEffect(() => {
     let es: EventSource | null = null
-    try {
-      es = new EventSource(supportEventsUrl()) as EventSource
-      es.addEventListener('open', () => setLive(true))
-      const onSupport = (event: { data?: string | null }) => {
-        if (!event.data) return
-        try {
-          const parsed = JSON.parse(String(event.data)) as SupportEventRow
-          setEvents((prev) => [parsed, ...prev.filter((e) => e.id !== parsed.id)].slice(0, 150))
-          setLive(true)
-        } catch {
-          // ignore bad payloads
+    let cancelled = false
+    void (async () => {
+      try {
+        const url = await supportEventsUrl()
+        if (cancelled) return
+        es = new EventSource(url) as EventSource
+        es.addEventListener('open', () => setLive(true))
+        const onSupport = (event: { data?: string | null }) => {
+          if (!event.data) return
+          try {
+            const parsed = JSON.parse(String(event.data)) as SupportEventRow
+            setEvents((prev) =>
+              [parsed, ...prev.filter((e) => e.id !== parsed.id)].slice(0, 150)
+            )
+            setLive(true)
+          } catch {
+            // ignore bad payloads
+          }
         }
+        ;(
+          es as unknown as {
+            addEventListener: (t: string, cb: typeof onSupport) => void
+          }
+        ).addEventListener('support', onSupport)
+        es.addEventListener('error', () => setLive(false))
+      } catch {
+        if (!cancelled) setLive(false)
       }
-      ;(es as unknown as { addEventListener: (t: string, cb: typeof onSupport) => void }).addEventListener('support', onSupport)
-      es.addEventListener('error', () => setLive(false))
-    } catch {
-      setLive(false)
-    }
+    })()
     return () => {
+      cancelled = true
       es?.close()
       setLive(false)
     }

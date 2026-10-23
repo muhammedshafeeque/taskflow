@@ -1,4 +1,5 @@
 import { ApiError } from '../../utils/ApiError';
+import { escapeRegex } from '../../utils/safeUrl';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { DocumentRecord } from './models/documentRecord.model';
 import { snapshotBeforeEdit } from './documentSigning.service';
@@ -21,7 +22,7 @@ export async function listDocuments(
   if (query.entityId) filter.entityId = query.entityId;
   if (query.accountId) filter.accountId = query.accountId;
   if (query.isTemplate != null) filter.isTemplate = query.isTemplate === 'true';
-  if (query.search) filter.title = new RegExp(query.search, 'i');
+  if (query.search) filter.title = new RegExp(escapeRegex(query.search), 'i');
   return DocumentRecord.find(filter).populate('accountId', 'name').populate('ownerId', 'name').sort({ updatedAt: -1 }).lean();
 }
 

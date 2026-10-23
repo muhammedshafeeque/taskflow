@@ -4,7 +4,9 @@ import {
   assertPathJail,
   commandToArgv,
   isCommandAllowed,
+  mergeAllowCommands,
   redactLogLine,
+  requireWorkspaceRoots,
 } from '../security';
 import { hashSecret, generatePairingCode } from '../models/AgentDevice';
 
@@ -30,6 +32,33 @@ describe('agent security', () => {
       assertPathJail('/tmp/workspaces/app', ['/tmp/workspaces']),
       '/tmp/workspaces/app'
     );
+  });
+
+  it('requires workspace roots in production', () => {
+    assert.throws(
+      () => requireWorkspaceRoots([], { NODE_ENV: 'production' }),
+      /AGENT_WORKSPACE_ROOTS/
+    );
+    assert.doesNotThrow(() =>
+      requireWorkspaceRoots(['/tmp'], { NODE_ENV: 'production' })
+    );
+    assert.doesNotThrow(() =>
+      requireWorkspaceRoots([], { NODE_ENV: 'development' })
+    );
+  });
+
+  it('mergeAllowCommands cannot widen after bootstrap', () => {
+    assert.deepEqual(mergeAllowCommands([], ['npm test', 'rm -rf /']), [
+      'npm test',
+      'rm -rf /',
+    ]);
+    assert.deepEqual(
+      mergeAllowCommands(['npm test'], ['npm test', 'rm -rf /']),
+      ['npm test']
+    );
+    assert.deepEqual(mergeAllowCommands(['npm test', './deploy.sh'], ['npm test']), [
+      'npm test',
+    ]);
   });
 
   it('redacts secrets in logs', () => {

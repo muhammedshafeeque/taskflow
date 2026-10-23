@@ -17,33 +17,11 @@ import { HrmsLeaveRequest } from '../hrms/models/hrmsLeaveRequest.model';
 import { HrmsAttendance } from '../hrms/models/hrmsAttendance.model';
 import * as assetsService from '../assets/assets.service';
 import * as procurementService from '../procurement/procurement.service';
-
-function assertPaIngestSecret(req: Request) {
-  const configured = String(process.env.PA_INGEST_SECRET ?? '').trim();
-  if (!configured) {
-    throw new ApiError(503, 'PA ingest is not configured (PA_INGEST_SECRET)');
-  }
-  const provided = String(req.headers['x-pa-ingest-secret'] ?? '').trim();
-  if (!provided || provided !== configured) {
-    throw new ApiError(401, 'Invalid ingest secret');
-  }
-}
-
-function resolvePaOrganizationId(req: Request, body?: Record<string, unknown>) {
-  const organizationId = String(
-    body?.organizationId ??
-      req.headers['x-organization-id'] ??
-      process.env.PA_DEFAULT_ORG_ID ??
-      ''
-  ).trim();
-  if (!organizationId) {
-    throw new ApiError(400, 'organizationId is required');
-  }
-  if (!mongoose.Types.ObjectId.isValid(organizationId)) {
-    throw new ApiError(400, 'Invalid organizationId');
-  }
-  return organizationId;
-}
+import {
+  assertPaIngestSecret,
+  assertProjectInOrganization,
+  resolvePaOrganizationId,
+} from './paIngestAuth';
 
 export function normalizePhoneDigits(raw: string): string {
   return String(raw || '')
@@ -54,7 +32,7 @@ export function normalizePhoneDigits(raw: string): string {
 /** GET /service/ingest/kb/search?q= */
 export async function ingestKbSearch(req: Request, res: Response) {
   assertPaIngestSecret(req);
-  const orgId = resolvePaOrganizationId(req);
+  const orgId = await resolvePaOrganizationId(req);
   const q = String(req.query.q || '').trim();
   const articles = await kbService.searchKbArticles(orgId, q);
   const data = (articles || []).slice(0, 5).map((a) => ({
@@ -70,7 +48,7 @@ export async function ingestKbSearch(req: Request, res: Response) {
 /** GET /service/ingest/customer-orgs */
 export async function ingestListCustomerOrgs(req: Request, res: Response) {
   assertPaIngestSecret(req);
-  const orgId = resolvePaOrganizationId(req);
+  const orgId = await resolvePaOrganizationId(req);
   const orgs = await CustomerOrg.find({
     taskflowOrganizationId: orgId,
     status: 'active',
@@ -97,7 +75,7 @@ export async function ingestListCustomerOrgs(req: Request, res: Response) {
 export async function ingestCreateRequest(req: Request, res: Response) {
   assertPaIngestSecret(req);
   const body = (req.body || {}) as Record<string, unknown>;
-  const workspaceId = resolvePaOrganizationId(req, body);
+  const workspaceId = await resolvePaOrganizationId(req, body);
   const customerOrgId = String(body.customerOrgId || '').trim();
   const projectId = String(body.projectId || '').trim();
   const title = String(body.title || '').trim();
@@ -189,7 +167,7 @@ export async function ingestListServiceTicketsFiltered(
   res: Response
 ) {
   assertPaIngestSecret(req);
-  const orgId = resolvePaOrganizationId(req);
+  const orgId = await resolvePaOrganizationId(req);
   const status = req.query.status ? String(req.query.status) : undefined;
   const customerOrgId = req.query.customerOrgId
     ? String(req.query.customerOrgId)
@@ -244,13 +222,14 @@ export async function ingestListServiceTicketsFiltered(
 /** GET /service/ingest/issues/by-key?key=&projectId= */
 export async function ingestIssueByKey(req: Request, res: Response) {
   assertPaIngestSecret(req);
-  resolvePaOrganizationId(req);
+  const orgId = await resolvePaOrganizationId(req);
   const key = String(req.query.key || '').trim().toUpperCase();
   const projectId = String(req.query.projectId || '').trim();
   if (!key) throw new ApiError(400, 'key is required');
   if (!projectId || !mongoose.Types.ObjectId.isValid(projectId)) {
     throw new ApiError(400, 'projectId is required');
   }
+  await assertProjectInOrganization(projectId, orgId);
   const issue = (await issuesService.findByProjectAndKey(
     projectId,
     key
@@ -281,7 +260,7 @@ export async function ingestIssueByKey(req: Request, res: Response) {
 /** GET /service/ingest/billing/summary?accountId= or ?customerOrgId= */
 export async function ingestBillingSummary(req: Request, res: Response) {
   assertPaIngestSecret(req);
-  const orgId = resolvePaOrganizationId(req);
+  const orgId = await resolvePaOrganizationId(req);
   let accountId = String(req.query.accountId || '').trim();
   const customerOrgId = String(req.query.customerOrgId || '').trim();
   if (!accountId && customerOrgId) {
@@ -336,7 +315,7 @@ export async function ingestBillingSummary(req: Request, res: Response) {
 /** GET /service/ingest/hrms/me?phone=&email= */
 export async function ingestHrmsMe(req: Request, res: Response) {
   assertPaIngestSecret(req);
-  const orgId = resolvePaOrganizationId(req);
+  const orgId = await resolvePaOrganizationId(req);
   const phone = normalizePhoneDigits(String(req.query.phone || ''));
   const email = String(req.query.email || '')
     .trim()
@@ -422,7 +401,7 @@ export async function ingestHrmsMe(req: Request, res: Response) {
 /** GET /service/ingest/assets/search?q= */
 export async function ingestAssetsSearch(req: Request, res: Response) {
   assertPaIngestSecret(req);
-  const orgId = resolvePaOrganizationId(req);
+  const orgId = await resolvePaOrganizationId(req);
   const q = String(req.query.q || '').trim();
   const assets = await assetsService.listAssets(orgId, { search: q || undefined });
   res.json({
@@ -448,7 +427,7 @@ export async function ingestAssetsSearch(req: Request, res: Response) {
 /** GET /service/ingest/procurement/pos?status=&q= */
 export async function ingestProcurementPos(req: Request, res: Response) {
   assertPaIngestSecret(req);
-  const orgId = resolvePaOrganizationId(req);
+  const orgId = await resolvePaOrganizationId(req);
   const status = req.query.status ? String(req.query.status) : undefined;
   const q = String(req.query.q || '').trim().toLowerCase();
   let pos = await procurementService.listPurchaseOrders(orgId, { status });

@@ -166,6 +166,7 @@ import {
   AssetsWarranty,
 } from './pages/assets/AssetsSections';
 import ResourcesDashboard from './pages/resources/ResourcesDashboard';
+import ResourcesEngagement from './pages/resources/ResourcesEngagement';
 import {
   ResourcesUtilization,
   ResourcesBench,
@@ -423,6 +424,7 @@ function AppRoutes() {
         <Route element={<ResourcesModuleLayout />}>
           <Route path="/resources" element={<ResourcesDashboard />} />
           <Route path="/resources/utilization" element={<ResourcesUtilization />} />
+          <Route path="/resources/engagement" element={<ResourcesEngagement />} />
           <Route path="/resources/bench" element={<ResourcesBench />} />
           <Route path="/resources/allocations" element={<ResourcesAllocations />} />
           <Route path="/resources/forecast" element={<ResourcesForecast />} />

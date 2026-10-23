@@ -561,9 +561,28 @@ export type ServiceTicketRow = {
   projectId?: { name?: string; key?: string } | string
 }
 
-export function supportEventsUrl(): string {
-  const secret = encodeURIComponent(getStoredSecret())
-  return `${getBaseUrl()}/api/admin/support/events?secret=${secret}`
+async function fetchAdminSseTicket(): Promise<string> {
+  const secret = getStoredSecret()
+  if (!secret) throw new Error('Admin secret required')
+  const res = await fetch(`${getBaseUrl()}/api/admin/events-ticket`, {
+    method: 'POST',
+    headers: { 'x-pa-admin-secret': secret },
+  })
+  const json = (await res.json().catch(() => ({}))) as {
+    success?: boolean
+    data?: { ticket?: string }
+    error?: string
+  }
+  if (!res.ok || !json.data?.ticket) {
+    throw new Error(json.error || 'Failed to issue SSE ticket')
+  }
+  return json.data.ticket
+}
+
+/** SSE URL using a short-lived ticket (never put PA_ADMIN_SECRET in the query). */
+export async function supportEventsUrl(): Promise<string> {
+  const ticket = encodeURIComponent(await fetchAdminSseTicket())
+  return `${getBaseUrl()}/api/admin/support/events?ticket=${ticket}`
 }
 
 export type AgentDeviceRow = {
@@ -599,11 +618,11 @@ export type AgentJobRow = {
   updatedAt?: string
 }
 
-export function agentJobEventsUrl(jobId: string): string {
-  const secret = encodeURIComponent(getStoredSecret())
+export async function agentJobEventsUrl(jobId: string): Promise<string> {
+  const ticket = encodeURIComponent(await fetchAdminSseTicket())
   return `${getBaseUrl()}/api/admin/agent/jobs/${encodeURIComponent(
     jobId
-  )}/events?secret=${secret}`
+  )}/events?ticket=${ticket}`
 }
 
 /* ------------------------------ Atrium Monitor ----------------------------- */

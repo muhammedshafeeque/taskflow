@@ -40,8 +40,11 @@ export async function inviteMember(
   const existing = await CustomerUser.findOne({ customerOrgId: orgId, email: input.email }).lean();
   if (existing) throw new ApiError(409, 'A user with this email already exists in the organisation');
 
-  const tempPassword = crypto.randomBytes(8).toString('hex');
+  const tempPassword = crypto.randomBytes(32).toString('hex');
   const hashedPassword = await bcrypt.hash(tempPassword, SALT_ROUNDS);
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  const resetHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+  const resetExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   const org = await CustomerOrg.findById(orgId).select('name').lean();
 
@@ -55,18 +58,21 @@ export async function inviteMember(
     status: 'active',
     mustChangePassword: true,
     invitedBy,
+    passwordResetToken: resetHash,
+    passwordResetExpires: resetExpires,
   });
 
-  // Send invite email
+  const appBase = env.appUrl.replace(/\/$/, '');
+  const resetLink = `${appBase}/reset-password?token=${encodeURIComponent(resetToken)}`;
   sendCustomerEmail(
     input.email,
     `You've been invited to ${org?.name ?? 'Customer Portal'}`,
     renderCustomerMemberInviteEmail(
       input.name,
       input.email,
-      tempPassword,
       org?.name ?? 'Customer Portal',
-      env.appUrl
+      appBase,
+      resetLink
     )
   ).catch((err) => console.error('Failed to send member invite email:', err));
 

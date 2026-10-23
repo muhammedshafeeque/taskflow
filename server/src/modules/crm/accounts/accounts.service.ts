@@ -13,6 +13,7 @@ import { ServiceTicket } from '../../service-desk/models/serviceTicket.model';
 import { Asset } from '../../assets/models/asset.model';
 import { DocumentRecord } from '../../documents/models/documentRecord.model';
 import { ApiError } from '../../../utils/ApiError';
+import { escapeRegex } from '../../../utils/safeUrl';
 import { requireWorkspaceId, toOrgOid } from '../crmWorkspace';
 import { logAudit } from '../../auditLogs/logAudit';
 
@@ -24,7 +25,7 @@ export async function listAccounts(
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
   if (opts.type) filter.type = opts.type;
   if (opts.search?.trim()) {
-    filter.name = { $regex: opts.search.trim(), $options: 'i' };
+    filter.name = { $regex: escapeRegex(opts.search.trim()), $options: 'i' };
   }
   const page = opts.page ?? 1;
   const limit = Math.min(opts.limit ?? 50, 100);
@@ -154,9 +155,25 @@ export async function updateAccount(
   userId: string
 ) {
   const orgId = requireWorkspaceId(workspaceId);
+  const { pickUpdateFields } = await import('../../../utils/pickUpdateFields');
+  const $set = pickUpdateFields(input, [
+    'name',
+    'domain',
+    'industry',
+    'website',
+    'phone',
+    'status',
+    'ownerId',
+    'notes',
+    'tags',
+    'address',
+    'billingEmail',
+    'crmAccountId',
+    'customerOrgId',
+  ]);
   const updated = await CrmAccount.findOneAndUpdate(
     { _id: id, taskflowOrganizationId: toOrgOid(orgId) },
-    { $set: input },
+    { $set },
     { new: true }
   ).lean();
   if (!updated) throw new ApiError(404, 'Account not found');

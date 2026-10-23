@@ -4,35 +4,12 @@ import { ApiError } from '../../../utils/ApiError';
 import { User } from '../../auth/user.model';
 import { ServiceTicket } from '../../service-desk/models/serviceTicket.model';
 import * as ticketsService from '../../service-desk/tickets.service';
+import {
+  assertPaIngestSecret,
+  resolvePaOrganizationId,
+} from '../../service-desk/paIngestAuth';
 import { CustomerRequest } from './customerRequest.model';
 import * as customerRequestService from './customerRequest.service';
-
-function assertPaIngestSecret(req: Request) {
-  const configured = String(process.env.PA_INGEST_SECRET ?? '').trim();
-  if (!configured) {
-    throw new ApiError(503, 'PA ingest is not configured (PA_INGEST_SECRET)');
-  }
-  const provided = String(req.headers['x-pa-ingest-secret'] ?? '').trim();
-  if (!provided || provided !== configured) {
-    throw new ApiError(401, 'Invalid ingest secret');
-  }
-}
-
-function resolvePaOrganizationId(req: Request, body?: Record<string, unknown>) {
-  const organizationId = String(
-    body?.organizationId ??
-      req.headers['x-organization-id'] ??
-      process.env.PA_DEFAULT_ORG_ID ??
-      ''
-  ).trim();
-  if (!organizationId) {
-    throw new ApiError(400, 'organizationId is required');
-  }
-  if (!mongoose.Types.ObjectId.isValid(organizationId)) {
-    throw new ApiError(400, 'Invalid organizationId');
-  }
-  return organizationId;
-}
 
 async function resolvePaActorUserId(): Promise<string> {
   const fromEnv = String(process.env.PA_INGEST_ACTOR_USER_ID ?? '').trim();
@@ -64,7 +41,7 @@ async function resolvePaActorUserId(): Promise<string> {
 /** GET /service/ingest/requests?status=&page=&limit=&pendingOnly=1 */
 export async function ingestListRequests(req: Request, res: Response) {
   assertPaIngestSecret(req);
-  const orgId = resolvePaOrganizationId(req);
+  const orgId = await resolvePaOrganizationId(req);
   const page = parseInt(String(req.query.page ?? '1'), 10);
   const limit = parseInt(String(req.query.limit ?? '50'), 10);
   const status = req.query.status ? String(req.query.status) : undefined;
@@ -83,7 +60,7 @@ export async function ingestListRequests(req: Request, res: Response) {
 /** GET /service/ingest/requests/:id */
 export async function ingestGetRequest(req: Request, res: Response) {
   assertPaIngestSecret(req);
-  const orgId = resolvePaOrganizationId(req);
+  const orgId = await resolvePaOrganizationId(req);
   const requestId = String(req.params.id || '');
   await customerRequestService.assertCustomerRequestInTaskflowWorkspace(
     requestId,
@@ -102,7 +79,7 @@ export async function ingestGetRequest(req: Request, res: Response) {
 export async function ingestApproveRequest(req: Request, res: Response) {
   assertPaIngestSecret(req);
   const body = (req.body || {}) as Record<string, unknown>;
-  const orgId = resolvePaOrganizationId(req, body);
+  const orgId = await resolvePaOrganizationId(req, body);
   const actorId = await resolvePaActorUserId();
   const workClassification = body.workClassification as
     | 'billable_change'
@@ -124,7 +101,7 @@ export async function ingestApproveRequest(req: Request, res: Response) {
 export async function ingestRejectRequest(req: Request, res: Response) {
   assertPaIngestSecret(req);
   const body = (req.body || {}) as Record<string, unknown>;
-  const orgId = resolvePaOrganizationId(req, body);
+  const orgId = await resolvePaOrganizationId(req, body);
   const actorId = await resolvePaActorUserId();
   const note = body.note != null ? String(body.note) : undefined;
   const reason = body.reason != null ? String(body.reason) : undefined;
@@ -142,7 +119,7 @@ export async function ingestRejectRequest(req: Request, res: Response) {
 /** GET /service/ingest/service-tickets?status=&queue= */
 export async function ingestListServiceTickets(req: Request, res: Response) {
   assertPaIngestSecret(req);
-  const orgId = resolvePaOrganizationId(req);
+  const orgId = await resolvePaOrganizationId(req);
   const status = req.query.status ? String(req.query.status) : undefined;
   const queue = req.query.queue ? String(req.query.queue) : undefined;
   const tickets = await ticketsService.listTickets(orgId, { status, queue });
@@ -153,7 +130,7 @@ export async function ingestListServiceTickets(req: Request, res: Response) {
 export async function ingestUpdateServiceTicket(req: Request, res: Response) {
   assertPaIngestSecret(req);
   const body = (req.body || {}) as Record<string, unknown>;
-  const orgId = resolvePaOrganizationId(req, body);
+  const orgId = await resolvePaOrganizationId(req, body);
   const id = String(req.params.id || '');
 
   const patch: Record<string, unknown> = {};

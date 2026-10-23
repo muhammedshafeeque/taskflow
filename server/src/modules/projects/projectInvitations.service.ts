@@ -13,6 +13,7 @@ import {
   FULL_PROJECT_ROLE_PERMISSION_CODES,
 } from '../../constants/permissions';
 import { mapLegacyProjectOrGlobalPermissions } from '../../shared/constants/legacyPermissionMap';
+import { PROJECT_PERMISSIONS as PROJECT_PERMISSION_CODES } from '../../shared/constants/permissions';
 import * as inboxService from '../inbox/inbox.service';
 import { renderProjectInviteEmail } from '../../services/email.service';
 import { env } from '../../config/env';
@@ -41,7 +42,12 @@ const PROJECT_MEMBER_ROLE_NAME = 'Project Member';
 const PROJECT_LEAD_ROLE_NAME = 'Project Lead';
 
 const FULL_PROJECT_PERMS_DOT = mapLegacyProjectOrGlobalPermissions([...FULL_PROJECT_ROLE_PERMISSION_CODES]);
-const DEFAULT_MEMBER_PERMS_DOT = mapLegacyProjectOrGlobalPermissions([...DEFAULT_PROJECT_MEMBER_PERMISSION_CODES]);
+// The legacy colon codes predate comments, so add them explicitly or new members can't see or post comments.
+const DEFAULT_MEMBER_PERMS_DOT = mapLegacyProjectOrGlobalPermissions([
+  ...DEFAULT_PROJECT_MEMBER_PERMISSION_CODES,
+  PROJECT_PERMISSION_CODES.ISSUE.COMMENT.READ,
+  PROJECT_PERMISSION_CODES.ISSUE.COMMENT.CREATE,
+]);
 
 async function snapshotFromRoleId(roleId: unknown): Promise<string[]> {
   const id =

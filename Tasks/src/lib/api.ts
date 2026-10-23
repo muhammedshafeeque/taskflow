@@ -177,13 +177,17 @@ export const authApi = {
     api.post<{ enabled: boolean; recoveryCodes: string[] }>('/auth/2fa/confirm', { code }, token),
   twoFactorDisable: (code: string, token: string) => api.post<{ enabled: boolean }>('/auth/2fa/disable', { code }, token),
 
-  microsoftSso: (code: string, redirectUri?: string) =>
-    api.post<AuthData>('/auth/sso/microsoft', { code, redirectUri }),
+  microsoftSso: (code: string, redirectUri?: string, state?: string) =>
+    api.post<AuthData>('/auth/sso/microsoft', { code, redirectUri, state }),
 
   microsoftSsoAuthorizeUrl: (redirectUri?: string) => {
     const q = redirectUri ? `?${new URLSearchParams({ redirectUri }).toString()}` : '';
     return api.get<{ url: string; state: string }>(`/auth/sso/microsoft/url${q}`);
   },
+
+  /** Exchange one-time OAuth redirect code for access + refresh tokens. */
+  oauthExchange: (code: string) =>
+    api.post<{ tokens: AuthData['tokens'] }>('/auth/oauth/exchange', { code }),
 
   refresh: (refreshToken: string) =>
     api.post<AuthData>('/auth/refresh', { refreshToken }),
@@ -196,8 +200,12 @@ export const authApi = {
 
   changePassword: (currentPassword: string, newPassword: string, token: string) =>
     api.patch<{ user: AuthUser }>('/auth/me/password', { currentPassword, newPassword }, token),
-  setPassword: (newPassword: string, token: string) =>
-    api.post<{ user: AuthUser }>('/auth/set-password', { newPassword }, token),
+  setPassword: (newPassword: string, token: string, currentPassword?: string) =>
+    api.post<{ user: AuthUser }>(
+      '/auth/set-password',
+      { newPassword, ...(currentPassword ? { currentPassword } : {}) },
+      token
+    ),
 
   forgotPassword: (email: string) =>
     api.post<{ message?: string }>('/auth/forgot-password', { email }),
@@ -3574,6 +3582,125 @@ export interface ResourceProfileRow {
   profileId?: string | null;
 }
 
+export type EngagementLevel = 'off' | 'free' | 'partial' | 'busy' | 'over';
+export type EngagementHoursSource = 'stage' | 'estimate' | 'points' | 'default' | 'none';
+
+export interface ResourceSettingsRow {
+  hoursPerStoryPoint: number | null;
+  defaultTaskHours: number | null;
+  includePendingStageEstimates: boolean;
+}
+
+export interface EngagementDay {
+  date: string;
+  kind: 'work' | 'weekend' | 'holiday' | 'leave' | 'half_leave';
+  capacityHours: number;
+  allocatedPct: number;
+  softPct: number;
+  taskHours: number;
+  /** Portion of taskHours that is overdue work back-filled into spare capacity. */
+  overdueHours: number;
+  taskCount: number;
+  taskPct: number;
+  engagementPct: number;
+  level: EngagementLevel;
+  note?: string;
+}
+
+export interface EngagementPerson {
+  userId: string;
+  name: string;
+  email: string;
+  department?: string;
+  capacityHoursPerWeek: number;
+  summary: {
+    avgEngagement: number;
+    peakEngagement: number;
+    overbookedDays: number;
+    busyDays: number;
+    freeDays: number;
+    leaveDays: number;
+    availableHours: number;
+    openTasks: number;
+    remainingHours: number;
+    noEstimateTasks: number;
+    overEstimateTasks: number;
+    overdueTasks: number;
+    overdueHours: number;
+    unplacedHours: number;
+    unscheduledTasks: number;
+    unscheduledHours: number;
+    nextAvailable: string | null;
+    freeFrom: string | null;
+    busyThroughRangeEnd: boolean;
+    tasksClearOn: string | null;
+    commitmentsEnd: string | null;
+    openEndedAllocation: boolean;
+  };
+  allocations: Array<{
+    allocationId: string;
+    id: string;
+    name?: string;
+    key?: string;
+    percent: number;
+    softBooked: boolean;
+    startDate: string;
+    endDate: string | null;
+    roleLabel?: string;
+  }>;
+  tasks: Array<{
+    issueId: string;
+    key?: string;
+    title: string;
+    status: string;
+    priority?: string;
+    project?: { id: string; name?: string; key?: string };
+    lane?: string;
+    hoursSource: EngagementHoursSource;
+    estimateHours: number;
+    loggedHours: number;
+    remainingHours: number;
+    overEstimate: boolean;
+    windowStart: string | null;
+    windowEnd: string | null;
+    windowSource: 'due' | 'sprint' | 'milestone' | 'none';
+    schedule: 'scheduled' | 'overdue' | 'unscheduled';
+    unplacedHours: number;
+  }>;
+  days: EngagementDay[];
+}
+
+export interface EngagementReport {
+  from: string;
+  to: string;
+  today: string;
+  threshold: number;
+  busyPct: number;
+  weekendDays: number[];
+  settings: ResourceSettingsRow;
+  summary: {
+    people: number;
+    avgEngagement: number;
+    overbookedPeople: number;
+    availableHours: number;
+    openTasks: number;
+    overdueTasks: number;
+    unscheduledTasks: number;
+    noEstimateTasks: number;
+    hoursSources: Array<{ source: EngagementHoursSource; tasks: number }>;
+  };
+  team: Array<{
+    date: string;
+    working: boolean;
+    holiday?: string;
+    avgEngagement: number;
+    available: number;
+    overbooked: number;
+    onLeave: number;
+  }>;
+  people: EngagementPerson[];
+}
+
 export const resourcesApi = {
   dashboard: (token: string) => api.get('/resources/dashboard', token),
   options: (token: string) =>
@@ -3599,6 +3726,20 @@ export const resourcesApi = {
     const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
     return api.get(`/resources/utilization${q}`, token);
   },
+  engagement: (
+    token: string,
+    params: { from?: string; to?: string; userId?: string; projectId?: string; threshold?: string } = {}
+  ) => {
+    const sp = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v) sp.set(k, v);
+    });
+    const q = sp.toString();
+    return api.get<EngagementReport>(`/resources/engagement${q ? `?${q}` : ''}`, token);
+  },
+  settings: (token: string) => api.get<ResourceSettingsRow>('/resources/settings', token),
+  updateSettings: (data: Partial<ResourceSettingsRow>, token: string) =>
+    api.put<ResourceSettingsRow>('/resources/settings', data, token),
   bench: (token: string, threshold?: number) =>
     api.get(`/resources/bench${threshold != null ? `?threshold=${threshold}` : ''}`, token),
   forecast: (token: string) => api.get('/resources/forecast', token),

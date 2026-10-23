@@ -51,9 +51,11 @@ export async function updatePipeline(
   input: Record<string, unknown>
 ) {
   const orgId = requireWorkspaceId(workspaceId);
+  const { pickUpdateFields } = await import('../../../utils/pickUpdateFields');
+  const $set = pickUpdateFields(input, ['name', 'stages', 'isDefault', 'active']);
   const updated = await CrmPipeline.findOneAndUpdate(
     { _id: id, taskflowOrganizationId: toOrgOid(orgId) },
-    { $set: input },
+    { $set },
     { new: true }
   ).lean();
   if (!updated) throw new ApiError(404, 'Pipeline not found');

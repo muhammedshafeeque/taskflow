@@ -68,25 +68,50 @@ export interface AuthUser {
   createdAt?: string;
 }
 
-function signTokens(
+function hashToken(raw: string): string {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+async function persistRefreshJti(
+  userType: 'taskflow' | 'customer',
+  userId: string,
+  jti: string
+): Promise<void> {
+  if (userType === 'customer') {
+    await CustomerUser.findByIdAndUpdate(userId, { $set: { refreshTokenJti: jti } });
+  } else {
+    await User.findByIdAndUpdate(userId, { $set: { refreshTokenJti: jti } });
+  }
+}
+
+async function signTokens(
   sub: string,
   userType: 'taskflow' | 'customer',
   extra?: { orgId?: string; activeOrganizationId?: string }
-): AuthTokens {
+): Promise<AuthTokens> {
   const options = { expiresIn: env.jwtExpiresIn };
   const payload: Record<string, unknown> = { sub, userType };
   if (userType === 'customer' && extra?.orgId) payload.orgId = extra.orgId;
-  if (userType === 'taskflow' && extra?.activeOrganizationId) payload.activeOrganizationId = extra.activeOrganizationId;
+  if (userType === 'taskflow' && extra?.activeOrganizationId) {
+    payload.activeOrganizationId = extra.activeOrganizationId;
+  }
+  const jti = crypto.randomBytes(16).toString('hex');
   const refreshPayload: Record<string, unknown> = {
     sub,
     userType,
     type: 'refresh',
+    jti,
     ...(userType === 'customer' && extra?.orgId ? { orgId: extra.orgId } : {}),
-    ...(userType === 'taskflow' && extra?.activeOrganizationId ? { activeOrganizationId: extra.activeOrganizationId } : {}),
+    ...(userType === 'taskflow' && extra?.activeOrganizationId
+      ? { activeOrganizationId: extra.activeOrganizationId }
+      : {}),
   };
 
   const accessToken = jwt.sign(payload, env.jwtSecret, options as jwt.SignOptions);
-  const refreshToken = jwt.sign(refreshPayload, env.jwtSecret, { expiresIn: '30d' } as jwt.SignOptions);
+  const refreshToken = jwt.sign(refreshPayload, env.jwtRefreshSecret, {
+    expiresIn: env.jwtRefreshExpiresIn,
+  } as jwt.SignOptions);
+  await persistRefreshJti(userType, sub, jti);
   return {
     accessToken,
     refreshToken,
@@ -141,7 +166,7 @@ export async function switchTaskflowOrganization(
     throw new ApiError(401, 'Account is disabled');
   }
   const { activeOrganizationId, organizations } = await buildTaskflowSession(userId, organizationId);
-  const tokens = signTokens(userId, 'taskflow', { activeOrganizationId });
+  const tokens = await signTokens(userId, 'taskflow', { activeOrganizationId });
   const authUser = await toAuthUser(user as unknown as IUser & { roleId?: unknown; mustChangePassword?: boolean });
   return {
     user: {
@@ -154,11 +179,15 @@ export async function switchTaskflowOrganization(
   };
 }
 
-export async function issueTaskflowAccessTokenForOAuth(userId: string): Promise<string> {
+export async function issueTaskflowTokensForOAuth(userId: string): Promise<AuthTokens> {
   const { activeOrganizationId } = await buildTaskflowSession(userId);
-  const payload: Record<string, unknown> = { sub: userId, userType: 'taskflow' };
-  if (activeOrganizationId) payload.activeOrganizationId = activeOrganizationId;
-  return jwt.sign(payload, env.jwtSecret, { expiresIn: env.jwtExpiresIn } as jwt.SignOptions);
+  return signTokens(userId, 'taskflow', { activeOrganizationId });
+}
+
+/** @deprecated Prefer issueTaskflowTokensForOAuth — access-only helper for legacy callers. */
+export async function issueTaskflowAccessTokenForOAuth(userId: string): Promise<string> {
+  const tokens = await issueTaskflowTokensForOAuth(userId);
+  return tokens.accessToken;
 }
 
 async function toAuthUser(user: IUser & { roleId?: unknown; mustChangePassword?: boolean }): Promise<AuthUser> {
@@ -219,7 +248,7 @@ export async function register(input: RegisterInput): Promise<{ user: AuthUser; 
     permissions: assignment.permissions,
   });
 
-  const tokens = signTokens(user._id.toString(), 'taskflow');
+  const tokens = await signTokens(user._id.toString(), 'taskflow');
   const authUser = await toAuthUser(user);
   return { user: authUser, tokens };
 }
@@ -230,7 +259,7 @@ export async function completeTaskflowLogin(userId: string): Promise<{ user: Aut
   if (!tfUser) throw new ApiError(401, 'User not found');
   const authUser = await toAuthUser(tfUser as unknown as IUser & { roleId?: unknown; mustChangePassword?: boolean });
   const { activeOrganizationId, organizations } = await buildTaskflowSession(userId);
-  const tokens = signTokens(userId, 'taskflow', { activeOrganizationId });
+  const tokens = await signTokens(userId, 'taskflow', { activeOrganizationId });
   return { user: { ...authUser, userType: 'taskflow', activeOrganizationId, organizations }, tokens };
 }
 
@@ -281,7 +310,7 @@ export async function login(input: LoginInput): Promise<{ user: AuthUser | Recor
     // Get org info for slug
     const org = await CustomerOrg.findById(customerUser.customerOrgId).select('slug name').lean();
 
-    const tokens = signTokens(customerUser._id.toString(), 'customer', {
+    const tokens = await signTokens(customerUser._id.toString(), 'customer', {
       orgId: customerUser.customerOrgId.toString(),
     });
 
@@ -311,13 +340,20 @@ export async function login(input: LoginInput): Promise<{ user: AuthUser | Recor
 }
 
 export async function refresh(refreshToken: string): Promise<{ user: AuthUser | Record<string, unknown>; tokens: AuthTokens }> {
-  const decoded = jwt.verify(refreshToken, env.jwtSecret) as {
+  let decoded: {
     sub?: string;
     type?: string;
     userType?: string;
     orgId?: string;
     activeOrganizationId?: string;
+    jti?: string;
   };
+  try {
+    decoded = jwt.verify(refreshToken, env.jwtRefreshSecret) as typeof decoded;
+  } catch {
+    // Migration: accept refresh tokens signed with the old access secret once.
+    decoded = jwt.verify(refreshToken, env.jwtSecret) as typeof decoded;
+  }
 
   if (decoded.type !== 'refresh' || !decoded.sub) {
     throw new ApiError(401, 'Invalid refresh token');
@@ -325,6 +361,7 @@ export async function refresh(refreshToken: string): Promise<{ user: AuthUser | 
 
   if (decoded.userType === 'customer') {
     const customerUser = await CustomerUser.findById(decoded.sub)
+      .select('+refreshTokenJti')
       .populate('roleId', 'permissions name')
       .lean();
 
@@ -334,10 +371,17 @@ export async function refresh(refreshToken: string): Promise<{ user: AuthUser | 
     if (customerUser.status !== 'active') {
       throw new ApiError(401, 'Account is not active');
     }
+    if (
+      decoded.jti &&
+      customerUser.refreshTokenJti &&
+      customerUser.refreshTokenJti !== decoded.jti
+    ) {
+      throw new ApiError(401, 'Refresh token has been revoked');
+    }
 
     const org = await CustomerOrg.findById(customerUser.customerOrgId).select('slug name').lean();
 
-    const tokens = signTokens(customerUser._id.toString(), 'customer', {
+    const tokens = await signTokens(customerUser._id.toString(), 'customer', {
       orgId: customerUser.customerOrgId.toString(),
     });
 
@@ -364,20 +408,23 @@ export async function refresh(refreshToken: string): Promise<{ user: AuthUser | 
   }
 
   // Default: TF user
-  const user = await User.findById(decoded.sub).lean();
+  const user = await User.findById(decoded.sub).select('+refreshTokenJti').lean();
   if (!user) {
     throw new ApiError(401, 'User not found');
   }
-  const u = user as { enabled?: boolean };
+  const u = user as { enabled?: boolean; refreshTokenJti?: string | null };
   if (u.enabled === false) {
     throw new ApiError(401, 'Account is disabled');
+  }
+  if (decoded.jti && u.refreshTokenJti && u.refreshTokenJti !== decoded.jti) {
+    throw new ApiError(401, 'Refresh token has been revoked');
   }
 
   const { activeOrganizationId, organizations } = await buildTaskflowSession(
     user._id.toString(),
     decoded.activeOrganizationId
   );
-  const tokens = signTokens(user._id.toString(), 'taskflow', { activeOrganizationId });
+  const tokens = await signTokens(user._id.toString(), 'taskflow', { activeOrganizationId });
   const authUser = await toAuthUser(user as unknown as IUser & { roleId?: unknown; mustChangePassword?: boolean });
   return {
     user: { ...authUser, userType: 'taskflow', activeOrganizationId, organizations },
@@ -423,9 +470,23 @@ export async function customerMe(customerUserId: string): Promise<Record<string,
   };
 }
 
-export async function setPassword(userId: string, newPassword: string): Promise<AuthUser> {
+export async function setPassword(
+  userId: string,
+  newPassword: string,
+  currentPassword?: string
+): Promise<AuthUser> {
   if (!isEmailPasswordAuthEnabled()) {
     throw new ApiError(403, 'Password authentication is disabled.');
+  }
+  const user = await User.findById(userId).select('+password').lean();
+  if (!user) throw new ApiError(401, 'User not found');
+  // If a password already exists, require the current one (prevents session-theft lock-in).
+  if (user.password) {
+    if (!currentPassword) {
+      throw new ApiError(400, 'Current password is required');
+    }
+    const match = await bcrypt.compare(currentPassword, user.password);
+    if (!match) throw new ApiError(401, 'Current password is incorrect');
   }
   const hashed = await bcrypt.hash(newPassword, SALT_ROUNDS);
   await User.findByIdAndUpdate(userId, {
@@ -480,7 +541,7 @@ export async function forgotPassword(email: string): Promise<void> {
   const token = crypto.randomBytes(32).toString('hex');
   const expires = new Date(Date.now() + 60 * 60 * 1000);
   await User.findByIdAndUpdate(user._id, {
-    $set: { passwordResetToken: token, passwordResetExpires: expires },
+    $set: { passwordResetToken: hashToken(token), passwordResetExpires: expires },
   });
 
   const appBase = (env.frontendUrl || env.appUrl).replace(/\/$/, '');
@@ -507,7 +568,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
     throw new ApiError(403, 'Password authentication is disabled.');
   }
   const user = await User.findOne({
-    passwordResetToken: token,
+    passwordResetToken: hashToken(token),
     passwordResetExpires: { $gt: new Date() },
   })
     .select('+password +passwordResetToken +passwordResetExpires')
@@ -564,8 +625,18 @@ type MicrosoftUserInfo = {
 
 export async function microsoftSso(input: MicrosoftSsoInput): Promise<{ user: AuthUser | Record<string, unknown>; tokens: AuthTokens }> {
   ensureMicrosoftConfigured();
+  const {
+    assertAllowedMicrosoftRedirectUri,
+    consumeMicrosoftOAuthState,
+  } = await import('./microsoftOAuthState');
   const code = input.code;
-  const redirectUri = input.redirectUri || env.azureRedirectUri || env.appUrl;
+  let redirectUri = input.redirectUri || env.azureRedirectUri || env.appUrl;
+  if (input.state) {
+    const bound = consumeMicrosoftOAuthState(input.state);
+    if (!bound) throw new ApiError(400, 'Invalid or expired OAuth state');
+    redirectUri = bound;
+  }
+  redirectUri = assertAllowedMicrosoftRedirectUri(redirectUri);
 
   const params = new URLSearchParams();
   params.set('client_id', env.azureAdClientId);
@@ -601,6 +672,9 @@ export async function microsoftSso(input: MicrosoftSsoInput): Promise<{ user: Au
   let user: any = await User.findOne({ email: rawEmail }).lean();
 
   if (!user) {
+    if (!isPublicSignupEnabled()) {
+      throw new ApiError(403, 'Account does not exist. Contact an administrator for access.');
+    }
     if (env.maxUsers !== null) {
       const count = await User.countDocuments();
       if (count >= env.maxUsers) {
@@ -646,18 +720,24 @@ export async function microsoftSso(input: MicrosoftSsoInput): Promise<{ user: Au
 
   if (!user) throw new ApiError(500, 'User not found after SSO');
   const { activeOrganizationId, organizations } = await buildTaskflowSession(String(user._id));
-  const tokens = signTokens(String(user._id), 'taskflow', { activeOrganizationId });
+  const tokens = await signTokens(String(user._id), 'taskflow', { activeOrganizationId });
   const authUser = await toAuthUser(user as any);
   return { user: { ...authUser, userType: 'taskflow', activeOrganizationId, organizations }, tokens };
 }
 
 export async function microsoftSsoAuthorizeUrl(input: { redirectUri?: string } = {}): Promise<{ url: string; state: string }> {
   ensureMicrosoftConfigured();
+  const {
+    assertAllowedMicrosoftRedirectUri,
+    createMicrosoftOAuthState,
+  } = await import('./microsoftOAuthState');
 
-  const redirectUri = input.redirectUri || env.azureRedirectUri || env.appUrl;
+  const redirectUri = assertAllowedMicrosoftRedirectUri(
+    input.redirectUri || env.azureRedirectUri || env.appUrl
+  );
   const tenantId = env.azureAdTenantId || 'common';
 
-  const state = crypto.randomBytes(18).toString('hex');
+  const state = createMicrosoftOAuthState(redirectUri);
   const url = new URL(`https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/authorize`);
   url.searchParams.set('client_id', env.azureAdClientId);
   url.searchParams.set('response_type', 'code');
@@ -798,7 +878,7 @@ export async function ideAuthExchange(input: {
   if (u.enabled === false) throw new ApiError(401, 'Account is disabled');
 
   const { activeOrganizationId, organizations } = await buildTaskflowSession(user._id.toString());
-  const tokens = signTokens(user._id.toString(), 'taskflow', { activeOrganizationId });
+  const tokens = await signTokens(user._id.toString(), 'taskflow', { activeOrganizationId });
   const authUser = await toAuthUser(user as unknown as IUser & { roleId?: unknown; mustChangePassword?: boolean });
   return {
     user: { ...authUser, userType: 'taskflow', activeOrganizationId, organizations },

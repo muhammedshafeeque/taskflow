@@ -43,10 +43,12 @@ function releaseSyncLock(issueId: string): void {
   syncLocks.delete(issueId);
 }
 
-export function buildWebhookUrl(projectId: string, webhookSecret: string): string {
+export function buildWebhookUrl(projectId: string, _webhookSecret?: string): string {
   const base = env.appUrl.replace(/\/$/, '');
   const apiBase = base.includes('localhost:517') ? 'http://localhost:5000' : base;
-  return `${apiBase}/api/webhooks/azure-devops/${projectId}?secret=${encodeURIComponent(webhookSecret)}`;
+  // Do not embed the secret in the URL (logs/Referer). Send `x-ado-webhook-secret` header.
+  // Query `?secret=` remains accepted as a temporary fallback for providers that cannot set headers.
+  return `${apiBase}/api/webhooks/azure-devops/${projectId}`;
 }
 
 export async function getIntegrationForProject(projectId: string) {

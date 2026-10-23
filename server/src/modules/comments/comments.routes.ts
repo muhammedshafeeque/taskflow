@@ -19,7 +19,11 @@ router.use(authMiddleware);
 
 const readComment = requireIssuePermission(PROJECT_PERMISSIONS.ISSUE.COMMENT.READ, 'issueId');
 const createComment = requireIssuePermission(PROJECT_PERMISSIONS.ISSUE.COMMENT.CREATE, 'issueId');
-const updateComment = requireIssuePermission(PROJECT_PERMISSIONS.ISSUE.COMMENT.UPDATE, 'issueId');
+// The service only lets authors edit their own comments, so anyone who may comment may edit theirs.
+const updateComment = requireIssuePermission(
+  [PROJECT_PERMISSIONS.ISSUE.COMMENT.UPDATE, PROJECT_PERMISSIONS.ISSUE.COMMENT.CREATE],
+  'issueId'
+);
 const deleteCommentPerm = requireIssuePermission(PROJECT_PERMISSIONS.ISSUE.COMMENT.DELETE, 'issueId');
 
 router.get('/', ...issueIdOnlyParamHandler, readComment, asyncHandler(getComments));

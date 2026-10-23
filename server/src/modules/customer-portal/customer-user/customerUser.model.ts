@@ -17,6 +17,7 @@ export interface ICustomerUser extends Document {
   mustChangePassword: boolean;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
+  refreshTokenJti?: string | null;
   invitedBy?: Types.ObjectId;
   lastLoginAt?: Date;
   permissionOverrides: ICustomerPermissionOverrides;
@@ -37,6 +38,7 @@ const customerUserSchema = new Schema<ICustomerUser>(
     mustChangePassword: { type: Boolean, default: true },
     passwordResetToken: { type: String, select: false },
     passwordResetExpires: { type: Date, select: false },
+    refreshTokenJti: { type: String, select: false, default: null },
     invitedBy: { type: Schema.Types.ObjectId, ref: 'CustomerUser' },
     lastLoginAt: { type: Date },
     permissionOverrides: {

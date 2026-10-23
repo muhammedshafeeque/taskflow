@@ -57,9 +57,25 @@ export async function createDeal(workspaceId: string | null | undefined, input: 
 
 export async function updateDeal(id: string, workspaceId: string | null | undefined, input: Record<string, unknown>) {
   const orgId = requireWorkspaceId(workspaceId);
+  const { pickUpdateFields } = await import('../../../utils/pickUpdateFields');
+  const $set = pickUpdateFields(input, [
+    'title',
+    'value',
+    'currency',
+    'stageId',
+    'pipelineId',
+    'accountId',
+    'contactId',
+    'ownerId',
+    'status',
+    'expectedCloseDate',
+    'lineItems',
+    'notes',
+    'probability',
+  ]);
   const updated = await CrmDeal.findOneAndUpdate(
     { _id: id, taskflowOrganizationId: toOrgOid(orgId) },
-    { $set: input },
+    { $set },
     { new: true }
   ).lean();
   if (!updated) throw new ApiError(404, 'Deal not found');

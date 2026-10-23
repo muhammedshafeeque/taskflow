@@ -30,36 +30,42 @@ export function SupportPage() {
 
   useEffect(() => {
     let es: EventSource | null = null
-    try {
-      es = new EventSource(supportEventsUrl())
-      es.addEventListener('support', (ev) => {
-        try {
-          const data = JSON.parse((ev as MessageEvent).data) as SupportEventRow
-          setEvents((prev) => [data, ...prev].slice(0, 80))
-          if (
-            data.type === 'TICKET_CREATED' ||
-            data.type === 'NEW_ISSUE_DETECTED' ||
-            data.type === 'DUPLICATE_ISSUE_FOUND'
-          ) {
-            setBadge((n) => n + 1)
-            setToast(
-              `${data.type.replace(/_/g, ' ')}: ${
-                data.summary || data.ticketId || data.groupName || ''
-              }`
-            )
-            void load()
+    let cancelled = false
+    void (async () => {
+      try {
+        const url = await supportEventsUrl()
+        if (cancelled) return
+        es = new EventSource(url)
+        es.addEventListener('support', (ev) => {
+          try {
+            const data = JSON.parse((ev as MessageEvent).data) as SupportEventRow
+            setEvents((prev) => [data, ...prev].slice(0, 80))
+            if (
+              data.type === 'TICKET_CREATED' ||
+              data.type === 'NEW_ISSUE_DETECTED' ||
+              data.type === 'DUPLICATE_ISSUE_FOUND'
+            ) {
+              setBadge((n) => n + 1)
+              setToast(
+                `${data.type.replace(/_/g, ' ')}: ${
+                  data.summary || data.ticketId || data.groupName || ''
+                }`
+              )
+              void load()
+            }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
+        })
+        es.onerror = () => {
+          // browser will retry
         }
-      })
-      es.onerror = () => {
-        // browser will retry
+      } catch (err) {
+        console.warn('SSE failed', err)
       }
-    } catch (err) {
-      console.warn('SSE failed', err)
-    }
+    })()
     return () => {
+      cancelled = true
       es?.close()
     }
   }, [])
