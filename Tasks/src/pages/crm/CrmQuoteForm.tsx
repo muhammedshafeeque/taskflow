@@ -26,6 +26,7 @@ import {
   type CrmQuote,
   type CrmQuoteBillingType,
 } from '../../lib/api';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 type Line = {
   description: string;
@@ -435,11 +436,7 @@ export default function CrmQuoteForm() {
   }
 
   if (loading) {
-    return (
-      <div className="p-8">
-        <p className="text-sm text-[color:var(--text-muted)]">Loading quotation…</p>
-      </div>
-    );
+    return <ModuleLoader label="Loading quotation…" />;
   }
 
   if (error && !isNew && form.dealId === '' && form.leadId === '' && !loading) {

@@ -174,6 +174,7 @@ import ResourcesSchedule from './pages/resources/ResourcesSchedule';
 import ResourcesForecast from './pages/resources/ResourcesForecast';
 import ResourcesConflicts from './pages/resources/ResourcesConflicts';
 import ResourcesTeam from './pages/resources/ResourcesTeam';
+import ResourcesTeams from './pages/resources/ResourcesTeams';
 import ProcurementDashboard from './pages/procurement/ProcurementDashboard';
 import {
   ProcurementVendors,
@@ -430,6 +431,7 @@ function AppRoutes() {
           <Route path="/resources/forecast" element={<ResourcesForecast />} />
           <Route path="/resources/conflicts" element={<ResourcesConflicts />} />
           <Route path="/resources/team" element={<ResourcesTeam />} />
+          <Route path="/resources/teams" element={<ResourcesTeams />} />
         </Route>
 
         {/* Procurement */}

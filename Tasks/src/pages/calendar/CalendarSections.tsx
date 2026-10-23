@@ -5,6 +5,7 @@ import type { CalendarEvent } from '../../lib/api';
 import {
   Field, GhostButton, Modal, PrimaryButton, SectionPage, TextArea, TextInput, nameOf,
 } from '../../components/moduleKit';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 function tableWrap(children: React.ReactNode) {
   return (
@@ -39,7 +40,7 @@ function EventList({ kind, title, subtitle }: { kind: string; title: string; sub
 
   return (
     <SectionPage title={title} subtitle={subtitle} toolbar={<PrimaryButton onClick={() => setEditing({ start: nowLocal(), allDay: false })}>+ Schedule</PrimaryButton>}>
-      {loading ? <p className="text-sm text-[color:var(--text-muted)]">Loading…</p> : rows.length === 0 ? (
+      {loading ? <ModuleLoader size="block" label="Loading schedule…" /> : rows.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)]">Nothing scheduled.</p>
       ) : tableWrap(
         <>

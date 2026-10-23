@@ -5,6 +5,7 @@ import type { Asset, AssetLicense } from '../../lib/api';
 import {
   ExportButton, Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextInput, money, nameOf,
 } from '../../components/moduleKit';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 const assetStatusTone: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = {
   in_stock: 'blue', assigned: 'green', in_repair: 'amber', retired: 'slate',
@@ -62,7 +63,7 @@ function AssetList({ title, subtitle, fixedCategory, warrantyMode = false }: { t
       { header: 'Value', value: (r) => r.purchaseCost ?? 0 },
       { header: 'Warranty expiry', value: (r) => (r.warrantyExpiry ? new Date(r.warrantyExpiry).toLocaleDateString() : '') },
     ]} /><PrimaryButton onClick={() => setEditing({ category: fixedCategory ?? 'laptop', status: 'in_stock', currency: 'USD' })}>+ Add asset</PrimaryButton></div>}>
-      {loading ? <p className="text-sm text-[color:var(--text-muted)]">Loading…</p> : rows.length === 0 ? (
+      {loading ? <ModuleLoader size="block" label="Loading assets…" /> : rows.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)]">No assets yet.</p>
       ) : (
         tableWrap(
@@ -162,7 +163,7 @@ export function AssetsLicenses() {
 
   return (
     <SectionPage title="Licenses" subtitle="Software licenses and seat allocation." toolbar={<PrimaryButton onClick={() => setEditing({ status: 'active', currency: 'USD', seatsTotal: 1, seatsUsed: 0 })}>+ Add license</PrimaryButton>}>
-      {loading ? <p className="text-sm text-[color:var(--text-muted)]">Loading…</p> : rows.length === 0 ? (
+      {loading ? <ModuleLoader size="block" label="Loading licenses…" /> : rows.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)]">No licenses tracked yet.</p>
       ) : (
         tableWrap(

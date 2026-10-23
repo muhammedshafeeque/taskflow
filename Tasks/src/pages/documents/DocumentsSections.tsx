@@ -6,6 +6,7 @@ import DocumentHistoryModal from '../../components/documents/DocumentHistoryModa
 import {
   Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, money, nameOf,
 } from '../../components/moduleKit';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 const STATUSES = ['draft', 'in_review', 'sent', 'signed', 'approved', 'archived'];
 const statusTone: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = {
@@ -45,7 +46,7 @@ function DocList({ kind, title, subtitle, isTemplate = false }: { kind: string; 
 
   return (
     <SectionPage title={title} subtitle={subtitle} toolbar={<PrimaryButton onClick={() => setEditing({ status: 'draft', currency: 'USD', value: 0 })}>+ New {isTemplate ? 'template' : kind}</PrimaryButton>}>
-      {loading ? <p className="text-sm text-[color:var(--text-muted)]">Loading…</p> : rows.length === 0 ? (
+      {loading ? <ModuleLoader size="block" label={`Loading ${title.toLowerCase()}…`} /> : rows.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)]">Nothing here yet.</p>
       ) : tableWrap(
         <>

@@ -18,6 +18,7 @@ import { resourcesApi } from '../../lib/api';
 import MetricCard from '../../components/MetricCard';
 import SectionCard from '../../components/SectionCard';
 import { chartTooltipProps, getChartColor } from '../../lib/chartTheme';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 type ResourcesDash = {
   counts: {
@@ -79,13 +80,7 @@ export default function ResourcesDashboard() {
   }, [token]);
 
   if (loading) {
-    return (
-      <div className="p-8 w-full px-4 sm:px-6 lg:px-8">
-        <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-10 text-center text-[color:var(--text-muted)] animate-pulse">
-          Loading resources dashboard…
-        </div>
-      </div>
-    );
+    return <ModuleLoader label="Loading resources dashboard…" />;
   }
 
   if (!data) {

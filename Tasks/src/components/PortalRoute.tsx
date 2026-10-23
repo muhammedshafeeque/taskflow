@@ -1,17 +1,14 @@
 import { Navigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import PortalLayout from './PortalLayout';
+import { ModuleLoader } from './loaders/ModuleLoader';
 
 export default function PortalRoute() {
   const { token, user, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[color:var(--bg-page)]">
-        <div className="animate-pulse text-[color:var(--text-muted)]">Loading…</div>
-      </div>
-    );
+    return <ModuleLoader module="app" label="Opening your portal…" className="min-h-screen bg-[color:var(--bg-page)]" />;
   }
 
   if (!token || !user) {

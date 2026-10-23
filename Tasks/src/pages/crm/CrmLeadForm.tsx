@@ -25,6 +25,7 @@ import {
   LEAD_TIMELINES,
   refId,
 } from './leadCatalog';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 const inputClass =
   'w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3.5 py-2.5 text-sm text-[color:var(--text-primary)] placeholder:text-[color:var(--text-muted)]/70 transition-shadow focus:outline-none focus:border-[color:var(--accent)]/50 focus:ring-4 focus:ring-[color:var(--accent)]/15 disabled:opacity-60 disabled:cursor-not-allowed';
@@ -450,11 +451,7 @@ export default function CrmLeadForm() {
 
   if (!allowed) return <Navigate to="/crm/leads" replace />;
   if (loading) {
-    return (
-      <div className="p-10 flex items-center justify-center text-sm text-[color:var(--text-muted)]">
-        Loading lead…
-      </div>
-    );
+    return <ModuleLoader label="Loading lead…" />;
   }
 
   const backTo = id ? `/crm/leads/${id}` : '/crm/leads';

@@ -18,6 +18,7 @@ import { contractsApi } from '../../lib/api';
 import MetricCard from '../../components/MetricCard';
 import SectionCard from '../../components/SectionCard';
 import { chartTooltipProps, getChartColor } from '../../lib/chartTheme';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 type ContractsDash = {
   counts: {
@@ -82,13 +83,7 @@ export default function ContractsDashboard() {
   }, [token]);
 
   if (loading) {
-    return (
-      <div className="p-8 w-full px-4 sm:px-6 lg:px-8">
-        <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-10 text-center text-[color:var(--text-muted)] animate-pulse">
-          Loading contracts dashboard…
-        </div>
-      </div>
-    );
+    return <ModuleLoader label="Loading contracts dashboard…" />;
   }
 
   if (!data) {

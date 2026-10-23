@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import { coreApi, uploadFile, type CoreCompanySettings, type CoreCurrency } from '../../lib/api';
 import { resolveMediaUrl } from '../../hooks/useAppDisplayName';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 const TIMEZONES = [
   'UTC',
@@ -320,11 +321,7 @@ export default function CoreCompany() {
   const logoPreview = resolveMediaUrl(form.logoUrl);
 
   if (loading) {
-    return (
-      <div className="p-6 flex items-center justify-center min-h-[40vh] text-sm text-[color:var(--text-muted)]">
-        Loading company profile…
-      </div>
-    );
+    return <ModuleLoader label="Loading company profile…" />;
   }
 
   return (

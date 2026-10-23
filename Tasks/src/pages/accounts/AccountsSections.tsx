@@ -6,6 +6,7 @@ import type { AccountExpense, BillingInvoice } from '../../lib/api';
 import {
   ExportButton, Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, money, nameOf,
 } from '../../components/moduleKit';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 function tableWrap(children: React.ReactNode) {
   return (
@@ -27,7 +28,7 @@ export function AccountsLedger() {
 
   return (
     <SectionPage title="General ledger" subtitle="Journal derived from billing revenue and expenses. Post invoices from the Invoices tab.">
-      {!data ? <p className="text-sm text-[color:var(--text-muted)]">Loading…</p> : (
+      {!data ? <ModuleLoader size="block" label="Loading general ledger…" /> : (
         <>
           <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-5 py-4 flex flex-wrap gap-6">
             <div><p className="text-xs text-[color:var(--text-muted)]">Total credits (revenue)</p><p className="text-xl font-bold text-emerald-500">{money(data.totalCredit)}</p></div>
@@ -76,7 +77,7 @@ export function AccountsInvoices() {
 
   return (
     <SectionPage title="Invoices" subtitle="Commercial invoices from Billing. Post to the ledger to reflect them in the books.">
-      {loading ? <p className="text-sm text-[color:var(--text-muted)]">Loading…</p> : rows.length === 0 ? (
+      {loading ? <ModuleLoader size="block" label="Loading invoices…" /> : rows.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)]">No invoices yet — create them in Billing.</p>
       ) : tableWrap(
         <>
@@ -148,7 +149,7 @@ export function AccountsExpenses() {
       { header: 'Amount', value: (r) => r.amount },
       { header: 'Currency', value: (r) => r.currency },
     ]} /><PrimaryButton onClick={() => setEditing({ category: 'other', status: 'submitted', currency: 'USD', expenseDate: new Date().toISOString().slice(0, 10) })}>+ Add expense</PrimaryButton></div>}>
-      {loading ? <p className="text-sm text-[color:var(--text-muted)]">Loading…</p> : rows.length === 0 ? (
+      {loading ? <ModuleLoader size="block" label="Loading expenses…" /> : rows.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)]">No expenses yet.</p>
       ) : tableWrap(
         <>
@@ -221,7 +222,7 @@ export function AccountsReports() {
 
   return (
     <SectionPage title="Financial reports" subtitle="Profit & loss summary derived from billing and expenses.">
-      {!data ? <p className="text-sm text-[color:var(--text-muted)]">Loading…</p> : (
+      {!data ? <ModuleLoader size="block" label="Loading financial reports…" /> : (
         <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-6 max-w-xl">
           <h2 className="text-sm font-bold mb-4">Profit &amp; loss</h2>
           <dl className="space-y-2.5 text-sm">

@@ -6,6 +6,7 @@ import type { PurchaseOrder, CrmAccount } from '../../lib/api';
 import {
   ExportButton, Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, money, nameOf,
 } from '../../components/moduleKit';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 const poStatusTone: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate' | 'violet'> = {
   draft: 'slate', pending_approval: 'amber', approved: 'blue', ordered: 'violet', received: 'green', cancelled: 'red',
@@ -81,7 +82,7 @@ function PoList({ title, subtitle, fixedCategory }: { title: string; subtitle: s
       { header: 'Total', value: (r) => r.total },
     ]} /><PrimaryButton onClick={openNew}>+ New PO</PrimaryButton></div>}>
       {msg && <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-600 dark:text-emerald-400">{msg}</div>}
-      {loading ? <p className="text-sm text-[color:var(--text-muted)]">Loading…</p> : rows.length === 0 ? (
+      {loading ? <ModuleLoader size="block" label="Loading purchase orders…" /> : rows.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)]">No purchase orders yet.</p>
       ) : (
         tableWrap(
@@ -200,7 +201,7 @@ export function ProcurementVendors() {
 
   return (
     <SectionPage title="Vendors" subtitle="Vendor master shared with CRM (accounts of type vendor)." toolbar={<PrimaryButton onClick={() => setEditing({ name: '', industry: '', website: '', notes: '' })}>+ Add vendor</PrimaryButton>}>
-      {loading ? <p className="text-sm text-[color:var(--text-muted)]">Loading…</p> : rows.length === 0 ? (
+      {loading ? <ModuleLoader size="block" label="Loading vendors…" /> : rows.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)]">No vendors yet.</p>
       ) : (
         tableWrap(

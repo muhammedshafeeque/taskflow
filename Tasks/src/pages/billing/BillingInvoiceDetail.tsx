@@ -7,6 +7,7 @@ import { money } from '../../components/moduleKit';
 import { api, billingApi, type BillingInvoice, type BillingInvoiceLine } from '../../lib/api';
 import { billingTypeLabel } from '../../lib/billingLineUtils';
 import { buildInvoicePdf, downloadInvoicePdfFromInvoice } from '../../lib/invoicePdf';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 function refId(ref?: string | { _id: string }): string {
   if (!ref) return '';
@@ -170,7 +171,7 @@ export default function BillingInvoiceDetail() {
   }
 
   if (loading) {
-    return <div className="p-8 text-[color:var(--text-muted)]">Loading invoice…</div>;
+    return <ModuleLoader label="Loading invoice…" />;
   }
 
   if (error || !invoice) {

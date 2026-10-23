@@ -15,6 +15,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { sprintsApi, projectsApi, type Sprint, type Project } from '../lib/api';
 import { SprintRetroPanel } from '../components/ai/AiPanels';
+import { ModuleLoader } from '../components/loaders/ModuleLoader';
 
 export default function SprintReport() {
   const { projectId, sprintId } = useParams<{ projectId: string; sprintId: string }>();
@@ -58,11 +59,7 @@ export default function SprintReport() {
   }, [token, projectId, sprintId]);
 
   if (loading) {
-    return (
-      <div className="p-8 animate-fade-in">
-        <div className="text-[color:var(--text-muted)] animate-pulse">Loading report…</div>
-      </div>
-    );
+    return <ModuleLoader label="Loading report…" />;
   }
 
   if (!report) {

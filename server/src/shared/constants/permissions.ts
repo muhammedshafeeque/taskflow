@@ -245,6 +245,7 @@ export const TASK_FLOW_PERMISSIONS = {
       ALLOCATION: { READ: 'taskflow.resources.allocation.read', MANAGE: 'taskflow.resources.allocation.manage' },
       PROFILE: { MANAGE: 'taskflow.resources.profile.manage' },
       SETTINGS: { MANAGE: 'taskflow.resources.settings.manage' },
+      TEAM: { MANAGE: 'taskflow.resources.team.manage' },
     },
     PROCUREMENT: {
       DASHBOARD: { READ: 'taskflow.procurement.dashboard.read' },

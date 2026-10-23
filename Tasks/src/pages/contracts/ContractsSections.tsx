@@ -10,6 +10,7 @@ import {
   type CrmContractSupportPeriod,
   type SlaPolicy,
 } from '../../lib/api';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 function accountLabel(accountId: CrmContract['accountId']): string {
   if (accountId && typeof accountId === 'object') return accountId.name;
@@ -1111,11 +1112,7 @@ export function ContractsAgreementDetail() {
   const backTo = listPathForKind(contract?.kind);
 
   if (loading) {
-    return (
-      <div className="p-8">
-        <p className="text-sm text-[color:var(--text-muted)]">Loading agreement…</p>
-      </div>
-    );
+    return <ModuleLoader label="Loading agreement…" />;
   }
 
   if (error || !contract) {

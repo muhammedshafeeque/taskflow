@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import { hrmsApi, type PayComponent, type PayrollAdjustment, type PayrollRun, type PayrollSettings, type Payslip } from '../../lib/api';
 import { Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextInput, money } from '../../components/moduleKit';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 const runTone = { draft: 'amber', finalized: 'blue', paid: 'green' } as const;
 
@@ -251,7 +252,7 @@ function SettingsModal({ token, onClose }: { token: string; onClose: () => void 
       }
     >
       {!settings ? (
-        <p className="text-sm text-[color:var(--text-muted)]">Loading…</p>
+        <ModuleLoader size="block" label="Loading payroll settings…" />
       ) : (
         <div className="space-y-3">
           <p className="text-xs text-[color:var(--text-muted)]">

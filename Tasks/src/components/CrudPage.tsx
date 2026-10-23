@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import { canAny } from '../utils/moduleAccess';
 import { Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, TextArea, TextInput } from './moduleKit';
+import { ModuleLoader } from './loaders/ModuleLoader';
 
 /**
  * Config-driven list + create/edit form for simple admin collections
@@ -305,8 +306,8 @@ export function CrudPage(cfg: CrudConfig) {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={cfg.columns.length + 1} className="px-4 py-6 text-center text-[color:var(--text-muted)]">
-                  Loading…
+                <td colSpan={cfg.columns.length + 1} className="px-4 py-2">
+                  <ModuleLoader size="block" label={`Loading ${cfg.title.toLowerCase()}…`} className="!border-0 !bg-transparent" />
                 </td>
               </tr>
             )}

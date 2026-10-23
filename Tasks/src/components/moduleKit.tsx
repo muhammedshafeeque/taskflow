@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 import { Link } from 'react-router-dom';
 import { downloadCsv, type CsvColumn } from '../lib/exportCsv';
+import { ModuleLoader } from './loaders/ModuleLoader';
 
 /** Currency formatter shared across the business modules. */
 export function money(n: number | undefined, currency = 'USD'): string {
@@ -17,13 +18,7 @@ export function EmptyChart({ label }: { label: string }) {
 }
 
 export function LoadingCard({ label }: { label: string }) {
-  return (
-    <div className="p-8 w-full px-4 sm:px-6 lg:px-8">
-      <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-10 text-center text-[color:var(--text-muted)] animate-pulse">
-        {label}
-      </div>
-    </div>
-  );
+  return <ModuleLoader label={label} />;
 }
 
 type HeaderAction = { to?: string; label: string; onClick?: () => void; primary?: boolean };

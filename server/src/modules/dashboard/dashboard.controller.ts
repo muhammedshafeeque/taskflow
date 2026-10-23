@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import type { AuthPayload } from '../../types/express';
 import { asyncHandler } from '../../utils/asyncHandler';
 import * as dashboardService from './dashboard.service';
+import { getOverview } from './overview.service';
 import { ApiError } from '../../utils/ApiError';
 import { formatMinutesForExport } from '../workLogs/workLogs.service';
 import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
@@ -12,6 +13,17 @@ export async function getDashboardStats(req: Request & { user?: AuthPayload }, r
   const userId = req.user?.id;
   if (!userId) throw new ApiError(401, 'Unauthorized');
   const data = await dashboardService.getStatsForUser(userId, req.activeOrganizationId);
+  res.status(200).json({ success: true, data });
+}
+
+export async function getDashboardOverview(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
+  const userId = req.user?.id;
+  if (!userId) throw new ApiError(401, 'Unauthorized');
+  const weeks = Number(req.query.weeks);
+  const data = await getOverview(userId, req.activeOrganizationId, {
+    projectId: (req.query.projectId as string | undefined) || undefined,
+    weeks: Number.isFinite(weeks) && weeks > 0 ? weeks : undefined,
+  });
   res.status(200).json({ success: true, data });
 }
 

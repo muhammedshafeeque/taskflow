@@ -1180,8 +1180,115 @@ export interface PerformanceReportData {
   chartByMember: PerformanceReportChartMember[];
 }
 
+export type ProjectHealth = 'on_track' | 'at_risk' | 'off_track' | 'idle';
+
+export interface OverviewIssueRef {
+  id: string;
+  key?: string;
+  title: string;
+  status: string;
+  priority?: string;
+  type?: string;
+  dueDate: string | null;
+  assignee: { id: string; name?: string } | null;
+  project: { id: string; name?: string; key?: string };
+}
+
+/** PM dashboard overview — GET /dashboard/overview. */
+export interface DashboardOverview {
+  generatedAt: string;
+  today: string;
+  weekStart: string;
+  scope: { projects: number; archivedProjects: number };
+  kpis: {
+    totalIssues: number;
+    openIssues: number;
+    overdue: number;
+    dueThisWeek: number;
+    unassigned: number;
+    completedThisWeek: number;
+    completedLastWeek: number;
+    createdThisWeek: number;
+    createdLastWeek: number;
+    loggedHoursThisWeek: number;
+    loggedHoursLastWeek: number;
+    medianCycleDays: number | null;
+    completionPct: number;
+    activeSprints: number;
+    lateMilestones: number;
+  };
+  trend: Array<{ weekStart: string; created: number; completed: number; loggedHours: number }>;
+  byStatus: Array<{ name: string; count: number; color?: string; closed: boolean; order: number }>;
+  aging: Array<{ label: string; count: number }>;
+  byType: Array<{ name: string; count: number }>;
+  byPriority: Array<{ name: string; count: number }>;
+  projects: Array<{
+    id: string;
+    name: string;
+    key: string;
+    total: number;
+    open: number;
+    done: number;
+    progressPct: number;
+    overdue: number;
+    dueSoon: number;
+    unassigned: number;
+    completed14: number;
+    created14: number;
+    lateMilestones: number;
+    health: ProjectHealth;
+    lastActivity: string | null;
+    activeSprint: { id: string; name: string; endDate: string | null; progressPct: number } | null;
+    nextMilestone: { id: string; name: string; dueDate: string | null } | null;
+  }>;
+  sprints: Array<{
+    id: string;
+    name: string;
+    status: string;
+    project: { id: string; name?: string; key?: string };
+    startDate: string | null;
+    endDate: string | null;
+    daysLeft: number | null;
+    total: number;
+    done: number;
+    points: number;
+    donePoints: number;
+    progressPct: number;
+    elapsedPct: number | null;
+  }>;
+  milestones: Array<{
+    id: string;
+    name: string;
+    project: { id: string; name?: string; key?: string };
+    dueDate: string | null;
+    daysLeft: number | null;
+    total: number;
+    done: number;
+    progressPct: number;
+  }>;
+  myWork: { open: number; overdue: number; dueThisWeek: number; completedThisWeek: number; loggedHoursThisWeek: number; items: OverviewIssueRef[] };
+  attention: { overdue: OverviewIssueRef[]; unassignedDueSoon: OverviewIssueRef[] };
+  team: Array<{ id: string; name: string; open: number; overdue: number; dueSoon: number; points: number; completed14: number; loggedHoursThisWeek: number }>;
+  activity: Array<{
+    id: string;
+    at: string;
+    author: string;
+    action: string;
+    field?: string;
+    toValue?: string;
+    issue: { id: string; key?: string; title: string; projectId: string; projectKey?: string };
+  }>;
+}
+
 export const dashboardApi = {
   getStats: (token: string) => api.get<DashboardStats>('/dashboard/stats', token),
+  getOverview: (token: string, params: { projectId?: string; weeks?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.projectId) q.set('projectId', params.projectId);
+    if (params.weeks) q.set('weeks', String(params.weeks));
+    const qs = q.toString();
+    return api.get<DashboardOverview>(`/dashboard/overview${qs ? `?${qs}` : ''}`, token);
+  },
   getPortfolio: (token: string) =>
     api.get<Array<{ projectId: string; projectName: string; projectKey: string; totalIssues: number; doneCount: number; openCount: number; progressPercent: number }>>('/dashboard/portfolio', token),
   getPortfolioTimeline: (token: string) =>
@@ -3818,11 +3925,30 @@ export interface EngagementEntryRow {
   project: { id: string; name?: string; key?: string } | null;
 }
 
+/** An internal team. People, teams and projects are many-to-many. */
+export interface ResourceTeamRow {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  lead: { id: string; name?: string } | null;
+  members: Array<{ id: string; name?: string; email?: string }>;
+  projects: Array<{ id: string; name?: string; key?: string }>;
+  updatedAt?: string;
+}
+
+export interface EngagementTeamRef {
+  id: string;
+  name: string;
+  color?: string;
+}
+
 export interface EngagementPerson {
   userId: string;
   name: string;
   email: string;
   department?: string;
+  teams: EngagementTeamRef[];
   capacityHoursPerWeek: number;
   summary: {
     avgEngagement: number;
@@ -3918,6 +4044,7 @@ export interface EngagementReport {
     overbooked: number;
     onLeave: number;
   }>;
+  teams: Array<EngagementTeamRef & { memberIds: string[]; projectIds: string[] }>;
   people: EngagementPerson[];
 }
 
@@ -3953,12 +4080,18 @@ export const resourcesApi = {
     api.get(`/resources/utilization${resourceQs(params)}`, token),
   engagement: (
     token: string,
-    params: { from?: string; to?: string; userId?: string; projectId?: string; threshold?: string } = {}
+    params: { from?: string; to?: string; userId?: string; projectId?: string; teamIds?: string; threshold?: string } = {}
   ) => api.get<EngagementReport>(`/resources/engagement${resourceQs(params)}`, token),
   createEngagementEntry: (data: Record<string, unknown>, token: string) => api.post('/resources/engagement/entries', data, token),
   updateEngagementEntry: (id: string, data: Record<string, unknown>, token: string) =>
     api.patch(`/resources/engagement/entries/${id}`, data, token),
   deleteEngagementEntry: (id: string, token: string) => api.delete(`/resources/engagement/entries/${id}`, token),
+  listTeams: (token: string, params?: { projectId?: string; userId?: string }) =>
+    api.get<ResourceTeamRow[]>(`/resources/teams${resourceQs(params)}`, token),
+  createTeam: (data: Record<string, unknown>, token: string) => api.post<ResourceTeamRow>('/resources/teams', data, token),
+  updateTeam: (id: string, data: Record<string, unknown>, token: string) =>
+    api.patch<ResourceTeamRow>(`/resources/teams/${id}`, data, token),
+  deleteTeam: (id: string, token: string) => api.delete(`/resources/teams/${id}`, token),
   settings: (token: string) => api.get<ResourceSettingsRow>('/resources/settings', token),
   updateSettings: (data: Partial<ResourceSettingsRow>, token: string) =>
     api.put<ResourceSettingsRow>('/resources/settings', data, token),

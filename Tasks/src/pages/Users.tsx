@@ -7,6 +7,7 @@ import { formatDateDDMMYYYY } from '../lib/dateFormat';
 import { EditIcon, RolesIcon } from '../components/icons/NavigationIcons';
 import { userHasPermission } from '../utils/permissions';
 import { TASK_FLOW_PERMISSIONS } from '@shared/constants/permissions';
+import { ModuleLoader } from '../components/loaders/ModuleLoader';
 
 function getInitials(name: string): string {
   return name
@@ -198,11 +199,7 @@ export default function Users() {
   }
 
   if (loading) {
-    return (
-      <div className="w-full p-6 lg:p-8">
-        <p className="text-sm text-[color:var(--text-muted)]">Loading…</p>
-      </div>
-    );
+    return <ModuleLoader label="Loading users…" />;
   }
 
   return (

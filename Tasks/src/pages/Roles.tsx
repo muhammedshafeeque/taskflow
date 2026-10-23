@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { rolesApi, permissionsApi, type Role } from '../lib/api';
 import ConfirmModal from '../components/ConfirmModal';
 import { TrashIcon, ChevronDownIcon, ChevronUpIcon, RolesIcon } from '../components/icons/NavigationIcons';
+import { ModuleLoader } from '../components/loaders/ModuleLoader';
 
 export default function Roles() {
   const { token } = useAuth();
@@ -47,11 +48,7 @@ export default function Roles() {
   }
 
   if (loading) {
-    return (
-      <div className="w-full p-6 lg:p-8">
-        <p className="text-sm text-[color:var(--text-muted)]">Loading…</p>
-      </div>
-    );
+    return <ModuleLoader label="Loading roles…" />;
   }
 
   return (

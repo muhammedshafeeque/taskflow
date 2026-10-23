@@ -1,5 +1,6 @@
 import { Navigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { ModuleLoader } from './loaders/ModuleLoader';
 
 /** Auth + customer check only; renders child routes. */
 export function TaskflowAuthGuard() {
@@ -7,11 +8,7 @@ export function TaskflowAuthGuard() {
   const location = useLocation();
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[color:var(--bg-page)]">
-        <div className="animate-pulse text-[color:var(--text-muted)]">Loading…</div>
-      </div>
-    );
+    return <ModuleLoader module="app" label="Restoring your session…" className="min-h-screen bg-[color:var(--bg-page)]" />;
   }
 
   if (!token || !user) {

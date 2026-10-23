@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { projectsApi, issuesApi, type Project, type ProjectTimeline } from '../lib/api';
 import { buildGanttTasks } from '../lib/ganttTimeline';
 import FrappeGantt from 'frappe-gantt';
+import { ModuleLoader } from '../components/loaders/ModuleLoader';
 
 export default function GanttPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -121,11 +122,7 @@ export default function GanttPage() {
   }
 
   if (loading) {
-    return (
-      <div className="p-6">
-        <p className="text-sm text-[color:var(--text-muted)]">Loading…</p>
-      </div>
-    );
+    return <ModuleLoader label="Loading timeline…" />;
   }
 
   return (

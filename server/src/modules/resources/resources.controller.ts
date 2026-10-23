@@ -6,6 +6,7 @@ import * as resourcesService from './resources.service';
 import * as engagementService from './engagement.service';
 import * as settingsService from './resourceSettings.service';
 import * as entriesService from './engagementEntries.service';
+import * as teamsService from './teams.service';
 import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 
@@ -170,12 +171,13 @@ export async function listOptions(req: Req, res: Response) {
 
 export async function getEngagement(req: Req, res: Response) {
   uid(req);
-  const q = req.query as { from?: string; to?: string; userId?: string; projectId?: string; threshold?: string };
+  const q = req.query as { from?: string; to?: string; userId?: string; projectId?: string; teamIds?: string; threshold?: string };
   const data = await engagementService.getEngagement(ws(req), {
     from: q.from,
     to: q.to,
     userId: q.userId,
     projectId: q.projectId,
+    teamIds: q.teamIds ? q.teamIds.split(',').filter(Boolean) : undefined,
     threshold: num(q.threshold),
   });
   res.json({ success: true, data });
@@ -222,5 +224,27 @@ export async function updateEngagementEntry(req: Req, res: Response) {
 
 export async function deleteEngagementEntry(req: Req, res: Response) {
   const data = await entriesService.deleteEntry(ws(req), entryActor(req), req.params.id);
+  res.json({ success: true, data });
+}
+
+export async function listTeams(req: Req, res: Response) {
+  uid(req);
+  const q = req.query as Record<string, string | undefined>;
+  const data = await teamsService.listTeams(ws(req), { projectId: q.projectId, userId: q.userId });
+  res.json({ success: true, data });
+}
+
+export async function createTeam(req: Req, res: Response) {
+  const data = await teamsService.createTeam(ws(req), uid(req), req.body ?? {});
+  res.status(201).json({ success: true, data });
+}
+
+export async function updateTeam(req: Req, res: Response) {
+  const data = await teamsService.updateTeam(ws(req), uid(req), req.params.id, req.body ?? {});
+  res.json({ success: true, data });
+}
+
+export async function deleteTeam(req: Req, res: Response) {
+  const data = await teamsService.deleteTeam(ws(req), uid(req), req.params.id);
   res.json({ success: true, data });
 }

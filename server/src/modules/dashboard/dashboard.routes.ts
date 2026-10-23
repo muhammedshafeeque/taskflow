@@ -4,6 +4,7 @@ import { requirePermission } from '../../middleware/requirePermission';
 import { asyncHandler } from '../../utils/asyncHandler';
 import {
   getDashboardStats,
+  getDashboardOverview,
   getWorkloadStats,
   getPortfolioStats,
   getExecutiveStats,
@@ -23,6 +24,7 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get('/stats', asyncHandler(getDashboardStats));
+router.get('/overview', asyncHandler(getDashboardOverview));
 router.get('/workload', asyncHandler(getWorkloadStats));
 router.get('/portfolio', asyncHandler(getPortfolioStats));
 router.get('/portfolio/timeline', asyncHandler(getPortfolioTimeline));

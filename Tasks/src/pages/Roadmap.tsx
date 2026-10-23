@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { projectsApi, roadmapsApi, type Project, type Roadmap, type ProjectTimeline } from '../lib/api';
 import RoadmapLanes, { type LaneMode } from '../components/roadmap/RoadmapLanes';
+import { ModuleLoader } from '../components/loaders/ModuleLoader';
 
 export default function RoadmapPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -41,11 +42,7 @@ export default function RoadmapPage() {
   }, [selectedRoadmapId, roadmaps]);
 
   if (loading) {
-    return (
-      <div className="p-6">
-        <p className="text-sm text-[color:var(--text-muted)]">Loading…</p>
-      </div>
-    );
+    return <ModuleLoader label="Loading roadmap…" />;
   }
 
   return (

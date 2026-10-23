@@ -17,6 +17,7 @@ import {
   sortEnvironmentsAsc,
   sortEnvironmentsDesc,
 } from '../lib/environmentHierarchy';
+import { ModuleLoader } from '../components/loaders/ModuleLoader';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -382,14 +383,7 @@ export default function Versions() {
   if (!projectId) return null;
 
   if (loading) {
-    return (
-      <div className="min-h-[50vh] flex items-center justify-center p-8">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-[color:var(--border-subtle)] border-t-[color:var(--text-primary)] rounded-full animate-spin" />
-          <span className="text-[color:var(--text-muted)] text-sm">Loading versions…</span>
-        </div>
-      </div>
-    );
+    return <ModuleLoader label="Loading versions…" />;
   }
 
   if (!project) {

@@ -5,6 +5,7 @@ import { rolesApi, permissionsApi, type PermissionItem, type Role } from '../lib
 import { PermissionCatalogCards } from '../components/PermissionCatalogCards';
 import { userHasPermission } from '../utils/permissions';
 import { TASK_FLOW_PERMISSIONS } from '@shared/constants/permissions';
+import { ModuleLoader } from '../components/loaders/ModuleLoader';
 
 export default function RolePermissions() {
   const { roleId } = useParams<{ roleId: string }>();
@@ -155,11 +156,7 @@ export default function RolePermissions() {
   }
 
   if (loading) {
-    return (
-      <div className="p-6 lg:p-8">
-        <p className="text-sm text-[color:var(--text-muted)]">Loading permissions…</p>
-      </div>
-    );
+    return <ModuleLoader label="Loading permissions…" />;
   }
 
   if (loadError) {

@@ -48,6 +48,10 @@ router.get('/engagement/entries', requireAnyPermission(ENGAGEMENT_ENTRY), asyncH
 router.post('/engagement/entries', requireAnyPermission(ENGAGEMENT_ENTRY), asyncHandler(ctrl.createEngagementEntry));
 router.patch('/engagement/entries/:id', requireAnyPermission(ENGAGEMENT_ENTRY), asyncHandler(ctrl.updateEngagementEntry));
 router.delete('/engagement/entries/:id', requireAnyPermission(ENGAGEMENT_ENTRY), asyncHandler(ctrl.deleteEngagementEntry));
+router.get('/teams', requireAnyPermission([...ANY_READ, R.TEAM.MANAGE]), asyncHandler(ctrl.listTeams));
+router.post('/teams', requirePermission(R.TEAM.MANAGE), asyncHandler(ctrl.createTeam));
+router.patch('/teams/:id', requirePermission(R.TEAM.MANAGE), asyncHandler(ctrl.updateTeam));
+router.delete('/teams/:id', requirePermission(R.TEAM.MANAGE), asyncHandler(ctrl.deleteTeam));
 router.get('/settings', requireAnyPermission([...ANY_READ, R.ALLOCATION.MANAGE, R.SETTINGS.MANAGE]), asyncHandler(ctrl.getSettings));
 router.put('/settings', requireAnyPermission([R.SETTINGS.MANAGE, R.ALLOCATION.MANAGE]), asyncHandler(ctrl.updateSettings));
 

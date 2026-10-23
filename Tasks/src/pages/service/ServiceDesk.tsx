@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { api, serviceApi, type ServiceTicket, type User } from '../../lib/api';
 import { StatusPill } from '../../components/moduleKit';
 import { TicketReplySuggest } from '../../components/ai/AiPanels';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 const PRIORITY_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = {
   urgent: 'red', high: 'amber', medium: 'blue', low: 'slate',
@@ -237,7 +238,7 @@ function TicketDetail({ id, onClose, onChanged, others }: { id: string; onClose:
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
       <div className="w-full max-w-lg h-full overflow-y-auto bg-[color:var(--bg-surface)] border-l border-[color:var(--border-subtle)] p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
         {!ticket ? (
-          <p className="text-sm text-[color:var(--text-muted)]">Loading…</p>
+          <ModuleLoader size="block" label="Loading ticket…" />
         ) : (
           <>
             <div className="flex items-start justify-between gap-3">

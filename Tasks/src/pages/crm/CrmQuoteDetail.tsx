@@ -14,6 +14,7 @@ import {
   type QuotePdfIssuer,
 } from '../../lib/quotePdf';
 import { formatDateDDMMYYYY } from '../../lib/dateFormat';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 function refId(
   ref: CrmQuote['dealId'] | CrmQuote['leadId'] | CrmQuote['accountId'] | CrmQuote['customerOrgId'] | CrmQuote['contactId']
@@ -331,11 +332,7 @@ export default function CrmQuoteDetail() {
   }
 
   if (loading) {
-    return (
-      <div className="p-8">
-        <p className="text-sm text-[color:var(--text-muted)]">Loading quotation…</p>
-      </div>
-    );
+    return <ModuleLoader label="Loading quotation…" />;
   }
 
   if (error || !quote) {

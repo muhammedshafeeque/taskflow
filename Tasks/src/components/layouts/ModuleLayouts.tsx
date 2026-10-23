@@ -23,6 +23,7 @@ import {
   buildCoreNav,
 } from '../moduleNavigation';
 import type { ModuleId } from '../../utils/moduleAccess';
+import { ModuleLoaderContext } from '../loaders/moduleLoaderContext';
 
 type ModuleLayoutProps = {
   moduleTitle: string;
@@ -66,7 +67,9 @@ function ModuleLayout({ moduleTitle, moduleId, navBuilder }: ModuleLayoutProps) 
 
   return (
     <Layout navItems={navItems} moduleTitle={moduleTitle}>
-      <Outlet />
+      <ModuleLoaderContext.Provider value={moduleId}>
+        <Outlet />
+      </ModuleLoaderContext.Provider>
     </Layout>
   );
 }
@@ -172,7 +175,9 @@ export function MonitorModuleLayout() {
 
   return (
     <Layout navItems={navItems} moduleTitle="Monitor">
-      <Outlet />
+      <ModuleLoaderContext.Provider value="monitor">
+        <Outlet />
+      </ModuleLoaderContext.Provider>
     </Layout>
   );
 }

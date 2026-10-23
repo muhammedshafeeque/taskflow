@@ -527,6 +527,17 @@ export function buildResourcesNav(user: NavUser): NavItem[] {
   ) {
     nav.push({ to: '/resources/team', label: 'Team', icon: <UsersIcon /> });
   }
+  if (
+    allow(
+      user,
+      'taskflow.resources.team.manage',
+      'taskflow.resources.engagement.read',
+      'taskflow.resources.allocation.read',
+      'taskflow.resources.utilization.read'
+    )
+  ) {
+    nav.push({ to: '/resources/teams', label: 'Teams', icon: <UsersIcon /> });
+  }
   return nav;
 }
 

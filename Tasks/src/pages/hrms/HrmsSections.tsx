@@ -5,6 +5,7 @@ import type { HrmsEmployee, HrmsLeaveRequest, HrmsAttendance } from '../../lib/a
 import {
   ExportButton, Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, nameOf,
 } from '../../components/moduleKit';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 const statusTone: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = {
   active: 'green', probation: 'blue', on_leave: 'amber', terminated: 'red',
@@ -67,7 +68,7 @@ export function HrmsEmployees() {
       ]} /><PrimaryButton onClick={() => setEditing({ employmentType: 'full_time', status: 'active', currency: 'USD', leaveBalanceDays: 20 })}>+ Add employee</PrimaryButton></div>}
     >
       {loading ? (
-        <p className="text-sm text-[color:var(--text-muted)]">Loading…</p>
+        <ModuleLoader size="block" label="Loading employees…" />
       ) : rows.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)]">No employees yet. Add your first team member.</p>
       ) : (

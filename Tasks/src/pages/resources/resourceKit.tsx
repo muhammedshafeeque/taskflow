@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, NavLink } from 'react-router-dom';
 import { FiX } from 'react-icons/fi';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 import {
   resourcesApi,
   type AllocationCheck,
@@ -274,11 +275,7 @@ export function EmptyState({ title, children }: { title: string; children?: Reac
 }
 
 export function LoadingBlock({ label = 'Loading…' }: { label?: string }) {
-  return (
-    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-10 text-center text-sm text-[color:var(--text-muted)] animate-pulse">
-      {label}
-    </div>
-  );
+  return <ModuleLoader label={label} size="block" />;
 }
 
 export function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
@@ -405,6 +402,33 @@ export function ResourceSubnav({ links }: { links: Array<{ to: string; label: st
         </NavLink>
       ))}
     </nav>
+  );
+}
+
+/* ─── Teams ───────────────────────────────────────────────────────────────── */
+
+export function teamColor(color?: string): string {
+  return color || 'var(--accent)';
+}
+
+export function TeamChip({ name, color, onClick, active }: { name: string; color?: string; onClick?: () => void; active?: boolean }) {
+  const body = (
+    <>
+      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: teamColor(color) }} />
+      <span className="truncate">{name}</span>
+    </>
+  );
+  const cls = `inline-flex items-center gap-1 max-w-[10rem] rounded-full px-1.5 py-px text-[10px] font-medium border whitespace-nowrap ${
+    active ? 'border-[color:var(--accent)] text-[color:var(--accent)]' : 'border-[color:var(--border-subtle)] text-[color:var(--text-muted)]'
+  }`;
+  return onClick ? (
+    <button type="button" className={`${cls} hover:text-[color:var(--text-primary)]`} onClick={onClick}>
+      {body}
+    </button>
+  ) : (
+    <span className={cls} style={{ background: `color-mix(in srgb, ${teamColor(color)} 10%, transparent)` }}>
+      {body}
+    </span>
   );
 }
 

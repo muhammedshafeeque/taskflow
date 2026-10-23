@@ -24,6 +24,7 @@ import {
   type InvoiceLineDraft,
 } from '../../lib/billingLineUtils';
 import { buildInvoicePdf, downloadInvoicePdf } from '../../lib/invoicePdf';
+import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 
 const inputClass =
   'w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm';
@@ -234,7 +235,7 @@ export default function BillingInvoiceForm() {
   }
 
   if (loading) {
-    return <div className="p-8 text-[color:var(--text-muted)]">Loading invoice…</div>;
+    return <ModuleLoader label="Loading invoice…" />;
   }
 
   return (

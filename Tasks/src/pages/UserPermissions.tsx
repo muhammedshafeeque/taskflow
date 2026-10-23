@@ -8,6 +8,7 @@ import {
 } from '../components/PermissionCatalogCards';
 import { userHasPermission } from '../utils/permissions';
 import { TASK_FLOW_PERMISSIONS } from '@shared/constants/permissions';
+import { ModuleLoader } from '../components/loaders/ModuleLoader';
 
 export default function UserPermissions() {
   const { userId } = useParams<{ userId: string }>();
@@ -172,11 +173,7 @@ export default function UserPermissions() {
   }
 
   if (loading) {
-    return (
-      <div className="p-6 lg:p-8">
-        <p className="text-sm text-[color:var(--text-muted)]">Loading permissions…</p>
-      </div>
-    );
+    return <ModuleLoader label="Loading permissions…" />;
   }
 
   if (loadError || !user) {

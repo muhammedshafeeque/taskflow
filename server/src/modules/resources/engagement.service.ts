@@ -15,6 +15,7 @@ import { HrmsHoliday, HrmsSettings } from '../hrms/models/hrmsPolicy.model';
 import { ResourceAllocation } from './models/resourceAllocation.model';
 import { ResourceProfile } from './models/resourceProfile.model';
 import { ResourceEngagementEntry } from './models/resourceEngagementEntry.model';
+import { ResourceTeam } from './models/resourceTeam.model';
 import { CalendarEvent } from '../calendar/models/calendarEvent.model';
 import { getResourceSettings } from './resourceSettings.service';
 import { requireWorkspaceId, toOrgOid } from './resourcesWorkspace';
@@ -129,7 +130,7 @@ type ProjectStatusLike = { name?: string; order?: number; isClosed?: boolean; us
 
 export async function getEngagement(
   workspaceId: string | null | undefined,
-  query: { from?: string; to?: string; userId?: string; projectId?: string; threshold?: number } = {}
+  query: { from?: string; to?: string; userId?: string; projectId?: string; teamIds?: string[]; threshold?: number } = {}
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
@@ -152,6 +153,31 @@ export async function getEngagement(
     'user'
   )) as mongoose.Types.ObjectId[];
   if (query.userId) memberIds = memberIds.filter((id) => String(id) === query.userId);
+  // Internal teams: selecting teams narrows the people to their members (a person may be in several teams).
+  const teamDocs = await ResourceTeam.find({ taskflowOrganizationId: orgOid })
+    .collation({ locale: 'en', strength: 2 })
+    .sort({ name: 1 })
+    .select('name color memberIds projectIds')
+    .lean();
+  const selectedTeams = query.teamIds?.length ? teamDocs.filter((t) => query.teamIds!.includes(String(t._id))) : [];
+  if (query.teamIds?.length) {
+    const inTeams = new Set(selectedTeams.flatMap((t) => t.memberIds.map(String)));
+    memberIds = memberIds.filter((id) => inTeams.has(String(id)));
+  }
+  const teamsByUser = new Map<string, Array<{ id: string; name: string; color?: string }>>();
+  for (const t of teamDocs) {
+    for (const m of t.memberIds) {
+      const list = teamsByUser.get(String(m)) ?? [];
+      list.push({ id: String(t._id), name: t.name, color: t.color });
+      teamsByUser.set(String(m), list);
+    }
+  }
+  // Members of teams assigned to the filtered project stay visible even before they have work on it.
+  const projectTeamMembers = new Set(
+    query.projectId
+      ? teamDocs.filter((t) => t.projectIds.some((p) => String(p) === query.projectId)).flatMap((t) => t.memberIds.map(String))
+      : []
+  );
   const memberSet = new Set(memberIds.map(String));
 
   const projects = await Project.find({ taskflowOrganizationId: orgId }).select('name key statuses').lean();
@@ -656,6 +682,7 @@ export async function getEngagement(
       name: u.name,
       email: u.email,
       department: profile?.department,
+      teams: teamsByUser.get(uid) ?? [],
       capacityHoursPerWeek: weeklyCapacity,
       summary: {
         avgEngagement,
@@ -705,7 +732,14 @@ export async function getEngagement(
   });
 
   const filteredPeople = query.projectId
-    ? people.filter((p) => p.allocations.length > 0 || p.tasks.length > 0 || p.entries.length > 0 || p.summary.loggedHours > 0)
+    ? people.filter(
+        (p) =>
+          projectTeamMembers.has(p.userId) ||
+          p.allocations.length > 0 ||
+          p.tasks.length > 0 ||
+          p.entries.length > 0 ||
+          p.summary.loggedHours > 0
+      )
     : people;
 
   const team = days.map((d, i) => {
@@ -754,6 +788,13 @@ export async function getEngagement(
       })),
     },
     team,
+    teams: teamDocs.map((t) => ({
+      id: String(t._id),
+      name: t.name,
+      color: t.color,
+      memberIds: t.memberIds.map(String),
+      projectIds: t.projectIds.map(String),
+    })),
     people: filteredPeople,
   };
 }
