@@ -289,7 +289,7 @@ export default function ResourcesEngagement() {
             className={btnPrimary}
             onClick={() => setEntryDraft(blankEntry(canManageOthers ? '' : (user?.id ?? ''), focusDate))}
           >
-            <FiPlus /> Add engagement
+            <FiPlus /> Record engagement
           </button>
         )}
         <div className="flex flex-wrap items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] p-1 bg-[color:var(--bg-surface)]">
@@ -1185,14 +1185,14 @@ function EntryModal({
       setError(errorOf(res, 'Failed to save entry'));
       return;
     }
-    onSaved(form.id ? 'Entry updated.' : 'Engagement added.');
+    onSaved(form.id ? 'Entry updated.' : 'Engagement recorded.');
   }
 
   return (
     <Modal
       open={!!draft}
       onClose={onClose}
-      title={form.id ? 'Edit engagement entry' : 'Add engagement'}
+      title={form.id ? 'Edit engagement entry' : 'Record engagement'}
       subtitle="Work that isn't a task or a meeting. Counted on every working day in the range."
     >
       <form onSubmit={submit} className="space-y-3">
@@ -1256,7 +1256,7 @@ function EntryModal({
         </Field>
         <div className="flex gap-2 pt-1">
           <button type="submit" disabled={saving} className={`${btnPrimary} px-4 py-2`}>
-            {saving ? 'Saving…' : form.id ? 'Save changes' : 'Add'}
+            {saving ? 'Saving…' : form.id ? 'Save changes' : 'Record'}
           </button>
           <button type="button" className={`${btnSecondary} px-4 py-2`} onClick={onClose}>
             Cancel
