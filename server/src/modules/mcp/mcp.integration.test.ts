@@ -70,6 +70,8 @@ beforeAll(async () => {
   server = app.listen(0);
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   process.env.MCP_LOOPBACK_URL = `${base}/api`;
+  // server/.env (loaded with the app) may point at the real site; discovery URLs must come from the test server here.
+  delete process.env.MCP_PUBLIC_URL;
 
   const [ana, ben, boss] = await User.create([
     { email: 'ana@example.com', name: 'Ana', mustChangePassword: false },
