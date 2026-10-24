@@ -40,7 +40,7 @@ const past = weekday(-1, -1);
 const future = weekday(2, 1);
 
 beforeAll(async () => {
-  mongo = await MongoMemoryServer.create();
+  mongo = await MongoMemoryServer.create({ instance: { launchTimeout: 60_000 } });
   await mongoose.connect(mongo.getUri());
 
   const [lead, dev] = await User.create([
@@ -74,7 +74,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await flushAuditLogs();
   await mongoose.disconnect();
-  await mongo.stop();
+  await mongo?.stop();
 });
 
 async function devDay(date: Date) {

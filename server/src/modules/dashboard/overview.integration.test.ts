@@ -21,7 +21,7 @@ let mongo: MongoMemoryServer;
 const ids: Record<string, string> = {};
 
 beforeAll(async () => {
-  mongo = await MongoMemoryServer.create();
+  mongo = await MongoMemoryServer.create({ instance: { launchTimeout: 60_000 } });
   await mongoose.connect(mongo.getUri());
   const [pm, dev] = await User.create([
     { email: 'pm@example.com', name: 'PM', mustChangePassword: false },
@@ -65,7 +65,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await mongoose.disconnect();
-  await mongo.stop();
+  await mongo?.stop();
 });
 
 describe('dashboard overview', () => {

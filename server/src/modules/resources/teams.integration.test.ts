@@ -18,7 +18,7 @@ let mongo: MongoMemoryServer;
 const ids: Record<string, string> = {};
 
 beforeAll(async () => {
-  mongo = await MongoMemoryServer.create();
+  mongo = await MongoMemoryServer.create({ instance: { launchTimeout: 60_000 } });
   await mongoose.connect(mongo.getUri());
   const [ana, ben, cy, outsider] = await User.create([
     { email: 'ana@example.com', name: 'Ana', mustChangePassword: false },
@@ -53,7 +53,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await flushAuditLogs();
   await mongoose.disconnect();
-  await mongo.stop();
+  await mongo?.stop();
 });
 
 describe('internal teams', () => {

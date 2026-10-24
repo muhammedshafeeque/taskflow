@@ -65,7 +65,7 @@ async function call(token: string, name: string, args: Record<string, unknown> =
 }
 
 beforeAll(async () => {
-  mongo = await MongoMemoryServer.create();
+  mongo = await MongoMemoryServer.create({ instance: { launchTimeout: 60_000 } });
   await mongoose.connect(mongo.getUri());
   server = app.listen(0);
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -101,10 +101,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await new Promise((r) => server.close(r));
+  if (server) await new Promise((r) => server.close(r));
   await flushAuditLogs();
   await mongoose.disconnect();
-  await mongo.stop();
+  await mongo?.stop();
 });
 
 describe('MCP endpoint', () => {

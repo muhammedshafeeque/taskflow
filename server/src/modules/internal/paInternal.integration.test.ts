@@ -84,7 +84,7 @@ function client(path: string, chatId: string, method: 'get' | 'post' = 'get', se
 }
 
 beforeAll(async () => {
-  mongo = await MongoMemoryServer.create();
+  mongo = await MongoMemoryServer.create({ instance: { launchTimeout: 60_000 } });
   await mongoose.connect(mongo.getUri());
 
   const human = await User.create({ email: 'owner@example.com', name: 'Owner', role: 'admin', mustChangePassword: false });
@@ -137,7 +137,7 @@ afterAll(async () => {
   // Fire-and-forget audit rows from the last requests must finish before Mongo closes.
   await flushAuditLogs();
   await mongoose.disconnect();
-  await mongo.stop();
+  await mongo?.stop();
 });
 
 beforeEach(() => resetPaServiceAccountCacheForTests());

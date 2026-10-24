@@ -38,7 +38,7 @@ const CREATE = 'taskflow.docs.space.create';
 const as = (user: string, perms: string[] = []) => new DocsActor(ids[user], ids.org, perms);
 
 beforeAll(async () => {
-  mongo = await MongoMemoryServer.create();
+  mongo = await MongoMemoryServer.create({ instance: { launchTimeout: 60_000 } });
   await mongoose.connect(mongo.getUri());
   const [ana, ben, cy] = await User.create([
     { email: 'ana@example.com', name: 'Ana', mustChangePassword: false },
@@ -79,7 +79,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await flushAuditLogs();
   await mongoose.disconnect();
-  await mongo.stop();
+  await mongo?.stop();
 });
 
 describe('docs', () => {
