@@ -1,6 +1,11 @@
 import { monitorHttp, skipClientHttp } from './monitorClient';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+/** Absolute URL of an API path (API_BASE may be relative when served behind the same host). */
+export function absoluteApiUrl(path = ''): string {
+  return new URL(`${API_BASE.replace(/\/$/, '')}${path}`, window.location.origin).href;
+}
 // Same origin by default (works behind the bundled nginx); override with VITE_WS_URL.
 export const WS_URL = import.meta.env.VITE_WS_URL || (import.meta.env.DEV ? 'http://localhost:5000' : window.location.origin);
 
@@ -2413,7 +2418,23 @@ export interface CrmDeal {
   probability: number;
   status: string;
   expectedCloseDate?: string;
-  projectId?: string;
+  projectId?: string | { _id: string; name?: string; key?: string };
+  ownerId?: string | { _id: string; name?: string; email?: string };
+  leadId?: string | { _id: string; title?: string };
+  winReason?: string;
+  lossReason?: string;
+  competitorNotes?: string;
+  lineItems?: Array<{ description: string; quantity: number; unitPrice: number; billingType?: 'fixed' | 'hourly' | 'milestone' }>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** GET /crm/deals/:id — a deal with its pipeline and linked commercial records. */
+export interface CrmDealDetail {
+  deal: CrmDeal;
+  pipeline: CrmPipeline | null;
+  quotes: Array<{ _id: string; title: string; status: string; total: number; currency: string; version?: number; validUntil?: string; createdAt: string }>;
+  contracts: Array<{ _id: string; title: string; status: string; value: number; currency: string; startDate?: string; endDate?: string; kind?: string }>;
 }
 
 export interface CrmPipeline {
@@ -2421,6 +2442,7 @@ export interface CrmPipeline {
   name: string;
   isDefault: boolean;
   stages: Array<{ _id: string; name: string; order: number; probability: number; isWon?: boolean; isLost?: boolean }>;
+  updatedAt?: string;
 }
 
 export type CrmQuoteBillingType = 'fixed' | 'hourly' | 'milestone';
@@ -2705,15 +2727,23 @@ export const crmApi = {
       handoff?: CommercialHandoffResult;
     }>(`/crm/leads/${id}/convert`, payload, token);
   },
-  listDeals: (token: string, params?: { status?: string; unlinked?: boolean }) => {
+  listDeals: (
+    token: string,
+    params?: { status?: string; unlinked?: boolean; ownerId?: string; search?: string; pipelineId?: string }
+  ) => {
     const p = new URLSearchParams();
     if (params?.status) p.set('status', params.status);
     if (params?.unlinked) p.set('unlinked', '1');
+    if (params?.ownerId) p.set('ownerId', params.ownerId);
+    if (params?.search) p.set('search', params.search);
+    if (params?.pipelineId) p.set('pipelineId', params.pipelineId);
     const q = p.toString();
     return api.get<CrmDeal[]>(`/crm/deals${q ? `?${q}` : ''}`, token);
   },
-  createDeal: (data: Partial<CrmDeal>, token: string) => api.post('/crm/deals', data, token),
-  updateDeal: (id: string, data: Partial<CrmDeal>, token: string) => api.patch(`/crm/deals/${id}`, data, token),
+  getDeal: (id: string, token: string) => api.get<CrmDealDetail>(`/crm/deals/${id}`, token),
+  createDeal: (data: Partial<CrmDeal>, token: string) => api.post<CrmDeal>('/crm/deals', data, token),
+  updateDeal: (id: string, data: Partial<CrmDeal>, token: string) => api.patch<CrmDeal>(`/crm/deals/${id}`, data, token),
+  deleteDeal: (id: string, token: string) => api.delete(`/crm/deals/${id}`, token),
   moveDealStage: (id: string, stageId: string, token: string) => api.post(`/crm/deals/${id}/move-stage`, { stageId }, token),
   createProjectFromDeal: (id: string, data: { name: string; key: string; templateId?: string }, token: string) =>
     api.post(`/crm/deals/${id}/create-project`, data, token),
@@ -2722,6 +2752,7 @@ export const crmApi = {
   createPipeline: (data: Record<string, unknown>, token: string) => api.post<CrmPipeline>('/crm/pipelines', data, token),
   updatePipeline: (id: string, data: Record<string, unknown>, token: string) =>
     api.patch<CrmPipeline>(`/crm/pipelines/${id}`, data, token),
+  deletePipeline: (id: string, token: string) => api.delete(`/crm/pipelines/${id}`, token),
   listQuotes: (
     token: string,
     opts?: { dealId?: string; leadId?: string; accountId?: string; customerOrgId?: string }
@@ -2799,7 +2830,11 @@ export const crmApi = {
   },
   createActivity: (data: Partial<CrmActivity> & { relatedType?: string; relatedId?: string; assigneeId?: string }, token: string) =>
     api.post('/crm/activities', data, token),
-  updateActivity: (id: string, data: Partial<CrmActivity> & { dueAt?: string; assigneeId?: string }, token: string) =>
+  updateActivity: (
+    id: string,
+    data: Partial<Omit<CrmActivity, 'completedAt'>> & { dueAt?: string; assigneeId?: string; completed?: boolean },
+    token: string
+  ) =>
     api.patch(`/crm/activities/${id}`, data, token),
   completeActivity: (id: string, token: string) => api.post(`/crm/activities/${id}/complete`, {}, token),
   deleteActivity: (id: string, token: string) => api.delete(`/crm/activities/${id}`, token),
@@ -3486,11 +3521,31 @@ export interface ApiTokenRecord {
   createdAt: string;
   expiresAt?: string;
   lastUsedAt?: string;
+  readOnly?: boolean;
+  /** Issued to an AI assistant through MCP sign-in rather than created here. */
+  oauthClientId?: string;
 }
+
+export interface McpAuthorizeRequest {
+  clientName: string;
+  redirectHost: string;
+  workspace: { id: string; name: string } | null;
+  error: string | null;
+  errorRedirect: string | null;
+  expiryChoices: number[];
+}
+
+/** OAuth consent for AI assistants connecting over MCP; `params` is the client's authorization request. */
+export const mcpOAuthApi = {
+  request: (params: Record<string, string>, token: string) =>
+    api.get<McpAuthorizeRequest>(`/mcp/oauth/request?${new URLSearchParams(params)}`, token),
+  approve: (params: Record<string, string>, decision: { approve: boolean; readOnly?: boolean; expiresInDays?: number }, token: string) =>
+    api.post<{ redirect: string }>('/mcp/oauth/approve', { ...params, ...decision }, token),
+};
 
 export const apiTokensApi = {
   list: (token: string) => api.get<ApiTokenRecord[]>('/api-tokens', token),
-  create: (body: { name: string; expiresInDays: number }, token: string) =>
+  create: (body: { name: string; expiresInDays: number; readOnly?: boolean }, token: string) =>
     api.post<{ token: string; record: ApiTokenRecord }>('/api-tokens', body, token),
   revoke: (id: string, token: string) => api.delete<{ ok: true }>(`/api-tokens/${id}`, token),
 };

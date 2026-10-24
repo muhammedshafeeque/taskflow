@@ -293,7 +293,7 @@ export async function convertLead(req: Request & { user?: AuthPayload }, res: Re
 
 export async function listDeals(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const q = req.query as { status?: string; stageId?: string; unlinked?: string };
+  const q = req.query as { status?: string; stageId?: string; unlinked?: string; ownerId?: string; search?: string; pipelineId?: string };
   const unlinked = q.unlinked === '1' || q.unlinked === 'true';
   const data = await dealsService.listDeals(ws(req), { ...q, unlinked: unlinked || undefined });
   res.json({ success: true, data });
@@ -302,6 +302,18 @@ export async function listDeals(req: Request & { user?: AuthPayload }, res: Resp
 export async function createDeal(req: Request & { user?: AuthPayload }, res: Response) {
   const data = await dealsService.createDeal(ws(req), req.body);
   res.status(201).json({ success: true, data });
+}
+
+export async function getDeal(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await dealsService.getDeal(req.params.id, ws(req));
+  res.json({ success: true, data });
+}
+
+export async function deleteDeal(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await dealsService.deleteDeal(req.params.id, ws(req));
+  res.json({ success: true, data });
 }
 
 export async function updateDeal(req: Request & { user?: AuthPayload }, res: Response) {
@@ -341,6 +353,12 @@ export async function listPipelines(req: Request & { user?: AuthPayload }, res: 
 export async function createPipeline(req: Request & { user?: AuthPayload }, res: Response) {
   const data = await pipelinesService.createPipeline(ws(req), req.body);
   res.status(201).json({ success: true, data });
+}
+
+export async function deletePipeline(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await pipelinesService.deletePipeline(req.params.id, ws(req));
+  res.json({ success: true, data });
 }
 
 export async function updatePipeline(req: Request & { user?: AuthPayload }, res: Response) {

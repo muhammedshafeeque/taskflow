@@ -49,6 +49,13 @@ export async function authMiddleware(
         return;
       }
       (req as Request & { viaApiToken?: boolean }).viaApiToken = true;
+      (req as Request & { apiTokenReadOnly?: boolean }).apiTokenReadOnly = apiToken.readOnly === true;
+      // Read-only tokens may only read. The MCP endpoint itself is exempt: it speaks JSON-RPC over POST,
+      // hides write tools for these tokens, and its loopback calls are checked here like any other request.
+      if (apiToken.readOnly && !['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !/^\/api\/mcp\/?(\?|$)/.test(req.originalUrl)) {
+        next(new ApiError(403, 'This API token is read-only'));
+        return;
+      }
       const err = await authenticateStaffUser(req, String(apiToken.userId), apiToken.organizationId ? String(apiToken.organizationId) : undefined);
       next(err ?? undefined);
     } catch {

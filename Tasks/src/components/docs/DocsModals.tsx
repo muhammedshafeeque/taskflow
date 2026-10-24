@@ -30,6 +30,7 @@ export function CreatePageModal({
   issueIds,
   projectIds,
   defaultTitle,
+  initialTemplate,
   onCreated,
 }: {
   open: boolean;
@@ -41,6 +42,7 @@ export function CreatePageModal({
   issueIds?: string[];
   projectIds?: string[];
   defaultTitle?: string;
+  initialTemplate?: string;
   onCreated?: () => void;
 }) {
   const navigate = useNavigate();
@@ -53,7 +55,7 @@ export function CreatePageModal({
 
   useEffect(() => {
     if (!open) return;
-    setTemplateId('blank');
+    setTemplateId(initialTemplate ?? 'blank');
     setError('');
     setSpace(spaceId ?? '');
     if (spaceId) return;
@@ -64,7 +66,7 @@ export function CreatePageModal({
       setSpaces(list);
       setSpace((cur) => cur || list[0]?.id || '');
     });
-  }, [open, spaceId, token, projectIds]);
+  }, [open, spaceId, token, projectIds, initialTemplate]);
 
   async function create() {
     const t = templates.find((x) => x.id === templateId)!;
@@ -109,27 +111,45 @@ export function CreatePageModal({
           )}
         </Field>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-[52vh] overflow-y-auto pr-1">
-        {templates.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTemplateId(t.id)}
-            onDoubleClick={() => {
-              setTemplateId(t.id);
-              void create();
-            }}
-            className={`text-left rounded-xl border p-3 transition ${
-              templateId === t.id
-                ? 'border-[color:var(--accent)] bg-[color:var(--accent-subtle)]'
-                : 'border-[color:var(--border-subtle)] hover:border-[color:var(--accent)]/50'
-            }`}
-          >
-            <div className="text-xl h-7">{t.emoji || '📄'}</div>
-            <p className="font-medium text-sm mt-1">{t.name}</p>
-            <p className="text-xs text-[color:var(--text-muted)] mt-0.5">{t.description}</p>
-          </button>
-        ))}
+      <div className="grid gap-4 sm:grid-cols-[240px_minmax(0,1fr)]">
+        <div className="max-h-[56vh] space-y-1 overflow-y-auto pr-1">
+          {templates.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTemplateId(t.id)}
+              onDoubleClick={() => {
+                setTemplateId(t.id);
+                void create();
+              }}
+              className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition ${
+                templateId === t.id ? 'bg-[color:var(--accent-subtle)] ring-1 ring-[color:var(--accent)]/40' : 'hover:bg-[color:var(--bg-elevated)]'
+              }`}
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[color:var(--bg-elevated)] text-lg">{t.emoji || '📄'}</span>
+              <span className="min-w-0">
+                <span className={`block text-[13px] font-semibold ${templateId === t.id ? 'text-[color:var(--accent)]' : ''}`}>{t.name}</span>
+                <span className="block truncate text-[11px] text-[color:var(--text-muted)]">{t.description}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="relative hidden max-h-[56vh] overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] sm:block">
+          <div className="pointer-events-none origin-top-left scale-[0.8] p-6" style={{ width: '125%' }}>
+            {(() => {
+              const t = templates.find((x) => x.id === templateId)!;
+              return (
+                <>
+                  {t.emoji && <div className="mb-2 text-4xl">{t.emoji}</div>}
+                  <h1 className="mb-4 text-3xl font-extrabold tracking-tight">{(defaultTitle && t.id === 'blank' ? defaultTitle : t.title) || 'Untitled'}</h1>
+                  {t.content ? <DocContent html={t.content} /> : <p className="text-[color:var(--text-muted)]">An empty page — start writing from scratch.</p>}
+                </>
+              );
+            })()}
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[color:var(--bg-page)] to-transparent" />
+          <span className="absolute right-3 top-3 rounded-full bg-[color:var(--bg-elevated)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--text-muted)]">Preview</span>
+        </div>
       </div>
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
       <div className="mt-5 flex justify-end gap-2">

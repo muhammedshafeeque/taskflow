@@ -1,46 +1,108 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { FiCheckCircle, FiPlus, FiSearch } from 'react-icons/fi';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import { crmApi, type CrmContract, type CrmContractSupportPeriod } from '../../lib/api';
+import ConfirmModal from '../../components/ConfirmModal';
+import {
+  Chip,
+  CrmShell,
+  EmptyState,
+  Field,
+  LoadingBlock,
+  Modal,
+  Notice,
+  RowMenu,
+  Segmented,
+  Stat,
+  btnPrimary,
+  btnSecondary,
+  daysUntil,
+  errorOf,
+  fmtDate,
+  inputCls,
+  money,
+  moneyShort,
+  prettyLabel,
+  refId,
+  refName,
+  toDateInput,
+} from './crmKit';
+
+type Kind = 'msa' | 'retainer' | 'amc' | 'hourly' | 'other';
+type StatusFilter = 'all' | 'active' | 'draft' | 'expired' | 'cancelled';
+const KIND_LABEL: Record<Kind, string> = { msa: 'MSA', retainer: 'Retainer', amc: 'AMC', hourly: 'Hourly', other: 'Other' };
+const STATUS_TONE: Record<string, 'good' | 'neutral' | 'bad' | 'warn'> = { active: 'good', draft: 'neutral', expired: 'warn', cancelled: 'bad' };
+
+type Form = {
+  customerOrgId: string;
+  title: string;
+  kind: Kind;
+  value: string;
+  currency: string;
+  billingCycle: string;
+  startDate: string;
+  endDate: string;
+  renewalDate: string;
+  autoRenew: boolean;
+  hoursIncluded: string;
+  hourlyRate: string;
+  supportPeriod: CrmContractSupportPeriod;
+  supportDurationMonths: string;
+  prodReleaseDate: string;
+  status: string;
+};
+
+function formFrom(c: CrmContract | null, orgId: string): Form {
+  return {
+    customerOrgId: refId(c?.customerOrgId) || orgId,
+    title: c?.title ?? '',
+    kind: (c?.kind ?? 'retainer') as Kind,
+    value: String(c?.value ?? 0),
+    currency: c?.currency ?? 'USD',
+    billingCycle: c?.billingCycle ?? 'monthly',
+    startDate: toDateInput(c?.startDate) || new Date().toISOString().slice(0, 10),
+    endDate: toDateInput(c?.endDate),
+    renewalDate: toDateInput(c?.renewalDate),
+    autoRenew: !!c?.autoRenew,
+    hoursIncluded: c?.hoursIncluded != null ? String(c.hoursIncluded) : '',
+    hourlyRate: c?.hourlyRate != null ? String(c.hourlyRate) : '',
+    supportPeriod: c?.supportPeriod ?? 'lifelong_with_payment',
+    supportDurationMonths: String(c?.supportDurationMonths ?? 6),
+    prodReleaseDate: toDateInput(c?.prodReleaseDate),
+    status: c?.status ?? 'active',
+  };
+}
 
 export default function CrmContracts() {
   const { token, user } = useAuth();
   const canCreate = canAny(user, 'taskflow.crm.contract.create');
   const canUpdate = canAny(user, 'taskflow.crm.contract.update');
-  const [rows, setRows] = useState<CrmContract[]>([]);
+  const canDelete = canAny(user, 'taskflow.crm.contract.delete');
+  const [rows, setRows] = useState<CrmContract[] | null>(null);
   const [orgs, setOrgs] = useState<Array<{ _id: string; name: string }>>([]);
-  const [modal, setModal] = useState(false);
-  const [burn, setBurn] = useState<{ hoursUsed: number; hoursRemaining: number; percentUsed: number } | null>(null);
-  const [form, setForm] = useState({
-    customerOrgId: '',
-    title: '',
-    kind: 'retainer' as 'msa' | 'retainer' | 'amc' | 'hourly' | 'other',
-    value: 0,
-    currency: 'USD',
-    billingCycle: 'monthly',
-    startDate: new Date().toISOString().slice(0, 10),
-    endDate: '',
-    renewalDate: '',
-    hoursIncluded: 0,
-    hourlyRate: 0,
-    supportPeriod: 'lifelong_with_payment' as CrmContractSupportPeriod,
-    supportDurationMonths: 6,
-    prodReleaseDate: '',
-    status: 'active',
-    notes: '',
-  });
-
-  const load = () => {
-    if (!token) return;
-    crmApi.listContracts(token).then((res) => {
-      if (res.success && res.data) setRows(res.data as CrmContract[]);
-    });
-  };
+  const [modal, setModal] = useState<{ editing: CrmContract | null } | null>(null);
+  const [deleting, setDeleting] = useState<CrmContract | null>(null);
+  const [burn, setBurn] = useState<Record<string, { hoursUsed: number; hoursRemaining: number; percentUsed: number }>>({});
+  const [notice, setNotice] = useState<string | null>(null);
+  const [status, setStatus] = useState<StatusFilter>('all');
+  const [search, setSearch] = useState('');
+  const [tick, setTick] = useState(0);
+  const load = () => setTick((t) => t + 1);
 
   useEffect(() => {
-    load();
-  }, [token]);
+    if (!token) return;
+    let stale = false;
+    crmApi.listContracts(token).then((res) => {
+      if (stale) return;
+      if (res.success && res.data) setRows(res.data as CrmContract[]);
+      else setNotice(errorOf(res, 'Could not load contracts.'));
+    });
+    return () => {
+      stale = true;
+    };
+  }, [token, tick]);
 
   useEffect(() => {
     if (!token) return;
@@ -49,238 +111,339 @@ export default function CrmContracts() {
     });
   }, [token]);
 
-  async function create(e: React.FormEvent) {
-    e.preventDefault();
-    if (!token || !form.customerOrgId || !form.title.trim()) return;
-    const payload: Parameters<typeof crmApi.createContract>[0] = {
-      customerOrgId: form.customerOrgId,
-      title: form.title.trim(),
-      kind: form.kind,
-      value: Number(form.value) || 0,
-      currency: form.currency,
-      billingCycle: form.billingCycle,
-      startDate: form.startDate,
-      endDate: form.endDate || undefined,
-      renewalDate: form.renewalDate || form.endDate || undefined,
-      hoursIncluded: form.kind === 'hourly' ? undefined : form.hoursIncluded || undefined,
-      status: form.status,
-      notes: form.notes.trim() || undefined,
-    };
-    if (form.kind === 'hourly') {
-      payload.hourlyRate = Number(form.hourlyRate);
-      payload.supportPeriod = form.supportPeriod;
-      if (form.supportPeriod === 'from_prod_release' || form.supportPeriod === 'from_last_invoice') {
-        payload.supportDurationMonths = Number(form.supportDurationMonths) || undefined;
-      }
-      if (form.supportPeriod === 'from_prod_release') {
-        payload.prodReleaseDate = form.prodReleaseDate || undefined;
-      }
-    }
-    await crmApi.createContract(payload, token);
-    setModal(false);
-    load();
-  }
+  const all = useMemo(() => rows ?? [], [rows]);
+  const orgName = (c: CrmContract) => refName(c.customerOrgId) || refName(c.accountId) || orgs.find((o) => o._id === refId(c.customerOrgId))?.name || '—';
+  const active = all.filter((c) => c.status === 'active');
+  const renewingSoon = active.filter((c) => {
+    const d = daysUntil(c.renewalDate ?? c.endDate);
+    return d != null && d >= 0 && d <= 60;
+  });
+  const currency = all[0]?.currency;
 
-  async function activate(id: string) {
-    if (!token || !canUpdate) return;
-    await crmApi.updateContract(id, { status: 'active' }, token);
+  const shown = all.filter((c) => {
+    if (status !== 'all' && c.status !== status) return false;
+    const q = search.trim().toLowerCase();
+    return !q || `${c.title} ${orgName(c)} ${c.kind ?? ''}`.toLowerCase().includes(q);
+  });
+
+  async function run(fn: () => Promise<{ success: boolean }>, fallback: string) {
+    const res = await fn();
+    if (!res.success) setNotice(errorOf(res, fallback));
     load();
   }
 
   async function showBurn(id: string) {
     if (!token) return;
     const res = await crmApi.getContractBurnDown(id, token);
-    if (res.success && res.data) setBurn(res.data as typeof burn);
+    if (res.success && res.data) setBurn((b) => ({ ...b, [id]: res.data as (typeof b)[string] }));
   }
 
-  const orgName = (c: CrmContract) => {
-    const ref = c.customerOrgId ?? c.accountId;
-    if (ref && typeof ref === 'object') return ref.name;
-    if (typeof ref === 'string') return orgs.find((o) => o._id === ref)?.name ?? ref;
-    return '—';
-  };
-
-  const orgLinkId = (c: CrmContract) => {
-    const ref = c.customerOrgId;
-    if (!ref) return '';
-    return typeof ref === 'object' ? ref._id : ref;
-  };
-
   return (
-    <div className="p-8 w-full px-4 sm:px-6 lg:px-8 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">CRM Contracts</h1>
-          <p className="text-[13px] text-[color:var(--text-muted)]">Retainers and account agreements with hour burn-down.</p>
-        </div>
-        {canCreate && (
-          <button
-            type="button"
-            className="btn-primary px-4 py-2 rounded-lg text-sm"
-            disabled={orgs.length === 0}
-            onClick={() => {
-              setForm((f) => ({ ...f, customerOrgId: orgs[0]?._id ?? '', title: '' }));
-              setModal(true);
-            }}
-          >
-            Add contract
+    <CrmShell
+      title="Contracts"
+      description="Retainers, MSAs and support agreements — with renewals and hour burn-down."
+      actions={
+        canCreate && (
+          <button type="button" className={btnPrimary} disabled={orgs.length === 0} onClick={() => setModal({ editing: null })} title={orgs.length === 0 ? 'Create a customer organisation first' : undefined}>
+            <FiPlus /> New contract
           </button>
-        )}
+        )
+      }
+    >
+      <Notice message={notice} onClose={() => setNotice(null)} />
+
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <Stat label="Active contracts" value={active.length} hint={`${all.length} total`} />
+        <Stat label="Active value" value={moneyShort(active.reduce((s, c) => s + (c.value ?? 0), 0), currency)} />
+        <Stat label="Renewing in 60 days" value={renewingSoon.length} tone={renewingSoon.length ? 'warn' : undefined} />
+        <Stat label="Drafts" value={all.filter((c) => c.status === 'draft').length} />
       </div>
-      {burn && (
-        <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-4 py-3 text-sm flex justify-between">
-          <span>
-            Hours used {burn.hoursUsed.toFixed(1)} · remaining {burn.hoursRemaining.toFixed(1)} ({burn.percentUsed}%)
-          </span>
-          <button type="button" className="text-xs text-[color:var(--text-muted)]" onClick={() => setBurn(null)}>
-            Dismiss
-          </button>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Segmented<StatusFilter>
+          value={status}
+          onChange={setStatus}
+          options={(['all', 'active', 'draft', 'expired', 'cancelled'] as const).map((s) => ({
+            value: s,
+            label: prettyLabel(s),
+            count: s === 'all' ? all.length : all.filter((c) => c.status === s).length,
+          }))}
+        />
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--text-muted)]" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search contracts or customers…" className={`${inputCls} pl-9`} />
+        </div>
+      </div>
+
+      {!rows ? (
+        <LoadingBlock label="Loading contracts…" />
+      ) : shown.length === 0 ? (
+        <EmptyState title="No contracts here">{all.length ? 'Try another filter.' : 'Add the first agreement with a customer.'}</EmptyState>
+      ) : (
+        <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)] text-left border-b border-[color:var(--border-subtle)]">
+                <th className="py-2.5 px-4 font-medium">Contract</th>
+                <th className="py-2.5 px-3 font-medium">Status</th>
+                <th className="py-2.5 px-3 font-medium text-right">Value</th>
+                <th className="py-2.5 px-3 font-medium hidden md:table-cell">Term</th>
+                <th className="py-2.5 px-3 font-medium hidden lg:table-cell w-48">Hours</th>
+                <th className="w-10" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[color:var(--border-subtle)]">
+              {shown.map((c) => {
+                const renewal = c.renewalDate ?? c.endDate;
+                const renewIn = daysUntil(renewal);
+                const b = burn[c._id];
+                const used = b?.hoursUsed ?? c.hoursUsed ?? 0;
+                const pct = b?.percentUsed ?? (c.hoursIncluded ? Math.round((used / c.hoursIncluded) * 100) : 0);
+                return (
+                  <tr key={c._id} className="hover:bg-[color:var(--bg-elevated)]/60 align-top">
+                    <td className="py-3 px-4">
+                      <p className="font-medium">{c.title}</p>
+                      <p className="text-[11px] text-[color:var(--text-muted)]">
+                        {refId(c.customerOrgId) ? (
+                          <Link to={`/admin/customer-orgs/${refId(c.customerOrgId)}`} className="hover:underline">
+                            {orgName(c)}
+                          </Link>
+                        ) : (
+                          orgName(c)
+                        )}
+                        {' · '}
+                        {KIND_LABEL[(c.kind ?? 'other') as Kind]}
+                        {c.billingCycle ? ` · ${prettyLabel(c.billingCycle)}` : ''}
+                        {c.kind === 'hourly' && c.hourlyRate != null ? ` · ${money(c.hourlyRate, c.currency)}/h` : ''}
+                      </p>
+                    </td>
+                    <td className="py-3 px-3">
+                      <Chip tone={STATUS_TONE[c.status] ?? 'neutral'}>{prettyLabel(c.status)}</Chip>
+                    </td>
+                    <td className="py-3 px-3 text-right tabular-nums font-medium">{money(c.value, c.currency)}</td>
+                    <td className="py-3 px-3 text-xs hidden md:table-cell">
+                      <span className="text-[color:var(--text-muted)]">
+                        {fmtDate(c.startDate)} → {c.endDate ? fmtDate(c.endDate) : 'open-ended'}
+                      </span>
+                      {c.status === 'active' && renewIn != null && renewIn >= 0 && (
+                        <span className={`block ${renewIn <= 30 ? 'text-amber-400' : 'text-[color:var(--text-muted)]'}`}>
+                          {c.autoRenew ? 'Auto-renews' : 'Renewal'} in {renewIn}d
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-3 hidden lg:table-cell">
+                      {c.hoursIncluded ? (
+                        <button type="button" className="w-full text-left" onClick={() => void showBurn(c._id)} title="Refresh burn-down from logged time">
+                          <div className="flex justify-between text-[11px] mb-1">
+                            <span className="tabular-nums">
+                              {used.toFixed(1)} / {c.hoursIncluded}h
+                            </span>
+                            <span className={pct >= 90 ? 'text-red-400' : pct >= 75 ? 'text-amber-400' : 'text-[color:var(--text-muted)]'}>{pct}%</span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-[color:var(--bg-elevated)] overflow-hidden">
+                            <div className={`h-full rounded-full ${pct >= 90 ? 'bg-red-500' : pct >= 75 ? 'bg-amber-500' : 'bg-[color:var(--accent)]'}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                          </div>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-[color:var(--text-muted)]">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 pr-3 text-right">
+                      <RowMenu
+                        onEdit={canUpdate ? () => setModal({ editing: c }) : undefined}
+                        onDelete={canDelete ? () => setDeleting(c) : undefined}
+                        extra={
+                          canUpdate && c.status === 'draft'
+                            ? [{ label: 'Activate', icon: <FiCheckCircle />, onClick: () => void run(() => crmApi.updateContract(c._id, { status: 'active' }, token!), 'Could not activate.') }]
+                            : []
+                        }
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
-      <div className="space-y-2">
-        {rows.map((c) => (
-          <div key={c._id} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-4 flex flex-wrap justify-between gap-3">
-            <div>
-              <p className="font-medium">{c.title}</p>
-              <p className="text-sm text-[color:var(--text-muted)]">
-                {orgLinkId(c) ? (
-                <Link to={`/admin/customer-orgs/${orgLinkId(c)}`} className="text-[color:var(--accent)] hover:underline">
-                  {orgName(c)}
-                </Link>
-                ) : (
-                  orgName(c)
-                )}
-                {' '}· {c.kind ?? 'other'} · {c.status} · ${c.value} {c.currency}
-                {c.kind === 'hourly' && c.hourlyRate != null ? ` · $${c.hourlyRate}/h` : ''}
-                {c.kind === 'hourly' && c.supportPeriod ? ` · ${c.supportPeriod.replace(/_/g, ' ')}` : ''}
-                {c.hoursIncluded != null && c.kind !== 'hourly' ? ` · ${c.hoursIncluded}h included` : ''}
-              </p>
-            </div>
-            <div className="flex gap-2 text-sm">
-              {c.hoursIncluded != null && (
-                <button type="button" className="text-[color:var(--accent)] hover:underline" onClick={() => void showBurn(c._id)}>
-                  Burn-down
-                </button>
-              )}
-              {c.status === 'draft' && canUpdate && (
-                <button type="button" className="text-emerald-400 hover:underline" onClick={() => void activate(c._id)}>
-                  Activate
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-        {rows.length === 0 && <p className="text-sm text-[color:var(--text-muted)]">No contracts yet.</p>}
-      </div>
 
       {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => setModal(false)}>
-          <form onSubmit={create} className="bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] rounded-2xl max-w-md w-full p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold">New contract</h2>
-            <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Customer</span>
-              <select required value={form.customerOrgId} onChange={(e) => setForm((f) => ({ ...f, customerOrgId: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm">
-                {orgs.map((a) => (
-                  <option key={a._id} value={a._id}>{a.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Title</span>
-              <input required value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-xs space-y-1">
-                <span className="text-[color:var(--text-muted)]">Kind</span>
-                <select value={form.kind} onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value as typeof f.kind }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm">
-                  <option value="msa">MSA</option>
-                  <option value="retainer">Retainer</option>
-                  <option value="amc">AMC</option>
-                  <option value="hourly">Hourly</option>
-                  <option value="other">Other</option>
-                </select>
-              </label>
-              <label className="block text-xs space-y-1">
-                <span className="text-[color:var(--text-muted)]">Renewal</span>
-                <input type="date" value={form.renewalDate} onChange={(e) => setForm((f) => ({ ...f, renewalDate: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-              </label>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-xs space-y-1">
-                <span className="text-[color:var(--text-muted)]">Value</span>
-                <input type="number" min={0} value={form.value} onChange={(e) => setForm((f) => ({ ...f, value: Number(e.target.value) }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-              </label>
-              {form.kind === 'hourly' ? (
-                <label className="block text-xs space-y-1">
-                  <span className="text-[color:var(--text-muted)]">Hourly rate</span>
-                  <input type="number" min={0.01} step="0.01" required value={form.hourlyRate} onChange={(e) => setForm((f) => ({ ...f, hourlyRate: Number(e.target.value) }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-                </label>
-              ) : (
-                <label className="block text-xs space-y-1">
-                  <span className="text-[color:var(--text-muted)]">Hours included</span>
-                  <input type="number" min={0} value={form.hoursIncluded} onChange={(e) => setForm((f) => ({ ...f, hoursIncluded: Number(e.target.value) }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-                </label>
-              )}
-            </div>
-            {form.kind === 'hourly' && (
-              <>
-                <label className="block text-xs space-y-1">
-                  <span className="text-[color:var(--text-muted)]">Support period</span>
-                  <select
-                    required
-                    value={form.supportPeriod}
-                    onChange={(e) => setForm((f) => ({ ...f, supportPeriod: e.target.value as CrmContractSupportPeriod }))}
-                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
-                  >
-                    <option value="lifelong_with_payment">Lifelong with payment</option>
-                    <option value="from_prod_release">Up to N months from prod release</option>
-                    <option value="from_last_invoice">Up to N months from last invoice</option>
-                  </select>
-                </label>
-                {(form.supportPeriod === 'from_prod_release' || form.supportPeriod === 'from_last_invoice') && (
-                  <label className="block text-xs space-y-1">
-                    <span className="text-[color:var(--text-muted)]">Support duration (months)</span>
-                    <input
-                      type="number"
-                      min={1}
-                      required
-                      value={form.supportDurationMonths}
-                      onChange={(e) => setForm((f) => ({ ...f, supportDurationMonths: Number(e.target.value) }))}
-                      className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
-                    />
-                  </label>
-                )}
-                {form.supportPeriod === 'from_prod_release' && (
-                  <label className="block text-xs space-y-1">
-                    <span className="text-[color:var(--text-muted)]">Prod release date</span>
-                    <input
-                      type="date"
-                      required
-                      value={form.prodReleaseDate}
-                      onChange={(e) => setForm((f) => ({ ...f, prodReleaseDate: e.target.value }))}
-                      className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
-                    />
-                  </label>
-                )}
-              </>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-xs space-y-1">
-                <span className="text-[color:var(--text-muted)]">Start</span>
-                <input type="date" required value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-              </label>
-              <label className="block text-xs space-y-1">
-                <span className="text-[color:var(--text-muted)]">End</span>
-                <input type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-              </label>
-            </div>
-            <div className="flex gap-2 pt-2">
-              <button type="submit" className="btn-primary px-4 py-2 rounded-lg text-sm">Create</button>
-              <button type="button" onClick={() => setModal(false)} className="px-4 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm">Cancel</button>
-            </div>
-          </form>
-        </div>
+        <ContractModal
+          editing={modal.editing}
+          orgs={orgs}
+          onClose={() => setModal(null)}
+          onSaved={() => {
+            setModal(null);
+            load();
+          }}
+        />
       )}
-    </div>
+      <ConfirmModal
+        open={!!deleting}
+        title="Delete contract?"
+        message={`“${deleting?.title ?? ''}” will be removed. Invoices already raised are not affected.`}
+        confirmLabel="Delete contract"
+        onConfirm={() => {
+          const target = deleting;
+          setDeleting(null);
+          if (target) void run(() => crmApi.deleteContract(target._id, token!), 'Could not delete the contract.');
+        }}
+        onCancel={() => setDeleting(null)}
+      />
+    </CrmShell>
+  );
+}
+
+function ContractModal({ editing, orgs, onClose, onSaved }: { editing: CrmContract | null; orgs: Array<{ _id: string; name: string }>; onClose: () => void; onSaved: () => void }) {
+  const { token } = useAuth();
+  const [form, setForm] = useState<Form>(() => formFrom(editing, orgs[0]?._id ?? ''));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
+  const hourly = form.kind === 'hourly';
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token || !form.customerOrgId || !form.title.trim()) return;
+    setSaving(true);
+    setError(null);
+    const payload: Record<string, unknown> = {
+      customerOrgId: form.customerOrgId,
+      title: form.title.trim(),
+      kind: form.kind,
+      value: Number(form.value) || 0,
+      currency: form.currency.trim().toUpperCase() || 'USD',
+      billingCycle: form.billingCycle,
+      startDate: form.startDate,
+      endDate: form.endDate || null,
+      renewalDate: form.renewalDate || form.endDate || null,
+      autoRenew: form.autoRenew,
+      status: form.status,
+      hoursIncluded: !hourly && form.hoursIncluded ? Number(form.hoursIncluded) : undefined,
+    };
+    if (hourly) {
+      payload.hourlyRate = Number(form.hourlyRate);
+      payload.supportPeriod = form.supportPeriod;
+      if (form.supportPeriod !== 'lifelong_with_payment') payload.supportDurationMonths = Number(form.supportDurationMonths) || undefined;
+      payload.prodReleaseDate = form.supportPeriod === 'from_prod_release' ? form.prodReleaseDate || null : null;
+    }
+    const res = editing
+      ? await crmApi.updateContract(editing._id, payload as Partial<CrmContract>, token)
+      : await crmApi.createContract(payload as Parameters<typeof crmApi.createContract>[0], token);
+    setSaving(false);
+    if (!res.success) return setError(errorOf(res, 'Could not save the contract.'));
+    onSaved();
+  }
+
+  return (
+    <Modal open title={editing ? 'Edit contract' : 'New contract'} onClose={onClose} width="max-w-2xl">
+      <form onSubmit={submit} className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Customer">
+            <select required value={form.customerOrgId} onChange={(e) => set({ customerOrgId: e.target.value })} className={inputCls}>
+              {orgs.map((o) => (
+                <option key={o._id} value={o._id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Title">
+            <input required autoFocus value={form.title} onChange={(e) => set({ title: e.target.value })} className={inputCls} />
+          </Field>
+        </div>
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
+          <Field label="Kind">
+            <select value={form.kind} onChange={(e) => set({ kind: e.target.value as Kind })} className={inputCls}>
+              {Object.entries(KIND_LABEL).map(([k, l]) => (
+                <option key={k} value={k}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Status">
+            <select value={form.status} onChange={(e) => set({ status: e.target.value })} className={inputCls}>
+              {['draft', 'active', 'expired', 'cancelled'].map((s) => (
+                <option key={s} value={s}>
+                  {prettyLabel(s)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Billing">
+            <select value={form.billingCycle} onChange={(e) => set({ billingCycle: e.target.value })} className={inputCls}>
+              {['monthly', 'quarterly', 'annual', 'one_time'].map((s) => (
+                <option key={s} value={s}>
+                  {prettyLabel(s)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Currency">
+            <input value={form.currency} maxLength={3} onChange={(e) => set({ currency: e.target.value.toUpperCase() })} className={`${inputCls} uppercase`} />
+          </Field>
+        </div>
+        <div className="grid gap-3 grid-cols-2">
+          <Field label="Value">
+            <input type="number" min={0} step="any" value={form.value} onChange={(e) => set({ value: e.target.value })} className={inputCls} />
+          </Field>
+          {hourly ? (
+            <Field label="Hourly rate">
+              <input type="number" min={0.01} step="0.01" required value={form.hourlyRate} onChange={(e) => set({ hourlyRate: e.target.value })} className={inputCls} />
+            </Field>
+          ) : (
+            <Field label="Hours included">
+              <input type="number" min={0} value={form.hoursIncluded} onChange={(e) => set({ hoursIncluded: e.target.value })} className={inputCls} />
+            </Field>
+          )}
+        </div>
+        {hourly && (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Support period" className="sm:col-span-1">
+              <select value={form.supportPeriod} onChange={(e) => set({ supportPeriod: e.target.value as CrmContractSupportPeriod })} className={inputCls}>
+                <option value="lifelong_with_payment">Lifelong with payment</option>
+                <option value="from_prod_release">N months from prod release</option>
+                <option value="from_last_invoice">N months from last invoice</option>
+              </select>
+            </Field>
+            {form.supportPeriod !== 'lifelong_with_payment' && (
+              <Field label="Months">
+                <input type="number" min={1} required value={form.supportDurationMonths} onChange={(e) => set({ supportDurationMonths: e.target.value })} className={inputCls} />
+              </Field>
+            )}
+            {form.supportPeriod === 'from_prod_release' && (
+              <Field label="Prod release">
+                <input type="date" required value={form.prodReleaseDate} onChange={(e) => set({ prodReleaseDate: e.target.value })} className={inputCls} />
+              </Field>
+            )}
+          </div>
+        )}
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
+          <Field label="Start">
+            <input type="date" required value={form.startDate} onChange={(e) => set({ startDate: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="End">
+            <input type="date" value={form.endDate} onChange={(e) => set({ endDate: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Renewal" hint="Defaults to the end date.">
+            <input type="date" value={form.renewalDate} onChange={(e) => set({ renewalDate: e.target.value })} className={inputCls} />
+          </Field>
+        </div>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={form.autoRenew} onChange={(e) => set({ autoRenew: e.target.checked })} />
+          Renews automatically
+        </label>
+        {error && <p className="text-sm text-red-400">{error}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} className={btnSecondary}>
+            Cancel
+          </button>
+          <button type="submit" disabled={saving} className={btnPrimary}>
+            {saving ? 'Saving…' : editing ? 'Save changes' : 'Create contract'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

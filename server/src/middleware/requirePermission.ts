@@ -2,8 +2,17 @@ import { Request, Response, NextFunction } from 'express';
 import { ApiError } from '../utils/ApiError';
 import { userHasPermission } from '../shared/constants/legacyPermissionMap';
 
+/** Read by the MCP API catalog to show each user only the endpoints their permissions allow. */
+export type PermissionTag = { all?: string[]; any?: string[] };
+export const PERMISSION_TAG = Symbol.for('atrium.requiredPermissions');
+
+function tag<T extends object>(fn: T, value: PermissionTag): T {
+  Object.defineProperty(fn, PERMISSION_TAG, { value });
+  return fn;
+}
+
 export function requirePermission(...permissions: string[]) {
-  return (req: Request, _res: Response, next: NextFunction): void => {
+  return tag((req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) {
       next(new ApiError(401, 'Authentication required'));
       return;
@@ -15,11 +24,11 @@ export function requirePermission(...permissions: string[]) {
       return;
     }
     next();
-  };
+  }, { all: permissions });
 }
 
 export function requireAnyPermission(permissions: string[]) {
-  return (req: Request, _res: Response, next: NextFunction): void => {
+  return tag((req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) {
       next(new ApiError(401, 'Authentication required'));
       return;
@@ -30,5 +39,5 @@ export function requireAnyPermission(permissions: string[]) {
       return;
     }
     next();
-  };
+  }, { any: permissions });
 }

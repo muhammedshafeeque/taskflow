@@ -31,10 +31,18 @@ export async function listTokens(userId: string) {
 export async function createToken(
   userId: string,
   organizationId: string | undefined,
-  input: { name?: string; expiresInDays?: number | null }
+  input: { name?: string; expiresInDays?: number | null; readOnly?: boolean },
+  /** OAuth sign-in from an MCP client: reconnecting replaces that client's earlier token for this workspace. */
+  oauthClientId?: string
 ): Promise<{ token: string; record: Record<string, unknown> }> {
   const name = String(input.name ?? '').trim().slice(0, 80);
   if (!name) throw new ApiError(400, 'Token name is required');
+  if (oauthClientId) {
+    await ApiToken.updateMany(
+      { userId, oauthClientId, organizationId: organizationId && mongoose.Types.ObjectId.isValid(organizationId) ? organizationId : null, revokedAt: null },
+      { $set: { revokedAt: new Date() } }
+    );
+  }
   const active = await ApiToken.countDocuments({ userId, revokedAt: null });
   if (active >= MAX_TOKENS_PER_USER) throw new ApiError(400, `You can have at most ${MAX_TOKENS_PER_USER} active tokens`);
   const days = input.expiresInDays == null ? 90 : Number(input.expiresInDays);
@@ -47,6 +55,8 @@ export async function createToken(
     name,
     tokenHash: hash(token),
     prefix: token.slice(0, 10),
+    readOnly: input.readOnly === true,
+    oauthClientId,
     expiresAt: days === 0 ? undefined : new Date(Date.now() + days * 24 * 60 * 60 * 1000),
   });
   const { tokenHash: _omit, ...record } = doc.toObject();

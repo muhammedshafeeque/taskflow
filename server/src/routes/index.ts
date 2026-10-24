@@ -40,6 +40,7 @@ import { procurementRoutes } from '../modules/procurement/procurement.routes';
 import { accountsRoutes } from '../modules/accounts/accounts.routes';
 import { documentsRoutes } from '../modules/documents/documents.routes';
 import { docsRoutes } from '../modules/docs/docs.routes';
+import { mcpRoutes } from '../modules/mcp/mcp.routes';
 import { calendarRoutes } from '../modules/calendar/calendar.routes';
 import { searchRoutes } from '../modules/search/search.routes';
 import { aiRoutes } from '../modules/ai/ai.routes';
@@ -125,6 +126,8 @@ router.use('/uploads', uploadsRoutes);
 router.use('/webhooks', webhooksRoutes);
 router.use('/ai', aiRoutes);
 router.use('/api-tokens', apiTokenRoutes);
+// AI assistants over the Model Context Protocol; tools call this API with the caller's own token.
+router.use('/mcp', mcpRoutes);
 router.use('/public/sign', publicLimiter, publicSigningRoutes);
 router.use('/public/csat', publicLimiter, publicCsatRoutes);
 router.use('/public/status', publicLimiter, publicStatusRoutes);

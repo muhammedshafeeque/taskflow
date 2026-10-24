@@ -15,6 +15,8 @@ export interface IDocPage extends Document {
   status: 'draft' | 'published';
   /** Only space admins can edit a locked page. */
   locked: boolean;
+  /** Pages fill the reading pane; `narrow` limits them to a readable column. */
+  narrow: boolean;
   labels: string[];
   /** Issues and projects linked by hand. */
   issueIds: mongoose.Types.ObjectId[];
@@ -44,6 +46,7 @@ const docPageSchema = new Schema<IDocPage>(
     text: { type: String, default: '' },
     status: { type: String, enum: ['draft', 'published'], default: 'published' },
     locked: { type: Boolean, default: false },
+    narrow: { type: Boolean, default: false },
     labels: [{ type: String, trim: true, lowercase: true }],
     issueIds: [{ type: Schema.Types.ObjectId, ref: 'Issue' }],
     projectIds: [{ type: Schema.Types.ObjectId, ref: 'Project' }],

@@ -35,6 +35,7 @@ import Register from './pages/Register';
 import OAuthCallback from './pages/auth/OAuthCallback';
 import OAuthError from './pages/auth/OAuthError';
 import IdeLogin from './pages/auth/IdeLogin';
+import McpAuthorize from './pages/auth/McpAuthorize';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
@@ -107,6 +108,7 @@ import CustomerRequestApprovals from './pages/admin/CustomerRequestApprovals';
 import StandaloneAppSettings from './pages/StandaloneAppSettings';
 import KnowledgeBase from './pages/service/KnowledgeBase';
 import CrmDashboard from './pages/crm/CrmDashboard';
+import CrmDealDetail from './pages/crm/CrmDealDetail';
 import CrmAccounts from './pages/crm/CrmAccounts';
 import CrmAccountDetail from './pages/crm/CrmAccountDetail';
 import CrmContacts from './pages/crm/CrmContacts';
@@ -227,6 +229,7 @@ function AppRoutes() {
       <Route path="/auth/oauth-callback" element={<OAuthCallback />} />
       <Route path="/auth/error" element={<OAuthError />} />
       <Route path="/auth/ide" element={<IdeLogin />} />
+      <Route path="/auth/mcp" element={<McpAuthorize />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/sign/:token" element={<PublicSign />} />
       <Route path="/rate/:token" element={<PublicRate />} />
@@ -323,6 +326,7 @@ function AppRoutes() {
         <Route path="/crm/accounts/:id" element={<CrmAccountDetail />} />
         <Route path="/crm/contacts" element={<CrmContacts />} />
         <Route path="/crm/deals" element={<CrmDeals />} />
+        <Route path="/crm/deals/:id" element={<CrmDealDetail />} />
         <Route path="/crm/leads" element={<CrmLeads />} />
         <Route path="/crm/leads/new" element={<CrmLeadForm />} />
         <Route path="/crm/leads/:id/edit" element={<CrmLeadForm />} />

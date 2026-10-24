@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { FiArrowLeft, FiEdit2, FiPlus, FiTrash2 } from 'react-icons/fi';
+import ConfirmModal from '../../components/ConfirmModal';
+import { Chip, Field, Modal, Notice, btnDanger, btnPrimary, btnSecondary, errorOf, inputCls, prettyLabel } from './crmKit';
 import { CrmEmailPanel } from './CrmSalesTools';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
@@ -12,6 +15,12 @@ export default function CrmAccountDetail() {
   const canContact = canAny(user, 'taskflow.crm.contact.create');
   const canActivity = canAny(user, 'taskflow.crm.activity.create');
   const canUpdate = canAny(user, 'taskflow.crm.account.update');
+  const canDelete = canAny(user, 'taskflow.crm.account.delete');
+  const canDeal = canAny(user, 'taskflow.crm.deal.create');
+  const navigate = useNavigate();
+  const [editOpen, setEditOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [view, setView] = useState<{
     account: { name: string; type: string; notes?: string; industry?: string; website?: string };
     contacts: Array<{ _id: string; name: string; email?: string; isPrimary?: boolean }>;
@@ -118,13 +127,54 @@ export default function CrmAccountDetail() {
 
   return (
     <div className="p-8 w-full px-4 sm:px-6 lg:px-8">
-      <Link to="/crm/accounts" className="text-sm text-[color:var(--accent)] hover:underline">← Accounts</Link>
-      <h1 className="text-xl font-semibold mt-2 mb-1">{view.account.name}</h1>
-      <p className="text-[color:var(--text-muted)] text-sm mb-6 capitalize">
-        {view.account.type}
-        {view.account.industry ? ` · ${view.account.industry}` : ''}
-        {view.account.website ? ` · ${view.account.website}` : ''}
-      </p>
+      <header className="relative overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-5 py-5 sm:px-7 mb-6">
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 100% at 0% 0%, color-mix(in srgb, #0ea5e9 14%, transparent), transparent 50%), radial-gradient(ellipse 50% 80% at 100% 100%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 45%)',
+          }}
+        />
+        <div className="relative flex flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--accent)]">CRM · Account</p>
+            <h1 className="text-2xl font-bold tracking-tight mt-1">{view.account.name}</h1>
+            <p className="text-[13px] text-[color:var(--text-muted)] mt-1 flex flex-wrap items-center gap-2">
+              <Chip tone={view.account.type === 'client' ? 'good' : view.account.type === 'prospect' ? 'info' : 'neutral'}>{prettyLabel(view.account.type)}</Chip>
+              {view.account.industry && <span>{view.account.industry}</span>}
+              {view.account.website && (
+                <a href={/^https?:\/\//.test(view.account.website) ? view.account.website : `https://${view.account.website}`} target="_blank" rel="noreferrer" className="text-[color:var(--accent)] hover:underline">
+                  {view.account.website}
+                </a>
+              )}
+            </p>
+            {view.account.notes && <p className="text-xs text-[color:var(--text-muted)] mt-2 max-w-2xl whitespace-pre-wrap">{view.account.notes}</p>}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to="/crm/accounts" className={btnSecondary}>
+              <FiArrowLeft /> Accounts
+            </Link>
+            {canDeal && (
+              <Link to="/crm/deals" className={btnSecondary}>
+                <FiPlus /> Deal
+              </Link>
+            )}
+            {canUpdate && (
+              <button type="button" className={btnPrimary} onClick={() => setEditOpen(true)}>
+                <FiEdit2 /> Edit
+              </button>
+            )}
+            {canDelete && (
+              <button type="button" className={btnDanger} onClick={() => setConfirmDelete(true)} aria-label="Delete account">
+                <FiTrash2 />
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+      <div className="mb-4">
+        <Notice message={notice} onClose={() => setNotice(null)} />
+      </div>
 
       {view.financials && (
         <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6 mb-6">
@@ -173,8 +223,8 @@ export default function CrmAccountDetail() {
           <ul className="space-y-2 text-sm">
             {view.deals.map((d) => (
               <li key={d._id}>
-                <Link to="/crm/deals" className="text-[color:var(--accent)] hover:underline">{d.title}</Link>
-                {' '}— ${d.value} ({d.status})
+                <Link to={`/crm/deals/${d._id}`} className="text-[color:var(--accent)] hover:underline">{d.title}</Link>
+                {' '}— {money(d.value)} <Chip tone={d.status === 'won' ? 'good' : d.status === 'lost' ? 'bad' : 'accent'}>{prettyLabel(d.status)}</Chip>
               </li>
             ))}
             {view.deals.length === 0 && <li className="text-[color:var(--text-muted)]">No deals.</li>}
@@ -342,6 +392,108 @@ export default function CrmAccountDetail() {
           <CrmEmailPanel relatedType="account" relatedId={id} />
         </div>
       )}
+      {editOpen && (
+        <AccountEditModal
+          id={id!}
+          account={view.account}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => {
+            setEditOpen(false);
+            load();
+          }}
+        />
+      )}
+      <ConfirmModal
+        open={confirmDelete}
+        title={`Delete ${view.account.name}?`}
+        message="The account and its contacts are deleted. Deals, quotes and contracts are kept."
+        confirmLabel="Delete account"
+        onConfirm={async () => {
+          setConfirmDelete(false);
+          const res = await crmApi.deleteAccount(id!, token!);
+          if (!res.success) return setNotice(errorOf(res, 'Could not delete the account.'));
+          navigate('/crm/accounts');
+        }}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
+  );
+}
+
+function AccountEditModal({
+  id,
+  account,
+  onClose,
+  onSaved,
+}: {
+  id: string;
+  account: { name: string; type: string; notes?: string; industry?: string; website?: string };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { token } = useAuth();
+  const [form, setForm] = useState({
+    name: account.name,
+    type: account.type,
+    industry: account.industry ?? '',
+    website: account.website ?? '',
+    notes: account.notes ?? '',
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
+
+  return (
+    <Modal open title="Edit account" onClose={onClose}>
+      <form
+        className="space-y-3"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!token || !form.name.trim()) return;
+          setSaving(true);
+          const res = await crmApi.updateAccount(
+            id,
+            { name: form.name.trim(), type: form.type, industry: form.industry.trim(), website: form.website.trim(), notes: form.notes.trim() },
+            token
+          );
+          setSaving(false);
+          if (!res.success) return setError(errorOf(res, 'Could not save the account.'));
+          onSaved();
+        }}
+      >
+        <Field label="Name">
+          <input required autoFocus value={form.name} onChange={(e) => set({ name: e.target.value })} className={inputCls} />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Type">
+            <select value={form.type} onChange={(e) => set({ type: e.target.value })} className={inputCls}>
+              {['prospect', 'client', 'partner', 'vendor'].map((t) => (
+                <option key={t} value={t}>
+                  {prettyLabel(t)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Industry">
+            <input value={form.industry} onChange={(e) => set({ industry: e.target.value })} className={inputCls} />
+          </Field>
+        </div>
+        <Field label="Website">
+          <input value={form.website} onChange={(e) => set({ website: e.target.value })} className={inputCls} placeholder="example.com" />
+        </Field>
+        <Field label="Notes">
+          <textarea rows={3} value={form.notes} onChange={(e) => set({ notes: e.target.value })} className={inputCls} />
+        </Field>
+        {error && <p className="text-sm text-red-400">{error}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" className={btnSecondary} onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" disabled={saving} className={btnPrimary}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

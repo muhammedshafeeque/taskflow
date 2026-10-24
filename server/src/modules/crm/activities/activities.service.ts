@@ -117,6 +117,8 @@ export async function updateActivity(
   const orgId = requireWorkspaceId(workspaceId);
   const patch: Record<string, unknown> = {};
   if (input.subject != null) patch.subject = String(input.subject).trim();
+  if (input.type != null) patch.type = String(input.type);
+  if (input.completed === false) patch.completedAt = null;
   if ('body' in input) patch.body = input.body;
   if ('dueAt' in input) patch.dueAt = input.dueAt ? new Date(String(input.dueAt)) : undefined;
   if ('assigneeId' in input) {
@@ -126,7 +128,7 @@ export async function updateActivity(
   const updated = await CrmActivity.findOneAndUpdate(
     { _id: id, taskflowOrganizationId: toOrgOid(orgId) },
     { $set: patch },
-    { new: true }
+    { new: true, runValidators: true }
   ).lean();
   if (!updated) throw new ApiError(404, 'Activity not found');
   if (updated.relatedType === 'lead' && updated.type === 'follow_up' && 'dueAt' in input) {

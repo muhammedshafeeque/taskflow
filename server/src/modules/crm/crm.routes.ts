@@ -62,13 +62,16 @@ router.post('/leads/:id/convert', requirePermission(P.LEAD.UPDATE), asyncHandler
 router.get('/deals/forecast', requirePermission(P.REPORT.READ), asyncHandler(crm.getForecast));
 router.get('/deals', requirePermission(P.DEAL.LIST), asyncHandler(crm.listDeals));
 router.post('/deals', requirePermission(P.DEAL.CREATE), asyncHandler(crm.createDeal));
+router.get('/deals/:id', requireAnyPermission([P.DEAL.READ, P.DEAL.LIST]), asyncHandler(crm.getDeal));
 router.patch('/deals/:id', requirePermission(P.DEAL.UPDATE), asyncHandler(crm.updateDeal));
+router.delete('/deals/:id', requirePermission(P.DEAL.DELETE), asyncHandler(crm.deleteDeal));
 router.post('/deals/:id/move-stage', requirePermission(P.DEAL.UPDATE), asyncHandler(crm.moveDealStage));
 router.post('/deals/:id/create-project', requirePermission(P.DEAL.UPDATE), asyncHandler(crm.createProjectFromDeal));
 
 router.get('/pipelines', requirePermission(P.DEAL.LIST), asyncHandler(crm.listPipelines));
 router.post('/pipelines', requirePermission(P.SETTINGS.MANAGE), asyncHandler(crm.createPipeline));
 router.patch('/pipelines/:id', requirePermission(P.SETTINGS.MANAGE), asyncHandler(crm.updatePipeline));
+router.delete('/pipelines/:id', requirePermission(P.SETTINGS.MANAGE), asyncHandler(crm.deletePipeline));
 
 router.get('/quotes', requirePermission(P.QUOTE.LIST), asyncHandler(crm.listQuotes));
 router.post('/quotes', requirePermission(P.QUOTE.CREATE), asyncHandler(crm.createQuote));

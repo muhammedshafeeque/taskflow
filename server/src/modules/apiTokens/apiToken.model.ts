@@ -8,6 +8,10 @@ export interface IApiToken {
   tokenHash: string;
   /** First characters of the token, shown in the UI to tell tokens apart. */
   prefix: string;
+  /** Read-only tokens can only make GET requests (and use read tools over MCP). */
+  readOnly?: boolean;
+  /** Set when an MCP client got this token through OAuth sign-in rather than the user creating it. */
+  oauthClientId?: string;
   expiresAt?: Date;
   lastUsedAt?: Date;
   revokedAt?: Date;
@@ -21,6 +25,8 @@ const apiTokenSchema = new Schema<IApiToken>(
     name: { type: String, required: true, trim: true },
     tokenHash: { type: String, required: true, unique: true },
     prefix: { type: String, required: true },
+    readOnly: { type: Boolean, default: false },
+    oauthClientId: { type: String },
     expiresAt: { type: Date },
     lastUsedAt: { type: Date },
     revokedAt: { type: Date },

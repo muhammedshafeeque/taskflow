@@ -3,6 +3,7 @@ import passport from 'passport';
 import cors from 'cors';
 import helmet from 'helmet';
 import { apiRoutes } from './routes';
+import { wellKnownRouter } from './modules/mcp/mcpOAuth';
 import { errorHandler } from './middleware/errorHandler';
 import morgan from 'morgan';
 import { env } from './config/env';
@@ -47,7 +48,7 @@ app.use(
       return cb(new Error(`CORS blocked for origin: ${origin}`));
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Organization-Id', 'X-Monitor-Key'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Organization-Id', 'X-Monitor-Key', 'Mcp-Session-Id', 'Mcp-Protocol-Version'],
   })
 );
 app.use(
@@ -90,6 +91,8 @@ app.use((req, res, next) => {
 });
 app.use(morgan('dev'));
 app.use('/api', apiRoutes);
+// OAuth discovery for MCP clients (they look at the site root first; also served under /api/mcp).
+app.use('/.well-known', wellKnownRouter());
 
 app.use(errorHandler);
 

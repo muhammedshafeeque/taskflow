@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  FiMaximize2,
+  FiMinimize2,
   FiChevronRight,
   FiClock,
   FiCopy,
   FiEdit2,
+  FiFileText,
   FiFolder,
   FiHash,
   FiHome,
   FiLink2,
   FiLock,
+  FiMessageSquare,
   FiMoreHorizontal,
   FiMove,
   FiPlus,
@@ -18,45 +22,39 @@ import {
   FiUnlock,
 } from 'react-icons/fi';
 import ConfirmModal from '../ConfirmModal';
-import { btnPrimary, btnSecondary } from '../../pages/resources/resourceKit';
-import { docsApi, type DocIssueRef, type DocPage } from '../../lib/docsApi';
+import { Avatar, RelativeDate } from '../issues/issueUi';
+import { docsApi, type DocPage } from '../../lib/docsApi';
 import PageComments from './PageComments';
 import { HistoryDrawer, MovePageModal } from './DocsModals';
-import { DocContent, PageGlyph, PersonLine, SpaceBadge, errorText, pagePath, preparePageHtml } from './docsUi';
+import { DocContent, IssueChip, PageCover, PageGlyph, SpaceBadge, docLayout, errorText, pagePath, preparePageHtml } from './docsUi';
 
-function IssueRow({ issue }: { issue: DocIssueRef }) {
-  const href = issue.projectId && issue.key ? `/projects/${issue.projectId}/issues/${encodeURIComponent(issue.key)}` : undefined;
-  const body = (
-    <>
-      <span className="shrink-0 font-mono text-[11px] text-[color:var(--accent)]">{issue.key}</span>
-      <span className="min-w-0 flex-1 truncate">{issue.hidden ? <span className="italic text-[color:var(--text-muted)]">Not on this project</span> : issue.title}</span>
-      {issue.status && <span className="shrink-0 rounded bg-[color:var(--bg-elevated)] px-1.5 text-[10px] text-[color:var(--text-muted)]">{issue.status}</span>}
-    </>
-  );
-  return href && !issue.hidden ? (
-    <Link to={href} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-[color:var(--bg-elevated)]">
-      {body}
-    </Link>
-  ) : (
-    <div className="flex items-center gap-2 px-2 py-1.5 text-xs">{body}</div>
-  );
+const ICON_BTN =
+  'inline-grid h-8 w-8 place-items-center rounded-lg text-[color:var(--text-muted)] transition hover:bg-[color:var(--bg-elevated)] hover:text-[color:var(--text-primary)]';
+
+function readingMinutes(html: string) {
+  const words = html.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 220));
 }
 
 export default function PageView({
   page,
   token,
+  spaceColor,
   onEdit,
   onChanged,
   onAddChild,
   onTrashed,
+  leading,
 }: {
   page: DocPage;
   token: string;
+  spaceColor?: string;
   onEdit: () => void;
-  /** Reload the page (and tree) after a change made from here. */
   onChanged: () => void;
   onAddChild: (parentId: string) => void;
   onTrashed: () => void;
+  /** Rendered at the start of the top bar (e.g. the "show sidebar" button). */
+  leading?: ReactNode;
 }) {
   const navigate = useNavigate();
   const [menu, setMenu] = useState(false);
@@ -73,6 +71,7 @@ export default function PageView({
   useEffect(() => setStarred(page.starred), [page.starred]);
 
   const { html, outline } = useMemo(() => preparePageHtml(page.content, [...page.issues, ...page.mentionedIssues]), [page.content, page.issues, page.mentionedIssues]);
+  const minutes = useMemo(() => readingMinutes(page.content), [page.content]);
 
   useEffect(() => {
     if (!menu) return;
@@ -81,7 +80,6 @@ export default function PageView({
     return () => document.removeEventListener('mousedown', close);
   }, [menu]);
 
-  // Highlight the outline entry for the section being read.
   useEffect(() => {
     if (!outline.length) return;
     const obs = new IntersectionObserver(
@@ -89,7 +87,7 @@ export default function PageView({
         const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
         if (visible[0]) setActiveHeading(visible[0].target.id);
       },
-      { rootMargin: '0px 0px -70% 0px' }
+      { rootMargin: '-60px 0px -70% 0px' }
     );
     outline.forEach((o) => {
       const el = document.getElementById(o.id);
@@ -103,6 +101,19 @@ export default function PageView({
     const t = window.setTimeout(() => setNotice(''), 2500);
     return () => window.clearTimeout(t);
   }, [notice]);
+
+  // "e" opens the editor, like Confluence.
+  useEffect(() => {
+    if (!page.canEdit) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (e.key !== 'e' || e.metaKey || e.ctrlKey || e.altKey || t.closest('input, textarea, [contenteditable="true"]')) return;
+      e.preventDefault();
+      onEdit();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [page.canEdit, onEdit]);
 
   async function star() {
     const next = !starred;
@@ -130,95 +141,137 @@ export default function PageView({
     void navigator.clipboard?.writeText(window.location.origin + pagePath(page.space?.key, page.id)).then(() => setNotice('Link copied'));
   }
 
-  const hasRail = outline.length > 1 || page.issues.length > 0 || page.mentionedIssues.length > 0 || page.projects.length > 0;
+  const linkedIssues = [...page.issues, ...page.mentionedIssues];
+  const layout = docLayout(page.narrow);
+  const hasLinks = linkedIssues.length > 0 || page.projects.length > 0;
 
   return (
-    <div className="pb-16">
-      {/* Breadcrumbs + actions */}
-      <div className="mb-6 flex flex-wrap items-center gap-2">
-        <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-1 text-xs text-[color:var(--text-muted)]">
+    <div className="relative min-h-full">
+      {/* Top bar */}
+      <div className="sticky top-0 z-20 flex h-12 items-center gap-2 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-page)]/85 px-4 backdrop-blur-md sm:px-6">
+        {leading}
+        <nav className="flex min-w-0 flex-1 items-center gap-1 text-[13px] text-[color:var(--text-muted)]">
           {page.space && (
-            <Link to={`/docs/${page.space.key}`} className="inline-flex items-center gap-1.5 hover:text-[color:var(--accent)]">
-              <SpaceBadge icon={page.space.icon} name={page.space.name} color={page.space.color} size={16} />
-              {page.space.name}
+            <Link to={`/docs/${page.space.key}`} className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-[color:var(--bg-elevated)] hover:text-[color:var(--text-primary)]">
+              <SpaceBadge icon={page.space.icon} name={page.space.name} color={page.space.color} size={18} />
+              <span className="hidden sm:inline">{page.space.name}</span>
             </Link>
           )}
           {page.breadcrumbs.map((b) => (
-            <span key={b.id} className="inline-flex items-center gap-1">
-              <FiChevronRight className="h-3 w-3" />
-              <Link to={pagePath(page.space?.key, b.id)} className="max-w-[180px] truncate hover:text-[color:var(--accent)]">
+            <span key={b.id} className="inline-flex min-w-0 items-center gap-1">
+              <FiChevronRight className="h-3.5 w-3.5 shrink-0 opacity-50" />
+              <Link to={pagePath(page.space?.key, b.id)} className="max-w-[160px] truncate rounded-md px-1.5 py-1 hover:bg-[color:var(--bg-elevated)] hover:text-[color:var(--text-primary)]">
                 {b.emoji ? `${b.emoji} ` : ''}
                 {b.title}
               </Link>
             </span>
           ))}
+          <span className="inline-flex min-w-0 items-center gap-1">
+            <FiChevronRight className="h-3.5 w-3.5 shrink-0 opacity-50" />
+            <span className="truncate px-1.5 text-[color:var(--text-primary)]">{page.title}</span>
+          </span>
         </nav>
-        <div className="flex items-center gap-1.5">
-          {notice && <span className="mr-2 text-xs text-[color:var(--text-muted)] animate-fade-in">{notice}</span>}
-          <button type="button" onClick={star} className={`${btnSecondary} !px-2`} title={starred ? 'Unstar' : 'Star'}>
-            <FiStar className={starred ? 'fill-amber-400 text-amber-400' : ''} />
+        {notice && <span className="hidden text-xs text-[color:var(--text-muted)] animate-fade-in sm:inline">{notice}</span>}
+        {page.status === 'draft' && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-500">Draft</span>}
+        <button type="button" onClick={star} className={ICON_BTN} title={starred ? 'Unstar' : 'Star'}>
+          <FiStar className={`h-4 w-4 ${starred ? 'fill-amber-400 text-amber-400' : ''}`} />
+        </button>
+        <button type="button" onClick={() => setHistory(true)} className={ICON_BTN} title="Page history">
+          <FiClock className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={copyLink} className={ICON_BTN} title="Copy link">
+          <FiLink2 className="h-4 w-4" />
+        </button>
+        <div className="relative" ref={menuRef}>
+          <button type="button" onClick={() => setMenu((v) => !v)} className={ICON_BTN} aria-label="More actions">
+            <FiMoreHorizontal className="h-4 w-4" />
           </button>
-          <button type="button" onClick={copyLink} className={`${btnSecondary} !px-2`} title="Copy link">
-            <FiLink2 />
-          </button>
-          {page.canEdit && (
-            <button type="button" onClick={onEdit} className={btnPrimary}>
-              <FiEdit2 /> Edit
-            </button>
+          {menu && (
+            <div className="absolute right-0 top-10 z-30 w-60 overflow-hidden rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-modal)] p-1 text-sm shadow-2xl animate-scale-in">
+              <MenuItem icon={<FiClock />} label="Page history" onClick={() => (setMenu(false), setHistory(true))} />
+              <MenuItem icon={<FiCopy />} label="Copy link" onClick={copyLink} />
+              {canEditSpace && <MenuItem icon={<FiPlus />} label="Add child page" onClick={() => (setMenu(false), onAddChild(page.id))} />}
+              {page.canEdit && (
+                <MenuItem
+                  icon={page.narrow ? <FiMaximize2 /> : <FiMinimize2 />}
+                  label={page.narrow ? 'Full width' : 'Narrow width'}
+                  onClick={() => act(docsApi.updatePage(page.id, { narrow: !page.narrow }, token), page.narrow ? 'Full width' : 'Narrow width')}
+                />
+              )}
+              {page.canEdit && !page.isHome && <MenuItem icon={<FiMove />} label="Move…" onClick={() => (setMenu(false), setMove(true))} />}
+              {isAdmin && (
+                <MenuItem
+                  icon={page.locked ? <FiUnlock /> : <FiLock />}
+                  label={page.locked ? 'Unlock editing' : 'Lock editing'}
+                  onClick={() => act(docsApi.updatePage(page.id, { locked: !page.locked }, token), page.locked ? 'Page unlocked' : 'Only space admins can edit now')}
+                />
+              )}
+              {isAdmin && !page.isHome && page.status === 'published' && page.space && (
+                <MenuItem icon={<FiHome />} label="Make space home" onClick={() => act(docsApi.updateSpace(page.space!.key, { homePageId: page.id }, token), 'Set as space home')} />
+              )}
+              {page.canEdit && !page.isHome && (
+                <>
+                  <div className="my-1 h-px bg-[color:var(--border-subtle)]" />
+                  <MenuItem icon={<FiTrash2 />} label="Move to trash" danger onClick={() => (setMenu(false), setConfirmTrash(true))} />
+                </>
+              )}
+            </div>
           )}
-          <div className="relative" ref={menuRef}>
-            <button type="button" onClick={() => setMenu((v) => !v)} className={`${btnSecondary} !px-2`} aria-label="More actions">
-              <FiMoreHorizontal />
-            </button>
-            {menu && (
-              <div className="absolute right-0 top-10 z-30 w-56 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-modal)] p-1 shadow-xl text-sm">
-                <MenuItem icon={<FiClock />} label="Page history" onClick={() => (setMenu(false), setHistory(true))} />
-                <MenuItem icon={<FiCopy />} label="Copy link" onClick={copyLink} />
-                {canEditSpace && <MenuItem icon={<FiPlus />} label="Add child page" onClick={() => (setMenu(false), onAddChild(page.id))} />}
-                {page.canEdit && !page.isHome && <MenuItem icon={<FiMove />} label="Move" onClick={() => (setMenu(false), setMove(true))} />}
-                {isAdmin && (
-                  <MenuItem
-                    icon={page.locked ? <FiUnlock /> : <FiLock />}
-                    label={page.locked ? 'Unlock editing' : 'Lock editing'}
-                    onClick={() => act(docsApi.updatePage(page.id, { locked: !page.locked }, token), page.locked ? 'Page unlocked' : 'Only space admins can edit now')}
-                  />
-                )}
-                {isAdmin && !page.isHome && page.status === 'published' && page.space && (
-                  <MenuItem icon={<FiHome />} label="Make space home" onClick={() => act(docsApi.updateSpace(page.space!.key, { homePageId: page.id }, token), 'Set as space home')} />
-                )}
-                {page.canEdit && !page.isHome && (
-                  <>
-                    <div className="my-1 h-px bg-[color:var(--border-subtle)]" />
-                    <MenuItem icon={<FiTrash2 />} label="Move to trash" danger onClick={() => (setMenu(false), setConfirmTrash(true))} />
-                  </>
-                )}
-              </div>
-            )}
-          </div>
         </div>
+        {page.canEdit && (
+          <button type="button" onClick={onEdit} className="btn-primary ml-1 inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm" title="Edit (E)">
+            <FiEdit2 className="h-3.5 w-3.5" /> Edit
+          </button>
+        )}
       </div>
 
-      <div className={`grid gap-10 ${hasRail ? 'xl:grid-cols-[minmax(0,1fr)_240px]' : ''}`}>
-        <article className="min-w-0 max-w-4xl">
-          <header className="mb-6">
-            {page.emoji && <div className="mb-2 text-5xl leading-none">{page.emoji}</div>}
-            <h1 className="text-3xl font-bold tracking-tight">{page.title}</h1>
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-              <PersonLine person={page.createdBy} prefix="Created by" />
-              <PersonLine person={page.updatedBy} prefix="Last updated by" at={page.updatedAt} />
-              <button type="button" className="text-xs text-[color:var(--text-muted)] hover:text-[color:var(--accent)]" onClick={() => setHistory(true)}>
+      <PageCover color={spaceColor ?? page.space?.color} compact={!page.emoji} />
+
+      <div className={layout.shell}>
+      <div className={layout.grid}>
+        <article className={layout.column}>
+          {/* Title block */}
+          <header className={page.emoji ? '-mt-12' : '-mt-6'}>
+            {page.emoji && (
+              <div className="relative mb-3 grid h-20 w-20 place-items-center rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] text-5xl shadow-lg">
+                {page.emoji}
+              </div>
+            )}
+            <h1 className="text-[2.4rem] font-extrabold leading-tight tracking-tight">{page.title}</h1>
+            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-[color:var(--text-muted)]">
+              <span className="inline-flex items-center gap-2">
+                <span className="flex -space-x-1.5">
+                  <Avatar name={page.createdBy.name ?? page.createdBy.email} size={24} />
+                  {page.updatedBy.id !== page.createdBy.id && <Avatar name={page.updatedBy.name ?? page.updatedBy.email} size={24} />}
+                </span>
+                <span>
+                  By <span className="font-medium text-[color:var(--text-primary)]">{page.createdBy.name ?? 'Someone'}</span>
+                  {page.updatedBy.id !== page.createdBy.id && (
+                    <>
+                      {' '}
+                      · edited by <span className="font-medium text-[color:var(--text-primary)]">{page.updatedBy.name ?? 'Someone'}</span>
+                    </>
+                  )}
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <FiClock className="h-3.5 w-3.5" /> <RelativeDate value={page.updatedAt} />
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <FiFileText className="h-3.5 w-3.5" /> {minutes} min read
+              </span>
+              <button type="button" onClick={() => setHistory(true)} className="rounded-md bg-[color:var(--bg-elevated)] px-1.5 py-0.5 text-[11px] font-medium hover:text-[color:var(--accent)]">
                 v{page.version}
               </button>
-              {page.status === 'draft' && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-amber-500">Draft · only you can see this</span>}
-              {page.locked && (
-                <span className="inline-flex items-center gap-1 rounded bg-[color:var(--bg-elevated)] px-1.5 py-0.5 text-[11px] text-[color:var(--text-muted)]">
-                  <FiLock className="h-3 w-3" /> Locked
-                </span>
-              )}
               {page.commentCount > 0 && (
-                <a href="#comments" className="text-xs text-[color:var(--text-muted)] hover:text-[color:var(--accent)]">
-                  {page.commentCount} comment{page.commentCount === 1 ? '' : 's'}
+                <a href="#comments" className="inline-flex items-center gap-1 hover:text-[color:var(--accent)]">
+                  <FiMessageSquare className="h-3.5 w-3.5" /> {page.commentCount}
                 </a>
+              )}
+              {page.locked && (
+                <span className="inline-flex items-center gap-1 text-amber-500">
+                  <FiLock className="h-3.5 w-3.5" /> Locked
+                </span>
               )}
             </div>
             {page.labels.length > 0 && (
@@ -228,7 +281,7 @@ export default function PageView({
                     key={l}
                     type="button"
                     onClick={() => navigate(`/docs?label=${encodeURIComponent(l)}`)}
-                    className="inline-flex items-center gap-0.5 rounded-full bg-[color:var(--bg-elevated)] px-2 py-0.5 text-[11px] text-[color:var(--text-muted)] hover:text-[color:var(--accent)]"
+                    className="inline-flex items-center gap-0.5 rounded-full border border-[color:var(--border-subtle)] px-2.5 py-0.5 text-[11px] text-[color:var(--text-muted)] transition hover:border-[color:var(--accent)]/50 hover:text-[color:var(--accent)]"
                   >
                     <FiHash className="h-3 w-3" />
                     {l}
@@ -238,103 +291,150 @@ export default function PageView({
             )}
           </header>
 
-          {page.content.trim() ? (
-            <DocContent html={html} />
-          ) : (
-            <div className="rounded-2xl border border-dashed border-[color:var(--border-subtle)] p-10 text-center text-sm text-[color:var(--text-muted)]">
-              This page is empty.
+          {page.status === 'draft' && (
+            <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-[13px] text-amber-600 dark:text-amber-400">
+              This is a draft — only you can see it.{' '}
               {page.canEdit && (
-                <button type="button" onClick={onEdit} className="ml-1 text-[color:var(--accent)] hover:underline">
-                  Start writing
+                <button type="button" onClick={onEdit} className="font-semibold underline-offset-2 hover:underline">
+                  Open the editor to publish
                 </button>
               )}
             </div>
           )}
 
-          {page.children.length > 0 && (
-            <section className="mt-10">
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">Child pages</h2>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {page.children.map((c) => (
+          {hasLinks && (
+            <section className="mt-6 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)]/60 p-3">
+              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
+                <FiLink2 /> Linked work
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {page.projects.map((p) => (
                   <Link
-                    key={c.id}
-                    to={pagePath(page.space?.key, c.id)}
-                    className="flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] px-3 py-2.5 text-sm hover:border-[color:var(--accent)]/50 hover-elevated"
+                    key={p.id}
+                    to={`/projects/${p.id}/docs`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-2 py-1 text-[12px] transition hover:border-[color:var(--accent)]/50"
                   >
-                    <PageGlyph emoji={c.emoji} />
-                    <span className="truncate">{c.title}</span>
+                    <FiFolder className="h-3.5 w-3.5 text-[color:var(--text-muted)]" />
+                    <span className="font-mono text-[11px] font-semibold">{p.key}</span>
+                    <span className="max-w-[160px] truncate">{p.name}</span>
                   </Link>
                 ))}
+                {linkedIssues.map((i) => (
+                  <IssueChip key={i.id} issue={i} />
+                ))}
               </div>
+            </section>
+          )}
+
+          <div className="mt-8">
+            {page.content.trim() ? (
+              <DocContent html={html} />
+            ) : (
+              <button
+                type="button"
+                disabled={!page.canEdit}
+                onClick={onEdit}
+                className="w-full rounded-2xl border-2 border-dashed border-[color:var(--border-subtle)] px-6 py-14 text-center transition enabled:hover:border-[color:var(--accent)]/50 enabled:hover:bg-[color:var(--accent-subtle)]"
+              >
+                <FiEdit2 className="mx-auto h-6 w-6 text-[color:var(--text-muted)]" />
+                <p className="mt-2 font-medium">This page is empty</p>
+                {page.canEdit && <p className="mt-1 text-sm text-[color:var(--text-muted)]">Click to start writing, or press E</p>}
+              </button>
+            )}
+          </div>
+
+          {(page.children.length > 0 || canEditSpace) && (
+            <section className="mt-14">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
+                  Child pages {page.children.length > 0 && <span className="ml-1 font-normal">{page.children.length}</span>}
+                </h2>
+                {canEditSpace && (
+                  <button type="button" onClick={() => onAddChild(page.id)} className="inline-flex items-center gap-1 text-xs text-[color:var(--text-muted)] hover:text-[color:var(--accent)]">
+                    <FiPlus /> Add
+                  </button>
+                )}
+              </div>
+              {page.children.length > 0 ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {page.children.map((c) => (
+                    <Link
+                      key={c.id}
+                      to={pagePath(page.space?.key, c.id)}
+                      className="group flex items-center gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-3.5 py-3 transition hover:-translate-y-px hover:border-[color:var(--accent)]/40 hover:shadow-md"
+                    >
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[color:var(--bg-elevated)]">
+                        <PageGlyph emoji={c.emoji} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium group-hover:text-[color:var(--accent)]">{c.title}</span>
+                        <span className="text-[11px] text-[color:var(--text-muted)]">
+                          <RelativeDate value={c.updatedAt} />
+                        </span>
+                      </span>
+                      <FiChevronRight className="text-[color:var(--text-muted)] opacity-0 transition group-hover:opacity-100" />
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-[color:var(--text-muted)]">No child pages yet.</p>
+              )}
             </section>
           )}
 
           <PageComments pageId={page.id} token={token} canModerate={isAdmin} />
         </article>
 
-        {hasRail && (
-          <aside className="hidden xl:block">
-            <div className="sticky top-4 space-y-6">
-              {outline.length > 1 && (
-                <section>
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">On this page</p>
-                  <ul className="space-y-0.5 border-l border-[color:var(--border-subtle)]">
-                    {outline.map((o) => (
-                      <li key={o.id}>
-                        <a
-                          href={`#${o.id}`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            document.getElementById(o.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          }}
-                          className={`-ml-px block border-l py-0.5 text-xs transition ${
-                            activeHeading === o.id
-                              ? 'border-[color:var(--accent)] text-[color:var(--accent)]'
-                              : 'border-transparent text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'
-                          }`}
-                          style={{ paddingLeft: 10 + (o.level - 1) * 10 }}
-                        >
-                          {o.text}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-              {page.issues.length > 0 && (
-                <section>
-                  <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
-                    <FiLink2 /> Linked issues
-                  </p>
-                  {page.issues.map((i) => (
-                    <IssueRow key={i.id} issue={i} />
+        <aside className={layout.rail}>
+          <div className="sticky top-20 space-y-6 pt-10">
+            {outline.length > 1 && (
+              <section>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">On this page</p>
+                <ul className="space-y-0.5 border-l-2 border-[color:var(--border-subtle)]">
+                  {outline.map((o) => (
+                    <li key={o.id}>
+                      <a
+                        href={`#${o.id}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          document.getElementById(o.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }}
+                        className={`-ml-0.5 block truncate border-l-2 py-1 text-[12px] transition ${
+                          activeHeading === o.id
+                            ? 'border-[color:var(--accent)] font-medium text-[color:var(--accent)]'
+                            : 'border-transparent text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'
+                        }`}
+                        style={{ paddingLeft: 12 + (o.level - 1) * 12 }}
+                        title={o.text}
+                      >
+                        {o.text}
+                      </a>
+                    </li>
                   ))}
-                </section>
-              )}
-              {page.mentionedIssues.length > 0 && (
-                <section>
-                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">Mentioned issues</p>
-                  {page.mentionedIssues.map((i) => (
-                    <IssueRow key={i.id} issue={i} />
-                  ))}
-                </section>
-              )}
-              {page.projects.length > 0 && (
-                <section>
-                  <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
-                    <FiFolder /> Projects
-                  </p>
-                  {page.projects.map((p) => (
-                    <Link key={p.id} to={`/projects/${p.id}/docs`} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-[color:var(--bg-elevated)]">
-                      <span className="font-mono text-[11px] text-[color:var(--accent)]">{p.key}</span>
-                      <span className="truncate">{p.name}</span>
-                    </Link>
-                  ))}
-                </section>
-              )}
-            </div>
-          </aside>
-        )}
+                </ul>
+              </section>
+            )}
+            <section className="rounded-xl border border-[color:var(--border-subtle)] p-3 text-[12px] text-[color:var(--text-muted)] space-y-1.5">
+              <p className="flex justify-between">
+                <span>Created</span>
+                <RelativeDate value={page.createdAt} />
+              </p>
+              <p className="flex justify-between">
+                <span>Updated</span>
+                <RelativeDate value={page.updatedAt} />
+              </p>
+              <p className="flex justify-between">
+                <span>Version</span>
+                <span className="text-[color:var(--text-primary)]">{page.version}</span>
+              </p>
+              <p className="flex justify-between">
+                <span>Your access</span>
+                <span className="text-[color:var(--text-primary)]">{page.canEdit ? 'Can edit' : 'Can view'}</span>
+              </p>
+            </section>
+          </div>
+        </aside>
+      </div>
       </div>
 
       <HistoryDrawer open={history} onClose={() => setHistory(false)} token={token} pageId={page.id} currentVersion={page.version} canRestore={page.canEdit} onRestored={onChanged} />
@@ -370,9 +470,9 @@ function MenuItem({ icon, label, onClick, danger }: { icon: ReactNode; label: st
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-[color:var(--bg-elevated)] ${danger ? 'text-red-400' : ''}`}
+      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-[color:var(--bg-elevated)] ${danger ? 'text-red-400' : ''}`}
     >
-      <span className="text-[color:var(--text-muted)]">{icon}</span>
+      <span className={danger ? '' : 'text-[color:var(--text-muted)]'}>{icon}</span>
       {label}
     </button>
   );

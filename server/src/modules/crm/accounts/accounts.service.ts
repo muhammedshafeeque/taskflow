@@ -185,7 +185,7 @@ export async function deleteAccount(id: string, workspaceId: string | null | und
   const orgId = requireWorkspaceId(workspaceId);
   const deleted = await CrmAccount.findOneAndDelete({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
   if (!deleted) throw new ApiError(404, 'Account not found');
-  await CrmContact.deleteMany({ accountId: id });
+  await CrmContact.deleteMany({ taskflowOrganizationId: toOrgOid(orgId), accountId: id });
   logAudit({ userId, action: 'delete', resourceType: 'crm_account', resourceId: id });
   return { ok: true };
 }

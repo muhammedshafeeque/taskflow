@@ -13,6 +13,22 @@ export function spaceColor(color?: string) {
   return color || 'var(--accent)';
 }
 
+/** Docs home and project docs fill the content area with the app's standard gutters, like other list pages. */
+export const DOCS_INDEX = 'w-full px-4 sm:px-6 lg:px-8';
+
+/**
+ * Page layout shared by the reader and the editor, so text stays in the same place when switching modes.
+ * Pages fill the reading pane (outline rail on wide screens); `narrow` pages use a ~820px reading column.
+ */
+export function docLayout(narrow: boolean) {
+  return {
+    shell: `mx-auto w-full px-4 pb-24 sm:px-6 lg:px-10 ${narrow ? 'max-w-[1140px]' : 'max-w-none'}`,
+    grid: 'grid gap-10 xl:grid-cols-[minmax(0,1fr)_220px]',
+    column: `mx-auto w-full min-w-0 ${narrow ? 'max-w-[820px]' : 'max-w-none'}`,
+    rail: 'hidden xl:block',
+  };
+}
+
 export function pagePath(spaceKey: string | undefined, pageId: string, edit = false) {
   return `/docs/${spaceKey ?? '_'}/pages/${pageId}${edit ? '?edit=1' : ''}`;
 }
@@ -131,6 +147,67 @@ export function preparePageHtml(html: string, issues: DocIssueRef[]): { html: st
   return { html: root.innerHTML, outline };
 }
 
+/** Typography shared by the reader and the editor so a page looks the same in both. */
+export const DOC_PROSE = [
+  'text-[color:var(--text-primary)]',
+  '[&_h1]:text-[1.75rem] [&_h1]:font-bold [&_h1]:tracking-tight [&_h1]:mt-10 [&_h1]:mb-3 [&_h1]:scroll-mt-20',
+  '[&_h2]:text-[1.35rem] [&_h2]:font-semibold [&_h2]:tracking-tight [&_h2]:mt-9 [&_h2]:mb-2 [&_h2]:pb-1.5 [&_h2]:border-b [&_h2]:border-[color:var(--border-subtle)] [&_h2]:scroll-mt-20',
+  '[&_h3]:text-[1.1rem] [&_h3]:font-semibold [&_h3]:mt-6 [&_h3]:mb-1.5 [&_h3]:scroll-mt-20',
+  '[&_p]:my-2.5 [&_li]:my-1 [&_li>p]:my-0',
+  '[&_blockquote]:my-4 [&_blockquote]:rounded-r-lg [&_blockquote]:border-l-4 [&_blockquote]:border-[color:var(--accent)] [&_blockquote]:bg-[color:var(--accent-subtle)] [&_blockquote]:px-4 [&_blockquote]:py-2 [&_blockquote]:not-italic',
+  '[&_pre]:my-4 [&_pre]:rounded-xl [&_pre]:bg-[color:var(--bg-elevated)] [&_pre]:p-4 [&_pre]:text-[13px] [&_pre]:font-mono [&_pre]:overflow-x-auto',
+  '[&_:not(pre)>code]:rounded-md [&_:not(pre)>code]:bg-[color:var(--bg-elevated)] [&_:not(pre)>code]:px-1.5 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:text-[0.85em] [&_:not(pre)>code]:font-mono',
+  '[&_table]:my-5 [&_table]:w-full [&_table]:overflow-hidden [&_table]:rounded-xl [&_table]:text-sm [&_th]:bg-[color:var(--bg-elevated)] [&_th]:text-left [&_th]:font-semibold',
+  '[&_hr]:my-8 [&_hr]:border-[color:var(--border-subtle)] [&_img]:rounded-xl [&_img]:my-3',
+  '[&_a]:text-[color:var(--accent)] [&_a]:underline-offset-2 hover:[&_a]:underline',
+  '[&_.doc-issue-key]:inline-flex [&_.doc-issue-key]:items-center [&_.doc-issue-key]:rounded-md [&_.doc-issue-key]:border [&_.doc-issue-key]:border-[color:var(--accent)]/30 [&_.doc-issue-key]:bg-[color:var(--accent-subtle)] [&_.doc-issue-key]:px-1.5 [&_.doc-issue-key]:font-mono [&_.doc-issue-key]:text-[0.8em] [&_.doc-issue-key]:font-semibold [&_.doc-issue-key]:no-underline',
+].join(' ');
+
+/** Banner across the top of a page, tinted with the space colour. */
+export function PageCover({ color, compact }: { color?: string; compact?: boolean }) {
+  const c = color || 'var(--accent)';
+  return (
+    <div
+      className={`relative w-full overflow-hidden ${compact ? 'h-20' : 'h-36 sm:h-44'}`}
+      style={{
+        background: `radial-gradient(ellipse 60% 120% at 15% 0%, color-mix(in srgb, ${c} 55%, transparent), transparent 60%), radial-gradient(ellipse 50% 120% at 90% 100%, color-mix(in srgb, ${c} 35%, transparent), transparent 60%), linear-gradient(135deg, color-mix(in srgb, ${c} 22%, var(--bg-surface)), var(--bg-surface))`,
+      }}
+    >
+      <div className="absolute inset-0 opacity-[0.15]" style={{ backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)', backgroundSize: '18px 18px', color: c }} />
+      <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[color:var(--bg-page)] to-transparent" />
+    </div>
+  );
+}
+
+/** Jira-style issue chip: key, title and status. */
+export function IssueChip({ issue, onRemove }: { issue: DocIssueRef; onRemove?: () => void }) {
+  const href = issue.projectId && issue.key && !issue.hidden ? `/projects/${issue.projectId}/issues/${encodeURIComponent(issue.key)}` : undefined;
+  const inner = (
+    <>
+      <span className="font-mono text-[11px] font-semibold text-[color:var(--accent)]">{issue.key}</span>
+      {!issue.hidden && issue.title && <span className="max-w-[220px] truncate text-[12px] text-[color:var(--text-primary)]">{issue.title}</span>}
+      {issue.status && <span className="rounded-full bg-[color:var(--bg-elevated)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[color:var(--text-muted)]">{issue.status}</span>}
+    </>
+  );
+  const cls = 'group/chip inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-2 py-1 transition';
+  return (
+    <span className={`${cls} ${href ? 'hover:border-[color:var(--accent)]/50 hover:shadow-sm' : ''}`}>
+      {href ? (
+        <Link to={href} className="inline-flex items-center gap-1.5">
+          {inner}
+        </Link>
+      ) : (
+        inner
+      )}
+      {onRemove && (
+        <button type="button" onClick={onRemove} className="ml-0.5 text-[color:var(--text-muted)] hover:text-red-400" aria-label={`Unlink ${issue.key}`}>
+          ×
+        </button>
+      )}
+    </span>
+  );
+}
+
 /** Renders page HTML; in-app links navigate without a full page load. */
 export function DocContent({ html }: { html: string }) {
   const navigate = useNavigate();
@@ -151,7 +228,7 @@ export function DocContent({ html }: { html: string }) {
   return (
     <div
       onClick={onClick}
-      className="doc-content text-[15px] leading-[1.75] text-[color:var(--text-primary)] [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-8 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mt-7 [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-1.5 [&_h1]:scroll-mt-24 [&_h2]:scroll-mt-24 [&_h3]:scroll-mt-24 [&_p]:my-2 [&_.doc-issue-key]:inline-flex [&_.doc-issue-key]:items-center [&_.doc-issue-key]:rounded [&_.doc-issue-key]:bg-[color:var(--accent-subtle)] [&_.doc-issue-key]:px-1.5 [&_.doc-issue-key]:font-mono [&_.doc-issue-key]:text-[0.85em] [&_.doc-issue-key]:no-underline [&_code]:rounded [&_code]:bg-[color:var(--bg-elevated)] [&_code]:px-1 [&_hr]:my-6 [&_hr]:border-[color:var(--border-subtle)]"
+      className={`doc-content text-[16px] leading-[1.8] ${DOC_PROSE}`}
     >
       <RichTextContent body={html} />
     </div>

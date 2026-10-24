@@ -68,6 +68,8 @@ export interface DocPage {
   content: string;
   status: 'draft' | 'published';
   locked: boolean;
+  /** Pages fill the reading pane unless the author chose a narrow reading column. */
+  narrow: boolean;
   labels: string[];
   version: number;
   starred: boolean;
@@ -146,6 +148,7 @@ export interface DocPageInput {
   content?: string;
   status?: 'draft' | 'published';
   locked?: boolean;
+  narrow?: boolean;
   labels?: string[];
   issueIds?: string[];
   projectIds?: string[];

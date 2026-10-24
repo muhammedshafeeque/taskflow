@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
@@ -11,29 +12,47 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
+import { FiCalendar, FiColumns, FiList, FiPlus, FiSearch } from 'react-icons/fi';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
-import { crmApi, type CrmDeal, type CrmPipeline } from '../../lib/api';
+import { crmApi, usersApi, type CrmDeal, type CrmPipeline, type User } from '../../lib/api';
+import ConfirmModal from '../../components/ConfirmModal';
+import { PersonSelect, toPeople } from '../../components/people';
+import { Avatar } from '../../components/dashboard/PmWidgets';
+import DealFormModal from './DealFormModal';
+import {
+  Chip,
+  CrmShell,
+  DEAL_STATUS_TONE,
+  EmptyState,
+  LoadingBlock,
+  Notice,
+  RowMenu,
+  Segmented,
+  Stat,
+  btnPrimary,
+  daysUntil,
+  dealOrgName,
+  errorOf,
+  fmtDate,
+  inputCls,
+  money,
+  moneyShort,
+  prettyLabel,
+  refId,
+  refName,
+} from './crmKit';
 
-function orgLabel(deal: CrmDeal): string {
-  const ref = deal.customerOrgId ?? deal.accountId;
-  if (!ref) return '—';
-  if (typeof ref === 'string') return ref;
-  return ref.name ?? '—';
-}
+type View = 'board' | 'list';
+type StatusFilter = 'open' | 'won' | 'lost' | 'all';
+type Sort = 'value' | 'close' | 'updated';
 
-function DealColumn({
-  stageId,
-  children,
-}: {
-  stageId: string;
-  children: React.ReactNode;
-}) {
+function DealColumn({ stageId, children }: { stageId: string; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: `stage:${stageId}` });
   return (
     <div
       ref={setNodeRef}
-      className={`space-y-2 min-h-[120px] rounded-xl p-0.5 transition-colors ${
+      className={`space-y-2 min-h-[140px] flex-1 rounded-xl p-1 transition-colors ${
         isOver ? 'bg-[color:var(--accent)]/10 ring-2 ring-[color:var(--accent)]/40' : ''
       }`}
     >
@@ -42,60 +61,62 @@ function DealColumn({
   );
 }
 
+function CloseDate({ deal }: { deal: CrmDeal }) {
+  if (!deal.expectedCloseDate) return <span className="text-[color:var(--text-muted)]">No date</span>;
+  const d = daysUntil(deal.expectedCloseDate) ?? 0;
+  const late = deal.status === 'open' && d < 0;
+  return (
+    <span className={`inline-flex items-center gap-1 ${late ? 'text-red-400' : 'text-[color:var(--text-muted)]'}`} title={late ? `${-d} days past expected close` : undefined}>
+      <FiCalendar className="shrink-0" />
+      {fmtDate(deal.expectedCloseDate, { day: 'numeric', month: 'short' })}
+    </span>
+  );
+}
+
 function DealCard({
   deal,
   canDrag,
-  onCreateProject,
-  showCreateProject,
+  onOpen,
+  menu,
 }: {
   deal: CrmDeal;
   canDrag: boolean;
-  showCreateProject: boolean;
-  onCreateProject: () => void;
+  onOpen: () => void;
+  menu: React.ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: deal._id,
-    disabled: !canDrag,
-  });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: deal._id, disabled: !canDrag });
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
+  const owner = refName(deal.ownerId);
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`rounded-lg border border-[color:var(--border-subtle)] p-3 text-sm bg-[color:var(--bg-page)] ${
-        isDragging ? 'opacity-40' : ''
-      }`}
+      {...listeners}
+      {...attributes}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => e.key === 'Enter' && onOpen()}
+      className={`group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] p-3 text-sm card-shadow hover:border-[color:var(--accent)]/50 transition ${
+        canDrag ? 'cursor-grab active:cursor-grabbing touch-none' : 'cursor-pointer'
+      } ${isDragging ? 'opacity-40' : ''}`}
     >
-      <div className="flex gap-2 min-w-0">
-        {canDrag && (
-          <button
-            type="button"
-            className="shrink-0 touch-none cursor-grab active:cursor-grabbing text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] p-0.5 -m-0.5"
-            aria-label="Drag deal to another stage"
-            {...listeners}
-            {...attributes}
-          >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16" aria-hidden>
-              <path d="M5 3a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM5 9a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z" />
-            </svg>
-          </button>
-        )}
+      <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <p className="font-medium">{deal.title}</p>
-          <p className="text-[color:var(--text-muted)] text-xs">{orgLabel(deal)}</p>
-          <p className="text-[color:var(--text-muted)]">
-            ${(deal.value ?? 0).toLocaleString()} · {deal.status}
-          </p>
-          {showCreateProject && (
-            <button
-              type="button"
-              onClick={onCreateProject}
-              className="mt-2 text-[10px] px-2 py-0.5 rounded bg-emerald-600/20 text-emerald-300"
-            >
-              Create project
-            </button>
-          )}
+          <p className="font-medium leading-snug line-clamp-2">{deal.title}</p>
+          <p className="text-[11px] text-[color:var(--text-muted)] truncate mt-0.5">{dealOrgName(deal)}</p>
         </div>
+        <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition -mr-1 -mt-1" onPointerDown={(e) => e.stopPropagation()}>
+          {menu}
+        </div>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="font-semibold tabular-nums">{moneyShort(deal.value, deal.currency)}</span>
+        {deal.status !== 'open' ? <Chip tone={DEAL_STATUS_TONE[deal.status]}>{prettyLabel(deal.status)}</Chip> : <span className="text-[11px] text-[color:var(--text-muted)] tabular-nums">{deal.probability}%</span>}
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+        <CloseDate deal={deal} />
+        {owner ? <Avatar name={owner} /> : <span className="text-[color:var(--text-muted)] italic">Unassigned</span>}
       </div>
     </div>
   );
@@ -103,62 +124,91 @@ function DealCard({
 
 export default function CrmDeals() {
   const { token, user } = useAuth();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const canCreate = canAny(user, 'taskflow.crm.deal.create');
   const canUpdate = canAny(user, 'taskflow.crm.deal.update');
-  const [pipeline, setPipeline] = useState<CrmPipeline | null>(null);
-  const [deals, setDeals] = useState<CrmDeal[]>([]);
-  const [orgs, setOrgs] = useState<Array<{ _id: string; name: string }>>([]);
-  const [wizardDeal, setWizardDeal] = useState<CrmDeal | null>(null);
-  const [projectName, setProjectName] = useState('');
-  const [projectKey, setProjectKey] = useState('');
-  const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState({
-    title: '',
-    customerOrgId: '',
-    value: 0,
-    expectedCloseDate: '',
-    stageId: '',
-  });
+  const canDelete = canAny(user, 'taskflow.crm.deal.delete');
+
+  const [pipelines, setPipelines] = useState<CrmPipeline[]>([]);
+  const [deals, setDeals] = useState<CrmDeal[] | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<CrmDeal | null>(null);
+  const [formDefaults, setFormDefaults] = useState<{ stageId?: string; pipelineId?: string } | undefined>();
+  const [deleting, setDeleting] = useState<CrmDeal | null>(null);
+  const [sort, setSort] = useState<Sort>('value');
+
+  const view = (params.get('view') === 'list' ? 'list' : 'board') as View;
+  const search = params.get('q') ?? '';
+  const ownerId = params.get('owner') ?? '';
+  const status = (params.get('status') ?? 'all') as StatusFilter;
+  const setParam = (k: string, v: string, fallback = '') => {
+    const next = new URLSearchParams(params);
+    if (v && v !== fallback) next.set(k, v);
+    else next.delete(k);
+    setParams(next, { replace: true });
+  };
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
-  const load = async () => {
-    if (!token) return;
-    const [pRes, dRes, aRes] = await Promise.all([
-      crmApi.listPipelines(token),
-      crmApi.listDeals(token),
-      crmApi.listCustomerOrgs(token),
-    ]);
-    if (pRes.success && pRes.data) {
-      const pipes = pRes.data as CrmPipeline[];
-      const pipe = pipes.find((p) => p.isDefault) ?? pipes[0] ?? null;
-      setPipeline(pipe);
-      if (pipe?.stages?.length && !form.stageId) {
-        const first = [...pipe.stages].sort((a, b) => a.order - b.order)[0];
-        setForm((f) => ({ ...f, stageId: first._id }));
-      }
-    }
-    if (dRes.success && dRes.data) setDeals(dRes.data as CrmDeal[]);
-    if (aRes.success && aRes.data) setOrgs(Array.isArray(aRes.data) ? aRes.data : []);
-  };
+  const [tick, setTick] = useState(0);
+  const load = () => setTick((t) => t + 1);
 
   useEffect(() => {
-    void load();
+    if (!token) return;
+    let stale = false;
+    void Promise.all([crmApi.listPipelines(token), crmApi.listDeals(token)]).then(([pRes, dRes]) => {
+      if (stale) return;
+      if (pRes.success && pRes.data) setPipelines(pRes.data);
+      if (dRes.success && dRes.data) setDeals(dRes.data);
+      else setNotice(errorOf(dRes, 'Could not load deals.'));
+    });
+    return () => {
+      stale = true;
+    };
+  }, [token, tick]);
+
+  useEffect(() => {
+    if (!token) return;
+    usersApi.list(1, 100, token).then((res) => {
+      if (res.success && res.data) setUsers(res.data.data ?? []);
+    });
   }, [token]);
 
-  const dealsByStage = (stageId: string) => deals.filter((d) => String(d.stageId) === String(stageId));
+  const pipeline = pipelines.find((p) => p._id === params.get('pipeline')) ?? pipelines.find((p) => p.isDefault) ?? pipelines[0] ?? null;
+  const stages = useMemo(() => (pipeline ? [...pipeline.stages].sort((a, b) => a.order - b.order) : []), [pipeline]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (deals ?? []).filter((d) => {
+      if (pipeline && String(d.pipelineId) !== pipeline._id) return false;
+      if (ownerId === 'none' ? refId(d.ownerId) : ownerId && refId(d.ownerId) !== ownerId) return false;
+      if (status !== 'all' && d.status !== status) return false;
+      if (q && !`${d.title} ${dealOrgName(d)} ${refName(d.contactId)}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [deals, pipeline, search, ownerId, status]);
+
+  const open = filtered.filter((d) => d.status === 'open');
+  const openValue = open.reduce((s, d) => s + (d.value ?? 0), 0);
+  const weighted = open.reduce((s, d) => s + ((d.value ?? 0) * (d.probability ?? 0)) / 100, 0);
+  const overdue = open.filter((d) => (daysUntil(d.expectedCloseDate) ?? 0) < 0).length;
+  const currency = deals?.[0]?.currency;
 
   const moveDeal = async (dealId: string, stageId: string) => {
     if (!token) return;
     const prev = deals;
-    setDeals((list) => list.map((d) => (d._id === dealId ? { ...d, stageId } : d)));
+    setDeals((list) => (list ?? []).map((d) => (d._id === dealId ? { ...d, stageId } : d)));
     const res = await crmApi.moveDealStage(dealId, stageId, token);
     if (!res.success) {
       setDeals(prev);
+      setNotice(errorOf(res, 'Could not move the deal.'));
       return;
     }
-    void load();
+    load();
   };
 
   async function onDragEnd(ev: DragEndEvent) {
@@ -167,174 +217,236 @@ export default function CrmDeals() {
     const overId = ev.over?.id ? String(ev.over.id) : '';
     if (!overId.startsWith('stage:')) return;
     const stageId = overId.slice('stage:'.length);
-    const dealId = String(ev.active.id);
-    const deal = deals.find((d) => d._id === dealId);
+    const deal = deals?.find((d) => d._id === String(ev.active.id));
     if (!deal || String(deal.stageId) === stageId) return;
-    await moveDeal(dealId, stageId);
+    await moveDeal(deal._id, stageId);
   }
 
-  const createProject = async () => {
-    if (!token || !wizardDeal || !projectName.trim() || !projectKey.trim()) return;
-    await crmApi.createProjectFromDeal(
-      wizardDeal._id,
-      { name: projectName.trim(), key: projectKey.trim().toUpperCase() },
-      token
-    );
-    setWizardDeal(null);
-    setProjectName('');
-    setProjectKey('');
+  async function confirmDelete() {
+    if (!token || !deleting) return;
+    const res = await crmApi.deleteDeal(deleting._id, token);
+    setDeleting(null);
+    if (!res.success) return setNotice(errorOf(res, 'Could not delete the deal.'));
     load();
+  }
+
+  const openCreate = (stageId?: string) => {
+    setEditing(null);
+    setFormDefaults({ stageId, pipelineId: pipeline?._id });
+    setFormOpen(true);
   };
 
-  async function createDeal(e: React.FormEvent) {
-    e.preventDefault();
-    if (!token || !pipeline || !form.title.trim() || !form.customerOrgId || !form.stageId) return;
-    await crmApi.createDeal(
-      {
-        title: form.title.trim(),
-        customerOrgId: form.customerOrgId,
-        pipelineId: pipeline._id,
-        stageId: form.stageId,
-        value: Number(form.value) || 0,
-        expectedCloseDate: form.expectedCloseDate || undefined,
-        probability: pipeline.stages.find((s) => s._id === form.stageId)?.probability ?? 0,
-      },
-      token
-    );
-    setCreateOpen(false);
-    setForm({ title: '', customerOrgId: orgs[0]?._id ?? '', value: 0, expectedCloseDate: '', stageId: form.stageId });
-    load();
-  }
+  const menuFor = (d: CrmDeal) => (
+    <RowMenu
+      onEdit={canUpdate ? () => { setEditing(d); setFormOpen(true); } : undefined}
+      onDelete={canDelete ? () => setDeleting(d) : undefined}
+      extra={[{ label: 'Open', onClick: () => navigate(`/crm/deals/${d._id}`) }]}
+    />
+  );
 
-  if (!pipeline) return <div className="p-8 text-[color:var(--text-muted)]">Loading pipeline…</div>;
+  if (!deals || !pipeline) return <LoadingBlock label="Loading pipeline…" />;
+
+  const sortedList = [...filtered].sort((a, b) => {
+    if (sort === 'close') return new Date(a.expectedCloseDate ?? '9999').getTime() - new Date(b.expectedCloseDate ?? '9999').getTime();
+    if (sort === 'updated') return new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime();
+    return (b.value ?? 0) - (a.value ?? 0);
+  });
 
   return (
-    <div className="p-8 w-full px-4 sm:px-6 lg:px-8">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div>
-          <h1 className="text-xl font-semibold">Deals pipeline</h1>
-          <p className="text-[13px] text-[color:var(--text-muted)]">{pipeline.name}</p>
+    <CrmShell
+      title="Deals"
+      description={`${pipeline.name} · ${canUpdate ? 'drag cards between stages, click to open' : 'read-only view'}`}
+      actions={
+        <>
+          <Segmented<View>
+            value={view}
+            onChange={(v) => setParam('view', v, 'board')}
+            options={[
+              { value: 'board', label: <span className="inline-flex items-center gap-1"><FiColumns /> Board</span> },
+              { value: 'list', label: <span className="inline-flex items-center gap-1"><FiList /> List</span> },
+            ]}
+          />
+          {canCreate && (
+            <button type="button" className={btnPrimary} onClick={() => openCreate()}>
+              <FiPlus /> New deal
+            </button>
+          )}
+        </>
+      }
+    >
+      <Notice message={notice} onClose={() => setNotice(null)} />
+
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <Stat label="Open pipeline" value={moneyShort(openValue, currency)} hint={`${open.length} open deals`} />
+        <Stat label="Weighted" value={moneyShort(weighted, currency)} hint="Value × probability" />
+        <Stat label="Average deal" value={moneyShort(open.length ? openValue / open.length : 0, currency)} hint="Open deals" />
+        <Stat label="Past close date" value={overdue} tone={overdue ? 'bad' : undefined} hint="Open deals overdue" />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--text-muted)]" />
+          <input value={search} onChange={(e) => setParam('q', e.target.value)} placeholder="Search deals, customers, contacts…" className={`${inputCls} pl-9`} />
         </div>
-        {canCreate && (
-          <button
-            type="button"
-            className="btn-primary px-4 py-2 rounded-lg text-sm"
-            onClick={() => {
-              setForm((f) => ({ ...f, customerOrgId: orgs[0]?._id ?? '', title: '', value: 0 }));
-              setCreateOpen(true);
-            }}
-            disabled={orgs.length === 0}
-          >
-            Add deal
-          </button>
+        <div className="w-56">
+          <PersonSelect
+            value={ownerId}
+            onChange={(v) => setParam('owner', v)}
+            people={toPeople(users)}
+            specialOptions={[
+              { value: '', label: 'All owners' },
+              { value: 'none', label: 'Unassigned' },
+            ]}
+            clearValue=""
+            placeholder="Owner"
+            size="md"
+          />
+        </div>
+        <Segmented<StatusFilter>
+          value={status}
+          onChange={(v) => setParam('status', v, 'all')}
+          options={(['all', 'open', 'won', 'lost'] as const).map((s) => ({
+            value: s,
+            label: prettyLabel(s),
+            count: (deals ?? []).filter((d) => String(d.pipelineId) === pipeline._id && (s === 'all' || d.status === s)).length,
+          }))}
+        />
+        {pipelines.length > 1 && (
+          <select value={pipeline._id} onChange={(e) => setParam('pipeline', e.target.value)} className={`${inputCls} !w-auto`}>
+            {pipelines.map((p) => (
+              <option key={p._id} value={p._id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
         )}
       </div>
-      {orgs.length === 0 && (
-        <p className="text-sm text-amber-400 mb-4">Create a customer organisation in portal admin before adding deals.</p>
-      )}
-      <p className="text-[12px] text-[color:var(--text-muted)] mb-3">
-        {canUpdate ? 'Drag the handle on a deal to move it between stages.' : 'You can view the pipeline but not move deals.'}
-      </p>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={pointerWithin}
-        onDragStart={({ active }) => setActiveDealId(String(active.id))}
-        onDragEnd={(ev) => void onDragEnd(ev)}
-        onDragCancel={() => setActiveDealId(null)}
-      >
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {[...pipeline.stages]
-          .sort((a, b) => a.order - b.order)
-          .map((stage) => {
-            const columnDeals = dealsByStage(stage._id);
-            return (
-            <div key={stage._id} className="min-w-[240px] rounded-2xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] p-3">
-              <h3 className="font-medium text-sm mb-2 flex justify-between gap-2">
-                <span>{stage.name}</span>
-                <span className="text-[color:var(--text-muted)]">
-                  {columnDeals.length} · {stage.probability}%
-                </span>
-              </h3>
-              <DealColumn stageId={stage._id}>
-                {columnDeals.map((deal) => (
-                  <DealCard
-                    key={deal._id}
-                    deal={deal}
-                    canDrag={canUpdate}
-                    showCreateProject={Boolean(stage.isWon || deal.status === 'won')}
-                    onCreateProject={() => setWizardDeal(deal)}
-                  />
-                ))}
-              </DealColumn>
-            </div>
-            );
-          })}
-      </div>
-      <DragOverlay>
-        {activeDealId ? (
-          <div className="rounded-lg border border-[color:var(--accent)]/40 bg-[color:var(--bg-elevated)] p-3 text-sm shadow-xl w-[220px]">
-            <p className="font-medium">{deals.find((d) => d._id === activeDealId)?.title}</p>
-          </div>
-        ) : null}
-      </DragOverlay>
-      </DndContext>
 
-      {createOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setCreateOpen(false)}>
-          <form onSubmit={createDeal} className="rounded-2xl bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] p-6 max-w-md w-full space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h2 className="font-semibold">New deal</h2>
-            <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Title</span>
-              <input required value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-            </label>
-            <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Customer</span>
-              <select required value={form.customerOrgId} onChange={(e) => setForm((f) => ({ ...f, customerOrgId: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm">
-                {orgs.map((a) => (
-                  <option key={a._id} value={a._id}>{a.name}</option>
-                ))}
-              </select>
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-xs space-y-1">
-                <span className="text-[color:var(--text-muted)]">Value</span>
-                <input type="number" min={0} value={form.value} onChange={(e) => setForm((f) => ({ ...f, value: Number(e.target.value) }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-              </label>
-              <label className="block text-xs space-y-1">
-                <span className="text-[color:var(--text-muted)]">Close date</span>
-                <input type="date" value={form.expectedCloseDate} onChange={(e) => setForm((f) => ({ ...f, expectedCloseDate: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-              </label>
-            </div>
-            <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Stage</span>
-              <select value={form.stageId} onChange={(e) => setForm((f) => ({ ...f, stageId: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm">
-                {[...pipeline.stages].sort((a, b) => a.order - b.order).map((s) => (
-                  <option key={s._id} value={s._id}>{s.name}</option>
-                ))}
-              </select>
-            </label>
-            <div className="flex gap-2 justify-end pt-2">
-              <button type="button" onClick={() => setCreateOpen(false)} className="px-4 py-2 text-sm">Cancel</button>
-              <button type="submit" className="btn-primary px-4 py-2 rounded-lg text-sm">Create</button>
-            </div>
-          </form>
+      {view === 'board' ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={pointerWithin}
+          onDragStart={({ active }) => setActiveDealId(String(active.id))}
+          onDragEnd={(ev) => void onDragEnd(ev)}
+          onDragCancel={() => setActiveDealId(null)}
+        >
+          <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1">
+            {stages.map((stage) => {
+              const col = filtered.filter((d) => String(d.stageId) === stage._id);
+              const colValue = col.reduce((s, d) => s + (d.value ?? 0), 0);
+              const accent = stage.isWon ? 'bg-emerald-500' : stage.isLost ? 'bg-red-500' : 'bg-[color:var(--accent)]';
+              return (
+                <div key={stage._id} className="w-[270px] shrink-0 flex flex-col rounded-2xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] p-2.5">
+                  <div className={`h-1 rounded-full ${accent} opacity-70 mb-2`} />
+                  <div className="flex items-start justify-between gap-2 px-1 mb-2">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-sm truncate">{stage.name}</h3>
+                      <p className="text-[11px] text-[color:var(--text-muted)] tabular-nums">
+                        {col.length} · {moneyShort(colValue, currency)} · {stage.probability}%
+                      </p>
+                    </div>
+                    {canCreate && !stage.isWon && !stage.isLost && (
+                      <button type="button" onClick={() => openCreate(stage._id)} className="p-1 rounded-md text-[color:var(--text-muted)] hover:text-[color:var(--accent)] hover:bg-[color:var(--bg-elevated)]" aria-label={`Add deal to ${stage.name}`}>
+                        <FiPlus />
+                      </button>
+                    )}
+                  </div>
+                  <DealColumn stageId={stage._id}>
+                    {col.map((deal) => (
+                      <DealCard key={deal._id} deal={deal} canDrag={canUpdate} onOpen={() => navigate(`/crm/deals/${deal._id}`)} menu={menuFor(deal)} />
+                    ))}
+                    {col.length === 0 && <p className="text-[11px] text-center text-[color:var(--text-muted)] py-6">Drop deals here</p>}
+                  </DealColumn>
+                </div>
+              );
+            })}
+          </div>
+          <DragOverlay>
+            {activeDealId ? (
+              <div className="rounded-xl border border-[color:var(--accent)]/40 bg-[color:var(--bg-elevated)] p-3 text-sm shadow-xl w-[250px] rotate-2">
+                <p className="font-medium">{deals.find((d) => d._id === activeDealId)?.title}</p>
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      ) : sortedList.length === 0 ? (
+        <EmptyState title="No deals match">Try clearing the search or filters.</EmptyState>
+      ) : (
+        <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)] text-left border-b border-[color:var(--border-subtle)]">
+                <th className="py-2.5 px-4 font-medium">Deal</th>
+                <th className="py-2.5 px-3 font-medium">Stage</th>
+                <th className="py-2.5 px-3 font-medium">Owner</th>
+                <SortTh label="Value" active={sort === 'value'} onClick={() => setSort('value')} right />
+                <th className="py-2.5 px-3 font-medium text-right hidden md:table-cell">Prob.</th>
+                <SortTh label="Close" active={sort === 'close'} onClick={() => setSort('close')} />
+                <SortTh label="Updated" active={sort === 'updated'} onClick={() => setSort('updated')} className="hidden lg:table-cell" />
+                <th className="w-10" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[color:var(--border-subtle)]">
+              {sortedList.map((d) => (
+                <tr key={d._id} className="hover:bg-[color:var(--bg-elevated)]/60">
+                  <td className="py-2.5 px-4">
+                    <Link to={`/crm/deals/${d._id}`} className="font-medium hover:text-[color:var(--accent)]">
+                      {d.title}
+                    </Link>
+                    <span className="block text-[11px] text-[color:var(--text-muted)]">{dealOrgName(d)}</span>
+                  </td>
+                  <td className="py-2.5 px-3">
+                    <span className="inline-flex items-center gap-1.5">
+                      {stages.find((s) => s._id === String(d.stageId))?.name ?? '—'}
+                      {d.status !== 'open' && <Chip tone={DEAL_STATUS_TONE[d.status]}>{prettyLabel(d.status)}</Chip>}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 text-[color:var(--text-muted)]">{refName(d.ownerId) || '—'}</td>
+                  <td className="py-2.5 px-3 text-right tabular-nums font-medium">{money(d.value, d.currency)}</td>
+                  <td className="py-2.5 px-3 text-right tabular-nums hidden md:table-cell">{d.probability}%</td>
+                  <td className="py-2.5 px-3 text-xs">
+                    <CloseDate deal={d} />
+                  </td>
+                  <td className="py-2.5 px-3 text-xs text-[color:var(--text-muted)] hidden lg:table-cell">{fmtDate(d.updatedAt, { day: 'numeric', month: 'short' })}</td>
+                  <td className="py-2.5 pr-3 text-right">{menuFor(d)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {wizardDeal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="rounded-2xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] p-6 max-w-md w-full">
-            <h2 className="font-semibold mb-4">Create project from deal</h2>
-            <p className="text-sm text-[color:var(--text-muted)] mb-4">{wizardDeal.title}</p>
-            <input className="w-full mb-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm" placeholder="Project name" value={projectName} onChange={(e) => setProjectName(e.target.value)} />
-            <input className="w-full mb-4 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm" placeholder="Project key (e.g. ACME)" value={projectKey} onChange={(e) => setProjectKey(e.target.value)} />
-            <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => setWizardDeal(null)} className="px-4 py-2 text-sm">Cancel</button>
-              <button type="button" onClick={createProject} className="btn-primary px-4 py-2 rounded-lg text-sm">Create</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      <DealFormModal
+        open={formOpen}
+        deal={editing}
+        pipelines={pipelines}
+        defaults={formDefaults}
+        onClose={() => setFormOpen(false)}
+        onSaved={(saved) => {
+          setFormOpen(false);
+          if (!editing && saved?._id) navigate(`/crm/deals/${saved._id}`);
+          else load();
+        }}
+      />
+      <ConfirmModal
+        open={!!deleting}
+        title="Delete deal?"
+        message={`“${deleting?.title ?? ''}” and its activities will be deleted. Linked quotes and contracts are kept.`}
+        confirmLabel="Delete deal"
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setDeleting(null)}
+      />
+    </CrmShell>
+  );
+}
+
+function SortTh({ label, active, onClick, right, className = '' }: { label: string; active: boolean; onClick: () => void; right?: boolean; className?: string }) {
+  return (
+    <th className={`py-2.5 px-3 font-medium ${right ? 'text-right' : ''} ${className}`}>
+      <button type="button" onClick={onClick} className={`uppercase tracking-wider ${active ? 'text-[color:var(--text-primary)]' : 'hover:text-[color:var(--text-primary)]'}`}>
+        {label}
+        {active && ' ↓'}
+      </button>
+    </th>
   );
 }

@@ -119,7 +119,7 @@ export default function PageTree({
     setDrop(null);
   };
 
-  const render = (items: TreeItem[], depth: number): ReactElement[] =>
+  const render = (items: TreeItem[]): ReactElement[] =>
     items
       .filter((item) => !matches || matches.has(item.id))
       .map((item) => {
@@ -138,10 +138,9 @@ export default function PageTree({
               onDragOver={(e) => onDragOver(e, item)}
               onDragLeave={() => setDrop((d) => (d?.id === item.id ? null : d))}
               onDrop={onDrop}
-              className={`group relative flex items-center gap-1 rounded-lg pr-1 text-[13px] transition ${
-                active ? 'bg-[color:var(--accent-subtle)] text-[color:var(--accent)] font-medium' : 'text-[color:var(--text-primary)] hover:bg-[color:var(--bg-elevated)]'
+              className={`group relative flex items-center gap-1 rounded-lg pl-1 pr-1 text-[13px] transition ${
+                active ? 'bg-[color:var(--accent-subtle)] text-[color:var(--accent)] font-semibold shadow-[inset_2px_0_0_var(--accent)]' : 'text-[color:var(--text-primary)]/90 hover:bg-[color:var(--bg-elevated)]'
               } ${spot === 'inside' ? 'ring-2 ring-[color:var(--accent)]' : ''} ${dragId === item.id ? 'opacity-40' : ''}`}
-              style={{ paddingLeft: 4 + depth * 14 }}
             >
               {spot === 'before' && <span className="pointer-events-none absolute -top-px left-2 right-2 h-0.5 rounded bg-[color:var(--accent)]" />}
               {spot === 'after' && <span className="pointer-events-none absolute -bottom-px left-2 right-2 h-0.5 rounded bg-[color:var(--accent)]" />}
@@ -169,7 +168,7 @@ export default function PageTree({
                 </button>
               )}
             </div>
-            {open && item.children.length > 0 && <ul>{render(item.children, depth + 1)}</ul>}
+            {open && item.children.length > 0 && <ul className="ml-[13px] space-y-px border-l border-[color:var(--border-subtle)] pl-1.5">{render(item.children)}</ul>}
           </li>
         );
       });
@@ -192,7 +191,7 @@ export default function PageTree({
         reset();
       }}
     >
-      {render(tree, 0)}
+      {render(tree)}
     </ul>
   );
 }

@@ -20,6 +20,7 @@ export interface PageInput {
   content?: string;
   status?: string;
   locked?: boolean;
+  narrow?: boolean;
   labels?: string[];
   issueIds?: string[];
   projectIds?: string[];
@@ -198,6 +199,7 @@ async function pageDetail(actor: DocsActor, page: IDocPage, role: DocSpaceRole) 
     content: page.content,
     status: page.status,
     locked: page.locked,
+    narrow: !!page.narrow,
     labels: page.labels,
     version: page.version,
     starred: page.starredBy.some((u) => String(u) === actor.id),
@@ -286,6 +288,7 @@ export async function createPage(actor: DocsActor, input: PageInput) {
     content,
     text,
     status: input.status === 'draft' ? 'draft' : 'published',
+    narrow: Boolean(input.narrow),
     labels: input.labels ? cleanLabels(input.labels) : [],
     issueIds,
     projectIds,
@@ -325,6 +328,7 @@ export async function updatePage(actor: DocsActor, id: string, input: PageInput)
     page.mentionedIssueIds = await mentionedIssues(actor, `${nextTitle}\n${page.text}`);
     page.version += 1;
   }
+  if (input.narrow !== undefined) page.narrow = Boolean(input.narrow);
   if (input.emoji !== undefined) page.emoji = String(input.emoji ?? '').trim() || undefined;
   if (input.status !== undefined) {
     if (input.status !== 'draft' && input.status !== 'published') throw new ApiError(400, 'status must be draft or published');

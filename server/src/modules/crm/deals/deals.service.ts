@@ -3,6 +3,10 @@ import { notifyUsers } from '../../notifications/domainNotify';
 import mongoose from 'mongoose';
 import { CrmDeal } from '../models/crmDeal.model';
 import { CrmPipeline } from '../models/crmPipeline.model';
+import { CrmActivity } from '../models/crmActivity.model';
+import { CrmQuote } from '../models/crmQuote.model';
+import { CrmContract } from '../models/crmContract.model';
+import { CrmLead } from '../models/crmLead.model';
 import { CustomerOrg } from '../../customer-portal/customer-org/customerOrg.model';
 import { Project } from '../../projects/project.model';
 import * as projectsService from '../../projects/projects.service';
@@ -11,10 +15,15 @@ import { requireWorkspaceId, toOrgOid } from '../crmWorkspace';
 
 export async function listDeals(
   workspaceId: string | null | undefined,
-  opts: { status?: string; stageId?: string; unlinked?: boolean } = {}
+  opts: { status?: string; stageId?: string; unlinked?: boolean; ownerId?: string; search?: string; pipelineId?: string } = {}
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
+  if (opts.ownerId && mongoose.isValidObjectId(opts.ownerId)) filter.ownerId = opts.ownerId;
+  if (opts.pipelineId && mongoose.isValidObjectId(opts.pipelineId)) filter.pipelineId = opts.pipelineId;
+  if (opts.search?.trim()) {
+    filter.title = { $regex: opts.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+  }
   if (opts.unlinked) {
     filter.$or = [{ customerOrgId: null }, { customerOrgId: { $exists: false } }];
   }
@@ -48,11 +57,57 @@ export async function createDeal(workspaceId: string | null | undefined, input: 
     currency: input.currency ?? 'USD',
     probability: Number(input.probability ?? 0),
     expectedCloseDate: input.expectedCloseDate ? new Date(String(input.expectedCloseDate)) : undefined,
-    ownerId: input.ownerId,
+    ownerId: input.ownerId || undefined,
+    accountId: input.accountId || undefined,
     lineItems: input.lineItems ?? [],
     status: 'open',
   });
   return doc.toObject();
+}
+
+/** One deal with its people, stage and related records — powers the deal detail screen. */
+export async function getDeal(id: string, workspaceId: string | null | undefined) {
+  const orgId = requireWorkspaceId(workspaceId);
+  if (!mongoose.isValidObjectId(id)) throw new ApiError(404, 'Deal not found');
+  const orgOid = toOrgOid(orgId);
+  const deal = await CrmDeal.findOne({ _id: id, taskflowOrganizationId: orgOid })
+    .populate('customerOrgId', 'name status')
+    .populate('accountId', 'name type')
+    .populate('ownerId', 'name email')
+    .populate('contactId', 'name email phone')
+    .populate('leadId', 'title')
+    .populate('projectId', 'name key')
+    .lean();
+  if (!deal) throw new ApiError(404, 'Deal not found');
+  const [pipeline, quotes, contracts] = await Promise.all([
+    CrmPipeline.findOne({ _id: deal.pipelineId, taskflowOrganizationId: orgOid }).lean(),
+    CrmQuote.find({ taskflowOrganizationId: orgOid, dealId: deal._id })
+      .select('title status total currency version validUntil createdAt')
+      .sort({ createdAt: -1 })
+      .lean(),
+    CrmContract.find({ taskflowOrganizationId: orgOid, dealId: deal._id })
+      .select('title status value currency startDate endDate kind')
+      .sort({ createdAt: -1 })
+      .lean(),
+  ]);
+  return { deal, pipeline, quotes, contracts };
+}
+
+/** Deletes a deal and its activities; quotes and contracts are kept but unlinked. */
+export async function deleteDeal(id: string, workspaceId: string | null | undefined) {
+  const orgId = requireWorkspaceId(workspaceId);
+  const orgOid = toOrgOid(orgId);
+  const deal = await CrmDeal.findOne({ _id: id, taskflowOrganizationId: orgOid });
+  if (!deal) throw new ApiError(404, 'Deal not found');
+  if (deal.status === 'won') void voidDealCommission(String(deal._id)).catch(() => undefined);
+  await Promise.all([
+    CrmActivity.deleteMany({ taskflowOrganizationId: orgOid, relatedType: 'deal', relatedId: deal._id }),
+    CrmQuote.updateMany({ taskflowOrganizationId: orgOid, dealId: deal._id }, { $unset: { dealId: 1 } }),
+    CrmContract.updateMany({ taskflowOrganizationId: orgOid, dealId: deal._id }, { $unset: { dealId: 1 } }),
+    CrmLead.updateMany({ taskflowOrganizationId: orgOid, dealId: deal._id }, { $unset: { dealId: 1 } }),
+  ]);
+  await deal.deleteOne();
+  return { deleted: true };
 }
 
 export async function updateDeal(id: string, workspaceId: string | null | undefined, input: Record<string, unknown>) {
@@ -70,22 +125,40 @@ export async function updateDeal(id: string, workspaceId: string | null | undefi
     'status',
     'expectedCloseDate',
     'lineItems',
-    'notes',
     'probability',
+    'customerOrgId',
+    'winReason',
+    'lossReason',
+    'competitorNotes',
   ]);
+  for (const k of ['ownerId', 'accountId', 'contactId', 'expectedCloseDate'] as const) {
+    if (k in $set && !$set[k]) $set[k] = null;
+  }
+  // Closing a deal from the detail screen also parks it in the pipeline's won/lost stage.
+  if ((input.status === 'won' || input.status === 'lost') && !input.stageId) {
+    const current = await CrmDeal.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) }).select('pipelineId').lean();
+    const pipeline = current ? await CrmPipeline.findById(current.pipelineId).lean() : null;
+    const stage = pipeline?.stages?.find((st) => (input.status === 'won' ? st.isWon : st.isLost));
+    if (stage) {
+      $set.stageId = stage._id;
+      $set.probability = stage.probability ?? (input.status === 'won' ? 100 : 0);
+    }
+  }
+  const previous = await CrmDeal.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) }).select('status').lean();
   const updated = await CrmDeal.findOneAndUpdate(
     { _id: id, taskflowOrganizationId: toOrgOid(orgId) },
     { $set },
     { new: true }
   ).lean();
   if (!updated) throw new ApiError(404, 'Deal not found');
-  if (input.status === 'won') void accrueDealCommission(String(updated._id)).catch((err) => console.error('[commission]', err));
-  else if (input.status) void voidDealCommission(String(updated._id)).catch(() => undefined);
-  if (input.status === 'won' || input.status === 'lost') {
+  const statusChanged = !!input.status && input.status !== previous?.status;
+  if (statusChanged && input.status === 'won') void accrueDealCommission(String(updated._id)).catch((err) => console.error('[commission]', err));
+  else if (statusChanged && previous?.status === 'won') void voidDealCommission(String(updated._id)).catch(() => undefined);
+  if (statusChanged && (input.status === 'won' || input.status === 'lost')) {
     void notifyUsers([updated.ownerId], input.status === 'won' ? 'crm_deal_won' : 'crm_deal_lost', {
       title: `Deal ${input.status}: ${updated.title}`,
       body: `${updated.currency} ${updated.value}`,
-      link: '/crm/deals',
+      link: `/crm/deals/${updated._id}`,
     });
   }
   return updated;
@@ -113,7 +186,7 @@ export async function moveDealStage(id: string, workspaceId: string | null | und
     void notifyUsers([deal.ownerId], deal.status === 'won' ? 'crm_deal_won' : 'crm_deal_lost', {
       title: `Deal ${deal.status}: ${deal.title}`,
       body: `${deal.currency} ${deal.value}`,
-      link: '/crm/deals',
+      link: `/crm/deals/${deal._id}`,
     });
   }
   if (deal.status === 'won') {
