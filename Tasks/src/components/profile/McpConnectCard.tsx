@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { absoluteApiUrl } from "../../lib/api";
 
 type Client = "claude" | "claude-code" | "cursor" | "other";
@@ -15,7 +16,7 @@ const TOOLS = [
   ['Shortcuts', 'my work & agenda, issue search / JQL / details, comments, work logs, sprints, project health, docs pages; writes are hidden for read-only tokens'],
 ];
 
-function CodeBlock({ code }: { code: string }) {
+export function CodeBlock({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="relative">
@@ -87,7 +88,10 @@ export default function McpConnectCard({ newToken }: { newToken?: string }) {
           can see, and only does what your permissions allow. Use a{" "}
           <strong>read-only</strong> token if it should never change anything.
           Connected assistants appear in the token list above; revoke one to cut
-          its access at any time.
+          its access at any time.{" "}
+          <Link to="/developers/mcp" target="_blank" className="text-[color:var(--accent)] hover:underline">
+            Full guide →
+          </Link>
         </p>
       </div>
 

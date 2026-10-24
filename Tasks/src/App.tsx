@@ -36,6 +36,7 @@ import OAuthCallback from './pages/auth/OAuthCallback';
 import OAuthError from './pages/auth/OAuthError';
 import IdeLogin from './pages/auth/IdeLogin';
 import McpAuthorize from './pages/auth/McpAuthorize';
+import McpDocs from './pages/McpDocs';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
@@ -230,6 +231,7 @@ function AppRoutes() {
       <Route path="/auth/error" element={<OAuthError />} />
       <Route path="/auth/ide" element={<IdeLogin />} />
       <Route path="/auth/mcp" element={<McpAuthorize />} />
+      <Route path="/developers/mcp" element={<McpDocs />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/sign/:token" element={<PublicSign />} />
       <Route path="/rate/:token" element={<PublicRate />} />
