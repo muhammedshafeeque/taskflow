@@ -230,14 +230,16 @@ export default function PageView({
       <div className={layout.shell}>
       <div className={layout.grid}>
         <article className={layout.column}>
-          {/* Title block */}
-          <header className={page.emoji ? '-mt-12' : '-mt-6'}>
+          {/* Title block — z-index keeps it above the cover gradient; padding avoids ascender clip */}
+          <header className={`relative z-[1] ${page.emoji ? '-mt-10' : '-mt-3'}`}>
             {page.emoji && (
               <div className="relative mb-3 grid h-20 w-20 place-items-center rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] text-5xl shadow-lg">
                 {page.emoji}
               </div>
             )}
-            <h1 className="text-[2.4rem] font-extrabold leading-tight tracking-tight">{page.title}</h1>
+            <h1 className="break-words py-1 text-[2.4rem] font-extrabold leading-[1.2] tracking-tight text-[color:var(--text-primary)]">
+              {page.title}
+            </h1>
             <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-[color:var(--text-muted)]">
               <span className="inline-flex items-center gap-2">
                 <span className="flex -space-x-1.5">

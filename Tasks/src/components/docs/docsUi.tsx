@@ -167,14 +167,16 @@ export const DOC_PROSE = [
 export function PageCover({ color, compact }: { color?: string; compact?: boolean }) {
   const c = color || 'var(--accent)';
   return (
+    // Isolation keeps the cover’s absolute washes from painting over the title that overlaps via negative margin.
     <div
-      className={`relative w-full overflow-hidden ${compact ? 'h-20' : 'h-36 sm:h-44'}`}
+      className={`pointer-events-none relative isolate w-full overflow-hidden ${compact ? 'h-16 sm:h-20' : 'h-36 sm:h-44'}`}
       style={{
         background: `radial-gradient(ellipse 60% 120% at 15% 0%, color-mix(in srgb, ${c} 55%, transparent), transparent 60%), radial-gradient(ellipse 50% 120% at 90% 100%, color-mix(in srgb, ${c} 35%, transparent), transparent 60%), linear-gradient(135deg, color-mix(in srgb, ${c} 22%, var(--bg-surface)), var(--bg-surface))`,
       }}
+      aria-hidden
     >
       <div className="absolute inset-0 opacity-[0.15]" style={{ backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)', backgroundSize: '18px 18px', color: c }} />
-      <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[color:var(--bg-page)] to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[color:var(--bg-page)] to-transparent" />
     </div>
   );
 }

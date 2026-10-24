@@ -342,7 +342,7 @@ export default function PageEditor({
             value={draft.title}
             onChange={(e) => set('title', e.target.value.replace(/\n/g, ' '))}
             placeholder="Untitled"
-            className="w-full resize-none overflow-hidden bg-transparent text-[2.4rem] font-extrabold leading-tight tracking-tight outline-none placeholder:text-[color:var(--text-muted)]/50"
+            className="w-full resize-none overflow-hidden bg-transparent py-1 text-[2.4rem] font-extrabold leading-[1.2] tracking-tight text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-muted)]/50"
           />
         </div>
 
