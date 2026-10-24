@@ -6,6 +6,7 @@ import { FiArrowRight, FiChevronLeft, FiChevronRight, FiPlus, FiSave, FiX } from
 import { EditIcon, TrashIcon } from '../components/icons/NavigationIcons';
 import { projectsApi, usersApi, projectTemplatesApi, type Project, type User, type ProjectTemplate } from '../lib/api';
 import ConfirmModal from '../components/ConfirmModal';
+import { PersonSelect, toPeople } from '../components/people';
 
 export default function Projects() {
   const { token, user } = useAuth();
@@ -344,15 +345,14 @@ export default function Projects() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Lead</label>
-                  <select
+                  <PersonSelect
+                    size="sm"
                     value={form.lead}
-                    onChange={(e) => setForm((f) => ({ ...f, lead: e.target.value }))}
-                    className="w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
-                  >
-                    {users.map((u) => (
-                      <option key={u._id} value={u._id}>{u.name}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setForm((f) => ({ ...f, lead: v }))}
+                    people={toPeople(users)}
+                    placeholder="Choose project lead…"
+                    aria-label="Lead"
+                  />
                 </div>
                 <div className="flex gap-2 pt-2">
                   <button

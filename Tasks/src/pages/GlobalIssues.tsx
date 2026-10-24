@@ -38,16 +38,19 @@ import {
   applyFiltersToListParams,
   countActiveFilters,
   hasAnyIssueFilters,
+  DEFAULT_FILTERS,
   resolveIssueParentId,
   filterParentCandidates,
   type QuickFilterValue,
   type ViewModeValue,
 } from '../components/issues';
 import {
-  QuickFiltersBar,
   QuickFilterLabelFilters,
   ActiveFilterChips,
   IssuesToolbar,
+  IssuesPageHeader,
+  IssuesSkeleton,
+  IssuesEmptyState,
   JqlSearchPanel,
   BulkEditBar,
   IssuesTableView,
@@ -711,61 +714,59 @@ export default function GlobalIssues() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden animate-fade-in">
-      <div className="flex-1 overflow-auto p-6">
-        <div className="w-full px-4 sm:px-6 lg:px-8">
-          <QuickFiltersBar
+      <IssuesPageHeader
+        title="All issues"
+        context="Across your projects"
+        total={total}
+        loading={loading}
+        quickFilter={quickFilter}
+        totalCounts={totalCounts}
+        onQuickFilter={(q) => updateUrl({ quickFilter: q, page: 1 })}
+        onCreate={openCreate}
+      >
+        <IssuesToolbar
+          viewMode={viewMode}
+          updateUrl={updateUrl}
+          hasActiveFilters={hasActiveFilters}
+          activeFilterCount={activeFilterCount}
+          useJql={useJql}
+          setFiltersOpen={setFiltersOpen}
+          setColumnsOpen={setColumnsOpen}
+          setJqlOpen={setJqlOpen}
+          setOpenFilterDropdown={setOpenFilterDropdown as (d: string | null) => void}
+          buildListParams={buildListParams}
+          projectId={undefined}
+          token={token}
+          jql={jql}
+          canSaveFilter={false}
+          onSaveFilterClick={() => {}}
+          showTitle={false}
+        />
+        <ActiveFilterChips
+          filters={filters}
+          quickFilter={quickFilter}
+          updateUrl={updateUrl}
+          users={users}
+          projects={projects}
+          sprints={sprints}
+          milestones={milestones}
+          versions={versions}
+          onOpenFilterModal={() => setFiltersOpen(true)}
+        />
+        {!useJql && (
+          <QuickFilterLabelFilters
             quickFilter={quickFilter}
-            updateUrl={updateUrl}
-            savedFilters={[]}
-            savedFiltersLoading={false}
-            savedFiltersError={null}
-            applySavedFilter={() => {}}
-            removeSavedFilter={() => {}}
-            totalCounts={totalCounts}
+            labelCounts={quickFilterLabelCounts}
+            selectedLabels={filters.labels}
+            onToggleLabel={(label) => toggleFilter('labels', label)}
+            onClearLabels={() => updateUrl({ filters: { ...filters, labels: [] }, page: 1 })}
+            loading={totalCounts === null}
           />
+        )}
+      </IssuesPageHeader>
 
-          {!useJql && (
-            <QuickFilterLabelFilters
-              quickFilter={quickFilter}
-              labelCounts={quickFilterLabelCounts}
-              selectedLabels={filters.labels}
-              onToggleLabel={(label) => toggleFilter('labels', label)}
-              onClearLabels={() => updateUrl({ filters: { ...filters, labels: [] }, page: 1 })}
-              loading={totalCounts === null}
-            />
-          )}
-
-          <ActiveFilterChips
-            filters={filters}
-            quickFilter={quickFilter}
-            updateUrl={updateUrl}
-            users={users}
-            projects={projects}
-            sprints={sprints}
-            milestones={milestones}
-            versions={versions}
-            onOpenFilterModal={() => setFiltersOpen(true)}
-          />
-
-          <IssuesToolbar
-            viewMode={viewMode}
-            updateUrl={updateUrl}
-            hasActiveFilters={hasActiveFilters}
-            activeFilterCount={activeFilterCount}
-            useJql={useJql}
-            setFiltersOpen={setFiltersOpen}
-            setColumnsOpen={setColumnsOpen}
-            setJqlOpen={setJqlOpen}
-            setOpenFilterDropdown={setOpenFilterDropdown as (d: string | null) => void}
-            buildListParams={buildListParams}
-            openCreate={openCreate}
-            projectId={undefined}
-            token={token}
-            jql={jql}
-            canSaveFilter={false}
-            onSaveFilterClick={() => {}}
-          />
-
+      <div className="flex-1 overflow-auto bg-[color:var(--bg-page)]">
+        <div className="px-4 py-4 pb-24 sm:px-6">
           <JqlSearchPanel
             jqlOpen={jqlOpen}
             jqlInput={jqlInput}
@@ -787,13 +788,13 @@ export default function GlobalIssues() {
               setConfirmBulkDelete={setConfirmBulkDelete}
             />
             {loading ? (
-              <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-8 text-center text-[color:var(--text-muted)] animate-pulse">
-                Loading…
-              </div>
+              <IssuesSkeleton />
             ) : issues.length === 0 ? (
-              <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-12 text-center text-[color:var(--text-muted)]">
-                No issues match your filters.
-              </div>
+              <IssuesEmptyState
+                filtered={hasActiveFilters || quickFilter !== 'all'}
+                onClearFilters={() => updateUrl({ filters: DEFAULT_FILTERS, quickFilter: 'all', page: 1 })}
+                onCreate={openCreate}
+              />
             ) : viewMode === 'table' ? (
               <IssuesTableView
                 issues={issues}

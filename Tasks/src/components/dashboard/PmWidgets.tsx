@@ -50,6 +50,7 @@ export function Kpi({
   delta,
   deltaSuffix = '',
   deltaGoodWhenDown = false,
+  deltaTitle = 'Change from last week',
   progress,
 }: {
   icon: ReactNode;
@@ -60,6 +61,7 @@ export function Kpi({
   delta?: number;
   deltaSuffix?: string;
   deltaGoodWhenDown?: boolean;
+  deltaTitle?: string;
   progress?: number;
 }) {
   const toneCls = tone === 'bad' ? 'text-red-500' : tone === 'warn' ? 'text-amber-500' : 'text-[color:var(--text-primary)]';
@@ -73,7 +75,7 @@ export function Kpi({
       <div className="flex items-baseline gap-2 mt-1">
         <span className={`text-2xl font-bold tabular-nums ${toneCls}`}>{value}</span>
         {delta != null && delta !== 0 && (
-          <span className={`inline-flex items-center text-[11px] font-medium ${good ? 'text-emerald-500' : 'text-amber-500'}`} title="Change from last week">
+          <span className={`inline-flex items-center text-[11px] font-medium ${good ? 'text-emerald-500' : 'text-amber-500'}`} title={deltaTitle}>
             {delta > 0 ? <FiArrowUpRight /> : <FiArrowDownRight />}
             {Math.abs(delta)}
             {deltaSuffix}

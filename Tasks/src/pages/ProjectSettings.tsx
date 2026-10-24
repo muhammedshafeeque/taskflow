@@ -95,6 +95,7 @@ import { sortEnvironmentsAsc, sortEnvironmentsDesc } from '../lib/environmentHie
 import { EditIcon, TrashIcon } from '../components/icons/NavigationIcons';
 import { userHasPermission } from '../utils/permissions';
 import { PROJECT_PERMISSIONS } from '@shared/constants/permissions';
+import { PersonSelect, toPeople } from '../components/people';
 
 type TabId =
   | 'general'
@@ -1507,15 +1508,13 @@ export default function ProjectSettings() {
                   </div>
                   <div>
                     <label className={labelClass}>Project lead</label>
-                    <select
+                    <PersonSelect
                       value={form.lead}
-                      onChange={(e) => setForm((f) => ({ ...f, lead: e.target.value }))}
-                      className={inputClass}
-                    >
-                      {users.map((u) => (
-                        <option key={u._id} value={u._id}>{u.name}</option>
-                      ))}
-                    </select>
+                      onChange={(v) => setForm((f) => ({ ...f, lead: v }))}
+                      people={toPeople(users)}
+                      placeholder="Choose project lead…"
+                      aria-label="Project lead"
+                    />
                   </div>
                   <div className="flex flex-wrap gap-3 pt-2">
                     <button
@@ -3226,16 +3225,14 @@ export default function ProjectSettings() {
                   </div>
                   <div>
                     <label className={labelClass}>Assign to person (optional)</label>
-                    <select
+                    <PersonSelect
                       value={releaseRuleForm.assigneeId}
-                      onChange={(e) => setReleaseRuleForm((f) => ({ ...f, assigneeId: e.target.value }))}
-                      className={inputClass}
-                    >
-                      <option value="">No specific assignee</option>
-                      {users.map((u) => (
-                        <option key={u._id} value={u._id}>{u.name}</option>
-                      ))}
-                    </select>
+                      onChange={(v) => setReleaseRuleForm((f) => ({ ...f, assigneeId: v }))}
+                      people={toPeople(users)}
+                      specialOptions={[{ value: '', label: 'No specific assignee' }]}
+                      clearValue=""
+                      aria-label="Assign to person"
+                    />
                   </div>
                   <div>
                     <label className={labelClass}>Who to notify (optional)</label>

@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { auditLogsApi, usersApi, projectsApi, type AuditLogEntry, type User, type Project } from '../lib/api';
 import { formatDateTimeDDMMYYYY } from '../lib/dateFormat';
 import { canAny } from '../utils/moduleAccess';
+import { PersonSelect, toPeople } from '../components/people';
 
 export default function AuditLogs() {
   const { token, user } = useAuth();
@@ -65,16 +66,16 @@ export default function AuditLogs() {
         <div className="mb-6 flex flex-wrap gap-3">
           <div>
             <label className="block text-xs text-[color:var(--text-muted)] mb-1">User</label>
-            <select
+            <PersonSelect
+              size="sm"
+              className="w-56"
               value={filterUser}
-              onChange={(e) => { setFilterUser(e.target.value); setPage(1); }}
-              className="px-3 py-1.5 rounded-md bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] text-sm"
-            >
-              <option value="">All</option>
-              {users.map((u) => (
-                <option key={u._id} value={u._id}>{u.name}</option>
-              ))}
-            </select>
+              onChange={(v) => { setFilterUser(v); setPage(1); }}
+              people={toPeople(users)}
+              specialOptions={[{ value: '', label: 'All users' }]}
+              clearValue=""
+              aria-label="User"
+            />
           </div>
           <div>
             <label className="block text-xs text-[color:var(--text-muted)] mb-1">Action</label>

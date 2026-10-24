@@ -6,6 +6,7 @@ import {
   ExportButton, Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, nameOf,
 } from '../../components/moduleKit';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
+import { PersonSelect, toPeople } from '../../components/people';
 
 const statusTone: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = {
   active: 'green', probation: 'blue', on_leave: 'amber', terminated: 'red',
@@ -169,10 +170,13 @@ export function HrmsAttendance() {
     <SectionPage title="Attendance" subtitle="Log daily attendance and remote days.">
       <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-4 grid gap-3 sm:grid-cols-5 items-end">
         <Field label="Employee">
-          <Select value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })}>
-            <option value="">Select…</option>
-            {employees.map((e) => <option key={e._id} value={e._id}>{e.name}</option>)}
-          </Select>
+          <PersonSelect
+            value={form.employeeId}
+            onChange={(v) => setForm({ ...form, employeeId: v })}
+            people={toPeople(employees)}
+            placeholder="Search employee…"
+            aria-label="Employee"
+          />
         </Field>
         <Field label="Date"><TextInput type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
         <Field label="Status">
@@ -276,10 +280,13 @@ export function HrmsLeave() {
       {creating && (
         <Modal title="Request leave" onClose={() => setCreating(null)} footer={<><GhostButton onClick={() => setCreating(null)}>Cancel</GhostButton><PrimaryButton onClick={create}>Submit</PrimaryButton></>}>
           <Field label="Employee">
-            <Select value={creating.employeeId} onChange={(e) => setCreating({ ...creating, employeeId: e.target.value })}>
-              <option value="">Select…</option>
-              {employees.map((e) => <option key={e._id} value={e._id}>{e.name}</option>)}
-            </Select>
+            <PersonSelect
+              value={creating.employeeId}
+              onChange={(v) => setCreating({ ...creating, employeeId: v })}
+              people={toPeople(employees)}
+              placeholder="Search employee…"
+              aria-label="Employee"
+            />
           </Field>
           <Field label="Type">
             <Select value={creating.type} onChange={(e) => setCreating({ ...creating, type: e.target.value })}>

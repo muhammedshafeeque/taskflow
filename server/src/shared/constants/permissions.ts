@@ -260,6 +260,12 @@ export const TASK_FLOW_PERMISSIONS = {
       POLICY: { LIST: 'taskflow.documents.policy.list', MANAGE: 'taskflow.documents.policy.manage' },
       TEMPLATE: { LIST: 'taskflow.documents.template.list', MANAGE: 'taskflow.documents.template.manage' },
     },
+    /** Knowledge spaces and pages. Reading and editing follow each space's own access list. */
+    DOCS: {
+      SPACE: { CREATE: 'taskflow.docs.space.create' },
+      /** Full access to every space, including restricted ones. */
+      ADMIN: 'taskflow.docs.admin',
+    },
     CALENDAR: {
       DASHBOARD: { READ: 'taskflow.calendar.dashboard.read' },
       MEETING: { LIST: 'taskflow.calendar.meeting.list', MANAGE: 'taskflow.calendar.meeting.manage' },

@@ -24,6 +24,7 @@ import {
   teamColor,
   useResourceOptions,
 } from './resourceKit';
+import { PersonSelect, toPeople } from '../../components/people';
 
 /** Chip colours offered in the editor; any CSS colour is accepted by the API. */
 const SWATCHES = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#14b8a6', '#64748b'];
@@ -175,14 +176,16 @@ export default function ResourcesTeams() {
                 </option>
               ))}
             </select>
-            <select className={`${inputCls} w-auto max-w-[13rem]`} value={memberId} onChange={(e) => setMemberId(e.target.value)} aria-label="Member">
-              <option value="">Anyone</option>
-              {options.users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </select>
+            <PersonSelect
+              size="sm"
+              className="w-52"
+              value={memberId}
+              onChange={setMemberId}
+              people={toPeople(options.users)}
+              specialOptions={[{ value: '', label: 'Anyone' }]}
+              clearValue=""
+              aria-label="Member"
+            />
           </div>
         )}
       </div>
@@ -470,14 +473,14 @@ function TeamModal({
         </div>
 
         <Field label="Team lead (optional)" hint="Pick from the members above.">
-          <select value={form.leadId} onChange={(e) => set('leadId', e.target.value)} className={inputCls}>
-            <option value="">No lead</option>
-            {leadOptions.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
+          <PersonSelect
+            value={form.leadId}
+            onChange={(v) => set('leadId', v)}
+            people={toPeople(leadOptions)}
+            specialOptions={[{ value: '', label: 'No lead' }]}
+            clearValue=""
+            aria-label="Team lead"
+          />
         </Field>
 
         <div className="flex gap-2 pt-1">

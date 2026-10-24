@@ -1,7 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { FiAlertCircle, FiPlus } from 'react-icons/fi';
 import {
   PointerSensor,
   KeyboardSensor,
@@ -52,6 +51,9 @@ import {
   QuickFiltersBar,
   QuickFilterLabelFilters,
   IssuesToolbar,
+  IssuesPageHeader,
+  IssuesSkeleton,
+  IssuesEmptyState,
   ActiveFilterChips,
   JqlSearchPanel,
   BulkEditBar,
@@ -742,130 +744,71 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
   return (
     <div className="flex flex-1 flex-col overflow-hidden animate-fade-in">
 
-      {/* ── Sticky page header ── */}
-      <div className="shrink-0 bg-[color:var(--bg-surface)] border-b border-[color:var(--border-subtle)]">
-        <div className="px-6 pt-4 pb-0">
-
-          {/* Hero row: icon + title + stats tabs + New Issue */}
-          <div className="flex items-center justify-between gap-4 mb-3">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-[color:var(--accent)]/15 border border-[color:var(--accent)]/25 flex items-center justify-center shrink-0">
-                <FiAlertCircle className="w-4.5 h-4.5 text-[color:var(--accent)]" aria-hidden />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-[color:var(--text-primary)] leading-tight">Issues</h1>
-                <p className="text-[11px] text-[color:var(--text-muted)]">
-                  {loading ? '…' : `${total.toLocaleString()} ${total === 1 ? 'issue' : 'issues'}`}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2.5">
-              {/* Quick filter stat tabs */}
-              {totalCounts && (
-                <div className="hidden md:flex items-center gap-0.5 p-0.5 bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] rounded-xl">
-                  {([
-                    { key: 'my' as const, label: 'Mine', count: totalCounts.my },
-                    { key: 'open' as const, label: 'Open', count: totalCounts.open },
-                    { key: 'all' as const, label: 'All', count: totalCounts.all },
-                  ] as const).map(({ key, label, count }) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => updateUrl({ quickFilter: key, page: 1 })}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                        quickFilter === key
-                          ? 'bg-[color:var(--accent)] text-white shadow-sm'
-                          : 'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'
-                      }`}
-                    >
-                      {label}
-                      <span className={`font-bold tabular-nums ${
-                        quickFilter === key ? 'text-white/80' : 'text-[color:var(--accent)]'
-                      }`}>
-                        {count}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* New Issue CTA */}
-              <button
-                type="button"
-                onClick={() => openCreate()}
-                className="btn-primary btn-primary-sm shadow-lg inline-flex items-center gap-1.5 font-semibold"
-              >
-                <FiPlus className="w-3.5 h-3.5" aria-hidden />
-                New Issue
-              </button>
-            </div>
-          </div>
-
-          {/* Toolbar row */}
-          <IssuesToolbar
-            viewMode={viewMode}
-            updateUrl={updateUrl}
-            hasActiveFilters={hasActiveFilters}
-            activeFilterCount={activeFilterCount}
-            useJql={useJql}
-            setFiltersOpen={setFiltersOpen}
-            setColumnsOpen={setColumnsOpen}
-            setJqlOpen={setJqlOpen}
-            setOpenFilterDropdown={setOpenFilterDropdown}
-            buildListParams={buildListParams}
-            projectId={projectId}
-            token={token}
-            jql={jql}
-            canSaveFilter={canSaveFilter}
-            onSaveFilterClick={() => setSaveFilterDialogOpen(true)}
-            showTitle={false}
-          />
-
-          {/* Saved filters (no quick tabs since hero has them) */}
-          <QuickFiltersBar
+      <IssuesPageHeader
+        title="Issues"
+        context={project?.name}
+        total={total}
+        loading={loading}
+        quickFilter={quickFilter}
+        totalCounts={totalCounts}
+        onQuickFilter={(q) => updateUrl({ quickFilter: q, page: 1 })}
+        onCreate={() => openCreate()}
+      >
+        <IssuesToolbar
+          viewMode={viewMode}
+          updateUrl={updateUrl}
+          hasActiveFilters={hasActiveFilters}
+          activeFilterCount={activeFilterCount}
+          useJql={useJql}
+          setFiltersOpen={setFiltersOpen}
+          setColumnsOpen={setColumnsOpen}
+          setJqlOpen={setJqlOpen}
+          setOpenFilterDropdown={setOpenFilterDropdown}
+          buildListParams={buildListParams}
+          projectId={projectId}
+          token={token}
+          jql={jql}
+          canSaveFilter={canSaveFilter}
+          onSaveFilterClick={() => setSaveFilterDialogOpen(true)}
+          showTitle={false}
+        />
+        <QuickFiltersBar
+          quickFilter={quickFilter}
+          updateUrl={updateUrl}
+          savedFilters={savedFilters}
+          savedFiltersLoading={savedFiltersLoading}
+          savedFiltersError={savedFiltersError}
+          applySavedFilter={applySavedFilter}
+          removeSavedFilter={removeSavedFilter}
+          onSavedEmptyClick={() => setFiltersOpen(true)}
+          totalCounts={totalCounts}
+          hideQuickTabs
+        />
+        <ActiveFilterChips
+          filters={filters}
+          quickFilter={quickFilter}
+          updateUrl={updateUrl}
+          users={users}
+          sprints={sprints}
+          milestones={milestones}
+          versions={versions}
+          onOpenFilterModal={() => setFiltersOpen(true)}
+        />
+        {!useJql && (
+          <QuickFilterLabelFilters
             quickFilter={quickFilter}
-            updateUrl={updateUrl}
-            savedFilters={savedFilters}
-            savedFiltersLoading={savedFiltersLoading}
-            savedFiltersError={savedFiltersError}
-            applySavedFilter={applySavedFilter}
-            removeSavedFilter={removeSavedFilter}
-            onSavedEmptyClick={() => setFiltersOpen(true)}
-            totalCounts={totalCounts}
-            hideQuickTabs
+            labelCounts={quickFilterLabelCounts}
+            selectedLabels={filters.labels}
+            onToggleLabel={(label) => toggleFilter('labels', label)}
+            onClearLabels={() => updateUrl({ filters: { ...filters, labels: [] }, page: 1 })}
+            loading={totalCounts === null}
           />
-
-          {/* Active filter chips */}
-          <ActiveFilterChips
-            filters={filters}
-            quickFilter={quickFilter}
-            updateUrl={updateUrl}
-            users={users}
-            sprints={sprints}
-            milestones={milestones}
-            versions={versions}
-            onOpenFilterModal={() => setFiltersOpen(true)}
-          />
-
-        </div>
-      </div>
+        )}
+      </IssuesPageHeader>
 
       {/* ── Scrollable content ── */}
-      <div className="flex-1 overflow-auto">
-        <div className="px-6 py-4">
-
-          {!useJql && (
-            <QuickFilterLabelFilters
-              quickFilter={quickFilter}
-              labelCounts={quickFilterLabelCounts}
-              selectedLabels={filters.labels}
-              onToggleLabel={(label) => toggleFilter('labels', label)}
-              onClearLabels={() => updateUrl({ filters: { ...filters, labels: [] }, page: 1 })}
-              loading={totalCounts === null}
-            />
-          )}
-
+      <div className="flex-1 overflow-auto bg-[color:var(--bg-page)]">
+        <div className="px-4 py-4 pb-24 sm:px-6">
           <JqlSearchPanel
             jqlOpen={jqlOpen}
             jqlInput={jqlInput}
@@ -889,47 +832,13 @@ const statusList = project?.statuses?.length ? project.statuses.map((s) => s.nam
             />
 
             {loading ? (
-              <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-hidden">
-                {[...Array(8)].map((_, i) => (
-                  <div key={i} className="flex items-center gap-4 px-4 py-3 border-b border-[color:var(--border-subtle)]/50 last:border-0 animate-pulse">
-                    <div className="w-4 h-4 rounded bg-[color:var(--bg-elevated)]" />
-                    <div className="w-16 h-4 rounded-md bg-[color:var(--bg-elevated)]" />
-                    <div className="w-12 h-5 rounded-full bg-[color:var(--bg-elevated)]" />
-                    <div className="flex-1 h-4 rounded bg-[color:var(--bg-elevated)]" />
-                    <div className="w-20 h-5 rounded-full bg-[color:var(--bg-elevated)]" />
-                    <div className="w-14 h-5 rounded-full bg-[color:var(--bg-elevated)]" />
-                  </div>
-                ))}
-              </div>
+              <IssuesSkeleton />
             ) : issues.length === 0 ? (
-              <div className="rounded-xl border border-[color:var(--border-subtle)] border-dashed bg-[color:var(--bg-surface)] py-16 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] flex items-center justify-center mx-auto mb-4">
-                  <FiAlertCircle className="w-6 h-6 text-[color:var(--text-muted)]" />
-                </div>
-                <p className="text-sm font-medium text-[color:var(--text-primary)] mb-1">No issues found</p>
-                <p className="text-xs text-[color:var(--text-muted)] mb-4">
-                  {hasActiveFilters ? 'Try adjusting your filters or' : 'Get started by creating your first issue or'}{' '}
-                </p>
-                <div className="flex items-center justify-center gap-2">
-                  {hasActiveFilters && (
-                    <button
-                      type="button"
-                      onClick={() => updateUrl({ filters: DEFAULT_FILTERS, quickFilter: 'all', page: 1 })}
-                      className="px-4 py-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-xs font-medium text-[color:var(--text-primary)] hover:border-[color:var(--border-emphasis)] transition"
-                    >
-                      Clear filters
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => openCreate()}
-                    className="btn-primary btn-primary-sm inline-flex items-center gap-1.5"
-                  >
-                    <FiPlus className="w-3.5 h-3.5" aria-hidden />
-                    New Issue
-                  </button>
-                </div>
-              </div>
+              <IssuesEmptyState
+                filtered={hasActiveFilters || quickFilter !== 'all'}
+                onClearFilters={() => updateUrl({ filters: DEFAULT_FILTERS, quickFilter: 'all', page: 1 })}
+                onCreate={() => openCreate()}
+              />
             ) : viewMode === 'table' ? (
               <IssuesTableView
                 issues={issues}

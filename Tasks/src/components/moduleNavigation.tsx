@@ -7,6 +7,7 @@ import {
   UsersIcon,
   RolesIcon,
   IssuesIcon,
+  DocsIcon,
   SettingsIcon,
   AppHubSettingsIcon,
   TimesheetIcon,
@@ -48,6 +49,8 @@ export function buildPmNav(user: NavUser): NavItem[] {
   nav.push({ to: '/dashboard', label: 'Dashboard', icon: <DashboardIcon />, end: true });
   nav.push({ to: '/projects', label: 'Projects', icon: <ProjectsIcon /> });
   nav.push({ to: '/issues', label: 'All issues', icon: <IssuesIcon /> });
+  // Docs access is decided per space, so the entry is shown to everyone in the module.
+  nav.push({ to: '/docs', label: 'Docs', icon: <DocsIcon /> });
   nav.push({ to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon /> });
 
   if (allow(user, 'project.project.create', 'projects:create')) {

@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { canAny } from '../../utils/moduleAccess';
 import { CrudPage, SettingsForm, fmtDate, type Row } from '../../components/CrudPage';
 import { Field, GhostButton, Modal, PrimaryButton, SectionPage, Select, StatusPill, TextArea, TextInput } from '../../components/moduleKit';
+import { PersonSelect, toPeople } from '../../components/people';
 
 const H = {
   policy: 'taskflow.hr.policy.manage',
@@ -297,14 +298,13 @@ export function HrOnboardingPage() {
           }
         >
           <Field label="Employee">
-            <Select value={String(start.employeeId)} onChange={(e) => setStart({ ...start, employeeId: e.target.value })}>
-              <option value="">—</option>
-              {employees.rows.map((e) => (
-                <option key={String(e._id)} value={String(e._id)}>
-                  {String(e.name)}
-                </option>
-              ))}
-            </Select>
+            <PersonSelect
+              value={String(start.employeeId ?? '')}
+              onChange={(v) => setStart({ ...start, employeeId: v })}
+              people={toPeople(employees.rows)}
+              placeholder="Search employee…"
+              aria-label="Employee"
+            />
           </Field>
           <Field label="Template">
             <Select value={String(start.templateId ?? '')} onChange={(e) => setStart({ ...start, templateId: e.target.value })}>

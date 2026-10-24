@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { canAny } from '../utils/moduleAccess';
 import { Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, TextArea, TextInput } from './moduleKit';
 import { ModuleLoader } from './loaders/ModuleLoader';
+import { PersonMultiSelect, PersonSelect } from './people';
 
 /**
  * Config-driven list + create/edit form for simple admin collections
@@ -75,8 +76,16 @@ function toInputValue(type: FieldType | undefined, v: unknown): string {
   return String(v);
 }
 
+type FieldOption = { value: string; label: string; hint?: string };
+
+/** Fields whose options are people get the searchable person picker. */
+const PEOPLE_ENDPOINT = /\/(people|users|employees|members)(\b|\/|\?|$)/;
+function isPeopleField(f: CrudField) {
+  return !!f.optionsFrom && PEOPLE_ENDPOINT.test(f.optionsFrom.endpoint);
+}
+
 function useOptions(fields: CrudField[] | undefined, token: string | null) {
-  const [loaded, setLoaded] = useState<Record<string, { value: string; label: string }[]>>({});
+  const [loaded, setLoaded] = useState<Record<string, FieldOption[]>>({});
   useEffect(() => {
     if (!token || !fields) return;
     fields
@@ -87,7 +96,11 @@ function useOptions(fields: CrudField[] | undefined, token: string | null) {
           const list = Array.isArray(r.data) ? r.data : [];
           setLoaded((prev) => ({
             ...prev,
-            [f.key]: list.map((x) => ({ value: String(get(x, src.value ?? '_id')), label: String(get(x, src.label ?? 'name') ?? get(x, 'title') ?? x._id) })),
+            [f.key]: list.map((x) => ({
+              value: String(get(x, src.value ?? '_id')),
+              label: String(get(x, src.label ?? 'name') ?? get(x, 'title') ?? x._id),
+              hint: get(x, 'email') ? String(get(x, 'email')) : undefined,
+            })),
           }));
         });
       });
@@ -104,7 +117,7 @@ export function CrudForm({
 }: {
   fields: CrudField[];
   initial: Row;
-  options: Record<string, { value: string; label: string }[]>;
+  options: Record<string, FieldOption[]>;
   onChange: (values: Row) => void;
   isEdit: boolean;
 }) {
@@ -167,6 +180,20 @@ export function CrudForm({
               input = <TextArea rows={f.type === 'json' ? 6 : 4} value={String(v ?? '')} placeholder={f.placeholder} onChange={(e) => set(f.key, e.target.value)} className={f.type === 'json' ? 'font-mono text-xs' : ''} />;
               break;
             case 'select':
+              if (isPeopleField(f)) {
+                input = (
+                  <PersonSelect
+                    value={String(v ?? '')}
+                    onChange={(id) => set(f.key, id)}
+                    people={opts.map((o) => ({ id: o.value, name: o.label, hint: (o as FieldOption).hint }))}
+                    required={f.required}
+                    clearValue={f.required ? undefined : ''}
+                    placeholder={f.placeholder ?? 'Search people…'}
+                    aria-label={f.label}
+                  />
+                );
+                break;
+              }
               input = (
                 <Select value={String(v ?? '')} onChange={(e) => set(f.key, e.target.value)}>
                   <option value="">—</option>
@@ -179,6 +206,18 @@ export function CrudForm({
               );
               break;
             case 'multiselect': {
+              if (isPeopleField(f)) {
+                input = (
+                  <PersonMultiSelect
+                    values={(v as string[]) ?? []}
+                    onChange={(ids) => set(f.key, ids)}
+                    people={opts.map((o) => ({ id: o.value, name: o.label, hint: (o as FieldOption).hint }))}
+                    placeholder={f.placeholder ?? 'Add people…'}
+                    aria-label={f.label}
+                  />
+                );
+                break;
+              }
               const sel = new Set((v as string[]) ?? []);
               input = (
                 <div className="flex flex-wrap gap-1.5 rounded-lg border border-[color:var(--border-subtle)] p-2 max-h-40 overflow-y-auto">

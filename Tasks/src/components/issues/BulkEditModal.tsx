@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom';
 import type { User, Sprint, Milestone, Project, Issue } from '../../lib/api';
 import { getIssueKey } from '../../lib/api';
 import type { BulkFormState } from './bulkEditForm';
+import { PersonSelect, toPeople } from '../people';
 
 interface BulkEditModalProps {
   bulkModal: 'edit' | null;
@@ -97,19 +98,17 @@ export function BulkEditModal({
             </div>
             <div>
               <FieldLabel>Assignee</FieldLabel>
-              <select
+              <PersonSelect
                 value={bulkForm.assignee ?? ''}
-                onChange={(e) => setBulkForm((f) => ({ ...f, assignee: e.target.value || undefined }))}
-                className={inputCls}
-              >
-                <option value="">— No change —</option>
-                <option value="__unassigned__">Unassigned</option>
-                {users.map((u) => (
-                  <option key={u._id} value={u._id}>
-                    {u.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setBulkForm((f) => ({ ...f, assignee: v || undefined }))}
+                people={toPeople(users)}
+                specialOptions={[
+                  { value: '', label: '— No change —' },
+                  { value: '__unassigned__', label: 'Unassigned' },
+                ]}
+                clearValue=""
+                aria-label="Assignee"
+              />
             </div>
             <div>
               <FieldLabel>Type</FieldLabel>

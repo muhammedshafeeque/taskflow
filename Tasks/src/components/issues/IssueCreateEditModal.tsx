@@ -7,6 +7,7 @@ import { projectsApi, type Issue, type Project, type User, type Milestone, type 
 import { formatDateDDMMYYYY } from '../../lib/dateFormat';
 import { IssueDraftHelper } from '../ai/AiPanels';
 import { markdownToHtml } from '../ai/markdownToHtml';
+import { PersonSelect, toPeople } from '../people';
 
 export interface IssueForm {
   title: string;
@@ -213,10 +214,14 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Assignee</label>
-              <select value={form.assignee} onChange={(e) => setForm((f) => ({ ...f, assignee: e.target.value }))} className={inputCls}>
-                <option value="">Unassigned</option>
-                {users.map((u) => <option key={u._id} value={u._id}>{u.name}</option>)}
-              </select>
+              <PersonSelect
+                value={form.assignee}
+                onChange={(v) => setForm((f) => ({ ...f, assignee: v }))}
+                people={toPeople(users)}
+                specialOptions={[{ value: '', label: 'Unassigned' }]}
+                clearValue=""
+                aria-label="Assignee"
+              />
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Sprint</label>
@@ -474,10 +479,14 @@ export function IssueCreateEditModal(props: IssueCreateEditModalProps) {
                       </select>
                     )}
                     {field.fieldType === 'user' && (
-                      <select value={value} onChange={(e) => setForm((f) => ({ ...f, customFieldValues: { ...f.customFieldValues, [field.key]: e.target.value || undefined } }))} required={required} className={inputCls}>
-                        <option value="">—</option>
-                        {users.map((u) => <option key={u._id} value={u._id}>{u.name}</option>)}
-                      </select>
+                      <PersonSelect
+                        value={String(value ?? '')}
+                        onChange={(v) => setForm((f) => ({ ...f, customFieldValues: { ...f.customFieldValues, [field.key]: v || undefined } }))}
+                        people={toPeople(users)}
+                        required={required}
+                        clearValue={required ? undefined : ''}
+                        aria-label={field.label}
+                      />
                     )}
                   </div>
                 );

@@ -26,6 +26,7 @@ import {
   refId,
 } from './leadCatalog';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
+import { PersonSelect, toPeople } from '../../components/people';
 
 const inputClass =
   'w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3.5 py-2.5 text-sm text-[color:var(--text-primary)] placeholder:text-[color:var(--text-muted)]/70 transition-shadow focus:outline-none focus:border-[color:var(--accent)]/50 focus:ring-4 focus:ring-[color:var(--accent)]/15 disabled:opacity-60 disabled:cursor-not-allowed';
@@ -562,14 +563,14 @@ export default function CrmLeadForm() {
                 </Field>
               )}
               <Field label="Owner" className={isEdit ? 'lg:col-span-1' : 'sm:col-span-2 lg:col-span-3'}>
-                <select className={inputClass} value={form.assigneeId} onChange={(e) => set({ assigneeId: e.target.value })}>
-                  <option value="">Unassigned</option>
-                  {users.map((u) => (
-                    <option key={u._id} value={u._id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
+                <PersonSelect
+                  value={form.assigneeId}
+                  onChange={(v) => set({ assigneeId: v })}
+                  people={toPeople(users)}
+                  specialOptions={[{ value: '', label: 'Unassigned' }]}
+                  clearValue=""
+                  aria-label="Owner"
+                />
               </Field>
               <Field label="Campaign" className="sm:col-span-2 lg:col-span-2" hint="Catalog campaign for attribution. Active campaigns are listed first.">
                 <select

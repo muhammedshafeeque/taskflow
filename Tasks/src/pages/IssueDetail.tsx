@@ -33,6 +33,7 @@ import EpicRollupPanel from '../components/issue/EpicRollupPanel';
 import StageEstimatePanel from '../components/issue/StageEstimatePanel';
 import { IssueAiPanel } from '../components/ai/AiPanels';
 import DevLinksPanel from '../components/issue/DevLinksPanel';
+import IssueDocsPanel from '../components/docs/IssueDocsPanel';
 import type { TaskSecondaryTabsHandle } from '../components/issue/TaskSecondaryTabs';
 
 const DEFAULT_STATUSES = ['Backlog', 'Todo', 'In Progress', 'Done'];
@@ -595,6 +596,7 @@ export default function IssueDetail() {
               <TaskDescription issue={issue} onUpdateDescription={updateDescription} />
               {token && projectId && <IssueAiPanel key={issue._id} issueId={issue._id} projectId={projectId} token={token} />}
               <DevLinksPanel links={issue.devLinks} />
+              {token && <IssueDocsPanel key={issue._id} issueId={issue._id} issueKey={issue.key} issueTitle={issue.title} projectId={projectId} token={token} />}
               <EpicRollupPanel
                 issueId={issue._id}
                 token={token!}

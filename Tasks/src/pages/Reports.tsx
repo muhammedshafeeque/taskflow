@@ -16,6 +16,7 @@ import {
 } from '../lib/api';
 import DateInputDDMMYYYY from '../components/DateInputDDMMYYYY';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { PersonMultiSelect, toPeople } from '../components/people';
 
 const REPORT_TYPES: { value: ReportType; label: string }[] = [
   { value: 'issues_by_status', label: 'Issues by status' },
@@ -372,18 +373,14 @@ export default function ReportsPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-[color:var(--text-muted)] mb-1">Assignees</label>
-                  <select
-                    multiple
-                    size={6}
-                    value={filterAssigneeIds}
-                    onChange={(e) => setFilterAssigneeIds(Array.from(e.target.selectedOptions, (o) => o.value))}
-                    className="px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm w-full min-h-[140px]"
-                  >
-                    <option value={REPORT_FILTER_UNASSIGNED}>Unassigned</option>
-                    {filterUsers.map((u) => (
-                      <option key={u._id} value={u._id}>{u.name}</option>
-                    ))}
-                  </select>
+                  <PersonMultiSelect
+                    values={filterAssigneeIds}
+                    onChange={setFilterAssigneeIds}
+                    people={toPeople(filterUsers)}
+                    specialOptions={[{ value: REPORT_FILTER_UNASSIGNED, label: 'Unassigned' }]}
+                    placeholder="All assignees — type to add…"
+                    aria-label="Assignees"
+                  />
                 </div>
               </div>
             </div>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import { crmApi, usersApi, type CrmAccount, type CrmActivity, type CrmDeal, type CrmLead, type User } from '../../lib/api';
+import { PersonSelect, toPeople } from '../../components/people';
 
 const TYPES = ['task', 'call', 'meeting', 'email', 'note', 'demo', 'follow_up'];
 
@@ -204,12 +205,14 @@ export default function CrmActivities() {
             </div>
             <label className="block text-xs space-y-1">
               <span className="text-[color:var(--text-muted)]">Assignee</span>
-              <select value={form.assigneeId} onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm">
-                <option value="">Unassigned</option>
-                {users.map((u) => (
-                  <option key={u._id} value={u._id}>{u.name}</option>
-                ))}
-              </select>
+              <PersonSelect
+                value={form.assigneeId}
+                onChange={(v) => setForm((f) => ({ ...f, assigneeId: v }))}
+                people={toPeople(users)}
+                specialOptions={[{ value: '', label: 'Unassigned' }]}
+                clearValue=""
+                aria-label="Assignee"
+              />
             </label>
             <label className="block text-xs space-y-1">
               <span className="text-[color:var(--text-muted)]">Subject</span>

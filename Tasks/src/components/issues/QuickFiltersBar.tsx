@@ -60,10 +60,13 @@ export function QuickFiltersBar({
     { key: 'all' as QuickFilterValue, label: 'All', Icon: FiGrid, count: totalCounts?.all },
   ];
 
-  const hasSavedContent = savedFiltersError || savedFiltersLoading || savedFilters.length > 0 || true;
+  const hasSavedContent = Boolean(savedFiltersError || savedFiltersLoading || savedFilters.length > 0);
+
+  // With the scope tabs living in the page header, an empty saved-filter strip is just noise.
+  if (hideQuickTabs && !hasSavedContent) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2 border-b border-[color:var(--border-subtle)]">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pb-2.5">
 
       {/* Quick filter tabs */}
       {!hideQuickTabs && (
@@ -111,18 +114,18 @@ export function QuickFiltersBar({
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[10px] font-semibold text-[color:var(--text-muted)] uppercase tracking-wider shrink-0 flex items-center gap-1">
             <FiBookmark className="h-3 w-3" aria-hidden />
-            Saved
+            Saved views
           </span>
 
           {visibleSaved.map((sf) => (
             <span
               key={sf.id}
-              className="group inline-flex items-center gap-0.5 pl-2.5 pr-0.5 py-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[color:var(--text-muted)] text-xs hover:border-[color:var(--accent)]/40 hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] transition-all"
+              className="group inline-flex h-7 items-center gap-0.5 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] pl-3 pr-1 text-[12px] text-[color:var(--text-primary)] transition-all hover:border-[color:var(--accent)]/50 hover:bg-[color:var(--accent-subtle)]"
             >
               <button
                 type="button"
                 onClick={() => applySavedFilter(sf)}
-                className="text-left truncate max-w-[96px] font-medium"
+                className="max-w-[140px] truncate text-left font-medium"
                 title={sf.name}
               >
                 {sf.name}
@@ -174,7 +177,7 @@ export function QuickFiltersBar({
             </div>
           )}
         </div>
-      ) : (
+      ) : hideQuickTabs ? null : (
         <button
           type="button"
           onClick={onSavedEmptyClick}

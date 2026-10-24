@@ -10,6 +10,7 @@ import {
   type ResourceOptions,
   type ResourceSettingsRow,
 } from '../../lib/api';
+import { PersonSelect, toPeople } from '../../components/people';
 
 /* ─── Dates (UTC day keys, matching the API) ─────────────────────────────── */
 
@@ -615,15 +616,15 @@ export function AllocationModal({
         {error && <ErrorBanner message={error} />}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Person">
-            <select required disabled={lockUser && !!form.userId} value={form.userId} onChange={(e) => set('userId', e.target.value)} className={inputCls}>
-              <option value="">Select…</option>
-              {options.users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                  {u.department ? ` — ${u.department}` : ''}
-                </option>
-              ))}
-            </select>
+            <PersonSelect
+              required
+              disabled={lockUser && !!form.userId}
+              value={form.userId}
+              onChange={(v) => set('userId', v)}
+              people={toPeople(options.users)}
+              placeholder="Search person…"
+              aria-label="Person"
+            />
           </Field>
           <Field label="Project">
             <select required value={form.projectId} onChange={(e) => set('projectId', e.target.value)} className={inputCls}>

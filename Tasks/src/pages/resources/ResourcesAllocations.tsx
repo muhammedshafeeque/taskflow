@@ -32,6 +32,7 @@ import {
   useResourceOptions,
   type AllocationDraft,
 } from './resourceKit';
+import { PersonSelect, toPeople } from '../../components/people';
 
 type StatusTab = 'current' | 'active' | 'upcoming' | 'past' | 'all';
 
@@ -223,14 +224,16 @@ export default function ResourcesAllocations() {
           ]}
         />
         <div className="flex flex-1 flex-wrap justify-end gap-2">
-          <select value={userId} onChange={(e) => applyFilter('userId', e.target.value)} className={`${inputCls} w-auto max-w-[12rem]`} aria-label="Person">
-            <option value="">All people</option>
-            {options.users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
+          <PersonSelect
+            size="sm"
+            className="w-52"
+            value={userId}
+            onChange={(v) => applyFilter('userId', v)}
+            people={toPeople(options.users)}
+            specialOptions={[{ value: '', label: 'All people' }]}
+            clearValue=""
+            aria-label="Person"
+          />
           <select value={projectId} onChange={(e) => applyFilter('projectId', e.target.value)} className={`${inputCls} w-auto max-w-[12rem]`} aria-label="Project">
             <option value="">All projects</option>
             {options.projects.map((p) => (

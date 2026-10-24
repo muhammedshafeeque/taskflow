@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { canAny } from '../../utils/moduleAccess';
 import { CrudPage, type Row } from '../../components/CrudPage';
 import { Field, GhostButton, PrimaryButton, SectionPage, Select, TextInput } from '../../components/moduleKit';
+import { PersonMultiSelect, toPeople } from '../../components/people';
 
 const MANAGE = 'taskflow.service.settings.manage';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -94,23 +95,18 @@ export function ServiceSettingsPage() {
               <>
                 {Object.entries(queues).map(([q, ids]) => (
                   <Field key={q} label={q === '*' ? 'Any queue (fallback)' : `Queue: ${q}`}>
-                    <div className="flex flex-wrap gap-1.5 rounded-lg border border-[color:var(--border-subtle)] p-2">
-                      {people.map((p) => {
-                        const on = ids.includes(String(p._id));
-                        return (
-                          <button
-                            type="button"
-                            key={String(p._id)}
-                            onClick={() => setS({ ...s, assignment: { ...s.assignment, queues: { ...queues, [q]: on ? ids.filter((x) => x !== p._id) : [...ids, String(p._id)] } } })}
-                            className={`rounded-full border px-2 py-0.5 text-xs ${on ? 'border-[color:var(--accent)] bg-[color:var(--accent)]/15' : 'border-[color:var(--border-subtle)]'}`}
-                          >
-                            {String(p.name)}
-                          </button>
-                        );
-                      })}
+                    <div className="flex items-start gap-2">
+                      <PersonMultiSelect
+                        className="flex-1"
+                        values={ids}
+                        onChange={(next) => setS({ ...s, assignment: { ...s.assignment, queues: { ...queues, [q]: next } } })}
+                        people={toPeople(people)}
+                        placeholder="Add agents to this queue…"
+                        aria-label={`Agents for ${q === '*' ? 'any queue' : q}`}
+                      />
                       <button
                         type="button"
-                        className="ml-auto text-xs text-rose-500"
+                        className="mt-2 shrink-0 text-xs text-rose-500"
                         onClick={() => {
                           const { [q]: _drop, ...rest } = queues;
                           setS({ ...s, assignment: { ...s.assignment, queues: rest } });

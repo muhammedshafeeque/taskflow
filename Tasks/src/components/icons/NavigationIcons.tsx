@@ -138,6 +138,15 @@ export function TimesheetIcon(props: IconProps) {
   );
 }
 
+export function DocsIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10a2 2 0 0 1 2 2v14a1.5 1.5 0 0 0-1.5-1.5h-5A1.5 1.5 0 0 1 4 17V5.5Z" />
+      <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H14a2 2 0 0 0-2 2v14a1.5 1.5 0 0 1 1.5-1.5h5A1.5 1.5 0 0 0 20 17V5.5Z" />
+    </BaseIcon>
+  );
+}
+
 export function SettingsIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>

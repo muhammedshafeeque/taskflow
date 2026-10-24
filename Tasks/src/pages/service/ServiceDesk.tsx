@@ -5,6 +5,7 @@ import { api, serviceApi, type ServiceTicket, type User } from '../../lib/api';
 import { StatusPill } from '../../components/moduleKit';
 import { TicketReplySuggest } from '../../components/ai/AiPanels';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
+import { PersonSelect, toPeople } from '../../components/people';
 
 const PRIORITY_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = {
   urgent: 'red', high: 'amber', medium: 'blue', low: 'slate',
@@ -349,16 +350,14 @@ function TicketDetail({ id, onClose, onChanged, others }: { id: string; onClose:
                 ))}
               </select>
               <label className="block text-[12px] text-[color:var(--text-muted)]">Assignee</label>
-              <select
-                className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2"
+              <PersonSelect
                 value={assigneeIdOf(ticket.assigneeId)}
-                onChange={(e) => patch({ assigneeId: (e.target.value || '') as ServiceTicket['assigneeId'] })}
-              >
-                <option value="">Unassigned</option>
-                {users.filter((u) => u.enabled !== false).map((u) => (
-                  <option key={u._id} value={u._id}>{u.name}</option>
-                ))}
-              </select>
+                onChange={(v) => patch({ assigneeId: (v || '') as ServiceTicket['assigneeId'] })}
+                people={toPeople(users.filter((u) => u.enabled !== false))}
+                specialOptions={[{ value: '', label: 'Unassigned' }]}
+                clearValue=""
+                aria-label="Assignee"
+              />
             </div>
 
             <div className="mt-6">

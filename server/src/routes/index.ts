@@ -39,6 +39,7 @@ import { assetsRoutes } from '../modules/assets/assets.routes';
 import { procurementRoutes } from '../modules/procurement/procurement.routes';
 import { accountsRoutes } from '../modules/accounts/accounts.routes';
 import { documentsRoutes } from '../modules/documents/documents.routes';
+import { docsRoutes } from '../modules/docs/docs.routes';
 import { calendarRoutes } from '../modules/calendar/calendar.routes';
 import { searchRoutes } from '../modules/search/search.routes';
 import { aiRoutes } from '../modules/ai/ai.routes';
@@ -113,6 +114,7 @@ router.use('/saved-filters', pmEnabled, savedFiltersRoutes);
 router.use('/dashboard', pmEnabled, dashboardRoutes);
 router.use('/audit-logs', pmEnabled, auditLogsRoutes);
 router.use('/project-templates', pmEnabled, projectTemplatesRoutes);
+router.use('/docs', pmEnabled, docsRoutes);
 // Mounted before /admin: the admin router guards everything under it with license.view.
 router.use('/admin/customer-orgs', portalAdminEnabled, customerOrgRoutes);
 router.use('/admin', adminRoutes);

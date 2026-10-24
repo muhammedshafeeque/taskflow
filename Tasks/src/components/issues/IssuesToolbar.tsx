@@ -63,140 +63,131 @@ export function IssuesToolbar({
     { key: 'kanban', label: 'Kanban', Icon: FiGrid },
   ];
 
+  const runExport = async () => {
+    if (!token) return;
+    const params: Record<string, string> = {};
+    if (projectId) params.project = projectId;
+    if (useJql && jql.trim()) {
+      params.jql = jql.trim();
+    } else {
+      const lp = buildListParams({ page: 1 }) as Record<string, string | number | undefined>;
+      if (lp.project) params.project = String(lp.project);
+      if (lp.status) params.status = String(lp.status);
+      if (lp.assignee) params.assignee = String(lp.assignee);
+      if (lp.reporter) params.reporter = String(lp.reporter);
+      if (lp.type) params.type = String(lp.type);
+      if (lp.priority) params.priority = String(lp.priority);
+      if (lp.labels) params.labels = String(lp.labels);
+      if (lp.storyPoints) params.storyPoints = String(lp.storyPoints);
+      if (lp.hasStoryPoints) params.hasStoryPoints = String(lp.hasStoryPoints);
+    }
+    const res = await issuesApi.downloadExcel(params, token);
+    if (!res.success) alert(res.message ?? 'Export failed');
+  };
+
+  const ghost =
+    'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-[color:var(--text-muted)] transition hover:bg-[color:var(--bg-elevated)] hover:text-[color:var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent';
+  const activeGhost = 'bg-[color:var(--accent-subtle)] text-[color:var(--accent)] hover:bg-[color:var(--accent-subtle)] hover:text-[color:var(--accent)]';
+
   return (
-    <div className="flex flex-wrap items-center gap-2 py-1.5">
+    <div className="flex flex-wrap items-center gap-1.5 py-2">
       {showTitle && (
-        <h1 className="text-xl font-bold text-[color:var(--text-primary)] shrink-0 mr-2">Issues</h1>
+        <h1 className="mr-2 shrink-0 text-xl font-bold text-[color:var(--text-primary)]">Issues</h1>
       )}
 
-      {/* View mode segment control */}
-      <div
-        className="flex items-center p-0.5 rounded-lg bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] gap-0.5"
-        role="group"
-        aria-label="View mode"
+      <button
+        type="button"
+        onClick={() => { setFiltersOpen(true); setOpenFilterDropdown(null); }}
+        className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-semibold transition ${
+          hasActiveFilters
+            ? 'border-[color:var(--accent)]/45 bg-[color:var(--accent-subtle)] text-[color:var(--accent)]'
+            : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-[color:var(--text-primary)] hover:border-[color:var(--border-emphasis)]'
+        }`}
+        title="Filter by status, assignee, priority, sprint…"
       >
-        {viewModes.map(({ key, label, Icon }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => updateUrl({ viewMode: key })}
-            title={`${label} view`}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-              viewMode === key
-                ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] shadow-sm'
-                : 'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'
-            }`}
-          >
-            <Icon className={icon} aria-hidden />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Separator */}
-      <div className="h-5 w-px bg-[color:var(--border-subtle)] mx-0.5 hidden sm:block" />
-
-      {/* Action buttons */}
-      <div className="flex items-center gap-1.5 flex-1 justify-end flex-wrap">
-        {viewMode === 'table' && (
-          <button
-            type="button"
-            onClick={() => { setColumnsOpen(true); setOpenFilterDropdown(null); }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] text-xs font-medium text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:border-[color:var(--border-emphasis)] transition"
-            title="Customize columns"
-          >
-            <FiSliders className={icon} aria-hidden />
-            Columns
-          </button>
+        <FiFilter className={icon} aria-hidden />
+        Filter
+        {activeFilterCount > 0 && (
+          <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[color:var(--accent)] px-1 text-[10px] font-bold leading-none text-white">
+            {activeFilterCount}
+          </span>
         )}
+      </button>
 
+      {viewMode === 'table' && (
         <button
           type="button"
-          onClick={() => { setFiltersOpen(true); setOpenFilterDropdown(null); }}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition ${
-            hasActiveFilters
-              ? 'bg-[color:var(--accent-subtle)] border-[color:var(--accent)]/50 text-[color:var(--accent)]'
-              : 'bg-[color:var(--bg-surface)] border-[color:var(--border-subtle)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:border-[color:var(--border-emphasis)]'
-          }`}
+          onClick={() => { setColumnsOpen(true); setOpenFilterDropdown(null); }}
+          className={ghost}
+          title="Choose and reorder columns"
         >
-          <FiFilter className={icon} aria-hidden />
-          Filter
-          {activeFilterCount > 0 && (
-            <span className="ml-0.5 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-[color:var(--accent)] text-white text-[9px] font-bold flex items-center justify-center leading-none">
-              {activeFilterCount}
-            </span>
-          )}
+          <FiSliders className={icon} aria-hidden />
+          Columns
         </button>
+      )}
 
-        <button
-          type="button"
-          onClick={onSaveFilterClick}
-          disabled={!canSaveFilter}
-          title={canSaveFilter ? 'Save current filters as a named filter' : 'Apply filters first to save'}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition ${
-            canSaveFilter
-              ? 'bg-[color:var(--bg-surface)] border-[color:var(--border-subtle)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:border-[color:var(--border-emphasis)]'
-              : 'bg-[color:var(--bg-surface)] border-[color:var(--border-subtle)] text-[color:var(--text-muted)] opacity-40 cursor-not-allowed'
-          }`}
-        >
-          <FiBookmark className={icon} aria-hidden />
-          Save
-        </button>
+      <button
+        type="button"
+        onClick={onSaveFilterClick}
+        disabled={!canSaveFilter}
+        title={canSaveFilter ? 'Save current filters as a named view' : 'Apply a filter first, then save it as a view'}
+        className={ghost}
+      >
+        <FiBookmark className={icon} aria-hidden />
+        Save view
+      </button>
 
+      <div className="ml-auto flex items-center gap-1.5">
         <button
           type="button"
           onClick={() => setJqlOpen((o) => !o)}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition ${
-            useJql
-              ? 'bg-[color:var(--accent-subtle)] border-[color:var(--accent)]/50 text-[color:var(--accent)]'
-              : 'bg-[color:var(--bg-surface)] border-[color:var(--border-subtle)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:border-[color:var(--border-emphasis)]'
-          }`}
-          title='JQL: project = X, status = Done, assignee = me, text ~ "search", order by created DESC'
+          className={`${ghost} ${useJql ? activeGhost : ''}`}
+          title='Query with JQL — e.g. status = Done AND assignee = me order by created DESC'
         >
           <FiCode className={icon} aria-hidden />
-          JQL
-          {useJql && (
-            <span className="ml-0.5 px-1.5 py-0.5 rounded text-[9px] bg-[color:var(--accent)] text-white font-bold leading-none">ON</span>
-          )}
+          <span className="hidden sm:inline">JQL</span>
+          {useJql && <span className="rounded bg-[color:var(--accent)] px-1 py-px text-[9px] font-bold leading-none text-white">ON</span>}
         </button>
 
-        <button
-          type="button"
-          onClick={async () => {
-            if (!token) return;
-            const params: Record<string, string> = {};
-            if (projectId) params.project = projectId;
-            if (useJql && jql.trim()) {
-              params.jql = jql.trim();
-            } else {
-              const lp = buildListParams({ page: 1 }) as Record<string, string | number | undefined>;
-              if (lp.project) params.project = String(lp.project);
-              if (lp.status) params.status = String(lp.status);
-              if (lp.assignee) params.assignee = String(lp.assignee);
-              if (lp.reporter) params.reporter = String(lp.reporter);
-              if (lp.type) params.type = String(lp.type);
-              if (lp.priority) params.priority = String(lp.priority);
-              if (lp.labels) params.labels = String(lp.labels);
-              if (lp.storyPoints) params.storyPoints = String(lp.storyPoints);
-              if (lp.hasStoryPoints) params.hasStoryPoints = String(lp.hasStoryPoints);
-            }
-            const res = await issuesApi.downloadExcel(params, token);
-            if (!res.success) alert(res.message ?? 'Export failed');
-          }}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] text-xs text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:border-[color:var(--border-emphasis)] transition"
-        >
+        <button type="button" onClick={runExport} className={ghost} title="Download the current view as Excel">
           <FiDownload className={icon} aria-hidden />
-          Export
+          <span className="hidden sm:inline">Export</span>
         </button>
+
+        <span className="mx-1 hidden h-5 w-px bg-[color:var(--border-subtle)] sm:block" aria-hidden />
+
+        <div
+          className="flex items-center gap-0.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] p-0.5"
+          role="group"
+          aria-label="View mode"
+        >
+          {viewModes.map(({ key, label, Icon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => updateUrl({ viewMode: key })}
+              title={`${label} view`}
+              aria-pressed={viewMode === key}
+              className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-medium transition ${
+                viewMode === key
+                  ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] shadow-sm ring-1 ring-[color:var(--border-subtle)]'
+                  : 'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'
+              }`}
+            >
+              <Icon className={icon} aria-hidden />
+              <span className="hidden md:inline">{label}</span>
+            </button>
+          ))}
+        </div>
 
         {openCreate && (
           <button
             type="button"
             onClick={() => openCreate()}
-            className="btn-primary btn-primary-sm shadow-md inline-flex items-center gap-1.5 font-semibold"
+            className="btn-primary btn-primary-sm ml-1 inline-flex items-center gap-1.5 font-semibold shadow-md"
           >
             <FiPlus className={icon} aria-hidden />
-            New Issue
+            New issue
           </button>
         )}
       </div>

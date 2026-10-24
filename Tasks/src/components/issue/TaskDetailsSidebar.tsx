@@ -7,6 +7,7 @@ import WatchButton from './WatchButton';
 import DateInputDDMMYYYY from '../DateInputDDMMYYYY';
 import { formatDateDDMMYYYY, toIsoDatePart } from '../../lib/dateFormat';
 import { normalizeFixVersionIds } from '../../lib/issueVersions';
+import { PersonSelect, toPeople } from '../people';
 
 function formatDate(s: string | undefined) {
   if (!s) return '—';
@@ -511,31 +512,15 @@ export default function TaskDetailsSidebar({
               <div className="space-y-1.5">
                 <div>
                   <span className="block type-sub-label mb-1">Assignee</span>
-                  <InlineSelect
-                    value={assigneeId || '__unassigned__'}
-                    options={[
-                      { value: '__unassigned__', label: 'Unassigned' },
-                      ...users.map((u) => ({ value: u._id, label: u.name })),
-                    ]}
-                    onChange={(v) => onUpdateField('assignee', v === '__unassigned__' ? '' : v)}
+                  <PersonSelect
+                    size="sm"
+                    className="border-transparent bg-transparent hover:border-[color:var(--border-subtle)] hover:bg-[color:var(--bg-page)]"
+                    value={assigneeId}
+                    onChange={(v) => onUpdateField('assignee', v)}
+                    people={toPeople(users)}
+                    specialOptions={[{ value: '', label: 'Unassigned' }]}
                     disabled={!!updatingField}
-                    renderOption={({ label }) => (
-                      <span className="flex items-center gap-2">
-                        {label !== 'Unassigned' ? (
-                          <>
-                            <span
-                              className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white shrink-0"
-                              style={{ backgroundColor: getAvatarBg(label) }}
-                            >
-                              {getInitials(label)}
-                            </span>
-                            <span className="text-[color:var(--text-primary)] truncate">{label}</span>
-                          </>
-                        ) : (
-                          <span className="text-[color:var(--text-muted)]">{label}</span>
-                        )}
-                      </span>
-                    )}
+                    aria-label="Assignee"
                   />
                 </div>
                 <div>

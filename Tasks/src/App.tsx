@@ -175,6 +175,9 @@ import ResourcesForecast from './pages/resources/ResourcesForecast';
 import ResourcesConflicts from './pages/resources/ResourcesConflicts';
 import ResourcesTeam from './pages/resources/ResourcesTeam';
 import ResourcesTeams from './pages/resources/ResourcesTeams';
+import DocsHome from './pages/docs/DocsHome';
+import DocsSpace from './pages/docs/DocsSpace';
+import ProjectDocs from './pages/ProjectDocs';
 import ProcurementDashboard from './pages/procurement/ProcurementDashboard';
 import {
   ProcurementVendors,
@@ -262,6 +265,9 @@ function AppRoutes() {
         <Route element={<PmModuleLayout />}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/issues" element={<GlobalIssues />} />
+        <Route path="/docs" element={<DocsHome />} />
+        <Route path="/docs/:spaceKey" element={<DocsSpace />} />
+        <Route path="/docs/:spaceKey/pages/:pageId" element={<DocsSpace />} />
         <Route path="/workload" element={<Workload />} />
         <Route path="/estimates" element={<Estimates />} />
         <Route path="/portfolio" element={<Portfolio />} />
@@ -287,6 +293,7 @@ function AppRoutes() {
           <Route path="sprints" element={<Sprints />} />
           <Route path="sprints/:sprintId/report" element={<SprintReport />} />
           <Route path="versions" element={<Versions />} />
+          <Route path="docs" element={<ProjectDocs />} />
           <Route path="gantt" element={<Gantt />} />
           <Route path="roadmap" element={<Roadmap />} />
           <Route path="settings" element={<ProjectSettings />} />

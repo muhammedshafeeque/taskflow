@@ -26,6 +26,7 @@ import {
   VersionsIcon,
   TimesheetIcon,
   SettingsIcon,
+  DocsIcon,
   SearchIcon,
   SunIcon,
   MoonIcon,
@@ -56,6 +57,7 @@ const PROJECT_NAV_ITEMS: { to: string; label: string; icon: ReactNode; permissio
   { to: '/sprints', label: 'Sprints', icon: <SprintsIcon />, permission: 'sprint.sprint.read' },
   { to: '/gantt', label: 'Gantt', icon: <GanttIcon />, permission: 'issue.issue.read' },
   { to: '/roadmap', label: 'Roadmap', icon: <GanttIcon />, permission: 'roadmap.roadmap.read' },
+  { to: '/docs', label: 'Docs', icon: <DocsIcon />, permission: 'issue.issue.read' },
   { to: '/versions', label: 'Versions', icon: <VersionsIcon />, permission: 'version.version.read' },
   {
     to: '/test-cases',

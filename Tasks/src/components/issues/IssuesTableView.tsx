@@ -1,17 +1,15 @@
 import { Link } from 'react-router-dom';
 import { FiTrash2 } from 'react-icons/fi';
-import { MetaBadge } from '../MetaBadge';
 import { WatchButton } from '../issue';
 import { EditIcon } from '../icons/NavigationIcons';
 import {
   ISSUE_TABLE_COLUMNS,
   ISSUE_TABLE_CHECKBOX_WIDTH,
   getColumnWidthPx,
-  isDueTodayOrPast,
 } from './constants';
 import { useColumnResize } from './useColumnResize';
 import type { Issue, Project } from '../../lib/api';
-import { formatDateDDMMYYYY } from '../../lib/dateFormat';
+import { DueDate, PersonCell, PriorityTag, RelativeDate, StatusPill, TypeTag } from './issueUi';
 
 type MetaGetter = (name: string) => { icon?: string; color?: string } | undefined;
 
@@ -36,13 +34,6 @@ interface IssuesTableViewProps {
   openEdit: (issue: Issue) => void;
   setConfirmDeleteIssue: (issue: Issue | null) => void;
   navigate: (path: string) => void;
-}
-
-function getAvatarBg(name: string): string {
-  const palette = ['#388bfd', '#3fb950', '#d29922', '#bc8cff', '#f85149', '#e8912d', '#58b9de', '#79c0ff'];
-  let hash = 0;
-  for (const char of name) hash = char.charCodeAt(0) + ((hash << 5) - hash);
-  return palette[Math.abs(hash) % palette.length];
 }
 
 function renderCell(
@@ -77,11 +68,11 @@ function renderCell(
     );
   }
   if (colId === 'type') {
-    return <MetaBadge label={issue.type} meta={getTypeMeta(issue.type)} />;
+    return <TypeTag label={issue.type} meta={getTypeMeta(issue.type)} />;
   }
   if (colId === 'ticketId') {
     return (
-      <span className="font-mono text-[color:var(--text-muted)] text-[11px] font-semibold truncate block" title={getIssueKey(issue)}>
+      <span className="block truncate font-mono text-[11.5px] font-semibold text-[color:var(--text-muted)] transition-colors group-hover:text-[color:var(--accent)]" title={getIssueKey(issue)}>
         {getIssueKey(issue)}
       </span>
     );
@@ -91,76 +82,35 @@ function renderCell(
     return (
       <Link
         to={pid ? `/projects/${pid}/issues/${encodeURIComponent(getIssueKey(issue))}` : '#'}
-        className={`font-medium text-[color:var(--text-primary)] hover:text-[color:var(--accent)] hover:underline truncate block w-full text-sm flex items-center gap-1.5 ${issue.parent ? 'pl-4' : ''}`}
+        className={`flex w-full items-center gap-1.5 text-[13.5px] font-medium text-[color:var(--text-primary)] hover:text-[color:var(--accent)] ${issue.parent ? 'pl-3' : ''}`}
         title={issue.title}
       >
-        {issue.parent && <span className="text-[9px] text-[color:var(--text-muted)] shrink-0">↳</span>}
-        {issue.title}
+        {issue.parent && <span className="shrink-0 text-[11px] text-[color:var(--text-muted)]" title="Sub-item">↳</span>}
+        <span className="truncate">{issue.title}</span>
       </Link>
     );
   }
   if (colId === 'assignee') {
-    const name = typeof issue.assignee === 'object' && issue.assignee ? issue.assignee.name : null;
-    if (!name) {
-      return <span className="text-[color:var(--text-muted)] text-sm">—</span>;
-    }
-    const initials = name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
-    return (
-      <div className="flex items-center gap-2 min-w-0">
-        <div
-          className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0 ring-1 ring-[color:var(--border-subtle)]"
-          style={{ backgroundColor: getAvatarBg(name) }}
-          title={name}
-        >
-          {initials}
-        </div>
-        <span className="truncate text-sm text-[color:var(--text-primary)]" title={name}>{name}</span>
-      </div>
-    );
+    return <PersonCell name={typeof issue.assignee === 'object' && issue.assignee ? issue.assignee.name : null} />;
   }
   if (colId === 'reporter') {
-    const name = typeof issue.reporter === 'object' && issue.reporter ? issue.reporter.name : null;
-    if (!name) return <span className="text-[color:var(--text-muted)] text-sm">—</span>;
-    const initials = name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
-    return (
-      <div className="flex items-center gap-2 min-w-0">
-        <div
-          className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0 ring-1 ring-[color:var(--border-subtle)]"
-          style={{ backgroundColor: getAvatarBg(name) }}
-          title={name}
-        >
-          {initials}
-        </div>
-        <span className="truncate text-sm text-[color:var(--text-primary)]" title={name}>{name}</span>
-      </div>
-    );
+    return <PersonCell name={typeof issue.reporter === 'object' && issue.reporter ? issue.reporter.name : null} />;
   }
   if (colId === 'priority') {
-    return <MetaBadge label={issue.priority} meta={getPriorityMeta(issue.priority)} />;
+    return <PriorityTag label={issue.priority} meta={getPriorityMeta(issue.priority)} />;
   }
   if (colId === 'status') {
-    return <MetaBadge label={issue.status} meta={getStatusMeta(issue.status)} />;
+    return <StatusPill label={issue.status} meta={getStatusMeta(issue.status)} />;
   }
   if (colId === 'dueDate') {
-    const isHot = isDueTodayOrPast(issue.dueDate);
-    return issue.dueDate ? (
-      <span className={`text-xs font-medium ${isHot ? 'text-red-400' : 'text-[color:var(--text-muted)]'}`}>
-        {formatDateDDMMYYYY(issue.dueDate)}
-      </span>
-    ) : (
-      <span className="text-[color:var(--text-muted)] text-sm">—</span>
-    );
+    return <DueDate value={issue.dueDate} />;
   }
   if (colId === 'startDate') {
-    return issue.startDate ? (
-      <span className="text-xs text-[color:var(--text-muted)]">{formatDateDDMMYYYY(issue.startDate)}</span>
-    ) : (
-      <span className="text-[color:var(--text-muted)] text-sm">—</span>
-    );
+    return <RelativeDate value={issue.startDate} />;
   }
   if (colId === 'storyPoints') {
     return issue.storyPoints != null ? (
-      <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] text-xs font-bold text-[color:var(--text-primary)]">
+      <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-[color:var(--bg-elevated)] px-1.5 text-[11px] font-bold tabular-nums text-[color:var(--text-primary)]">
         {issue.storyPoints}
       </span>
     ) : (
@@ -168,10 +118,10 @@ function renderCell(
     );
   }
   if (colId === 'created') {
-    return <span className="text-xs text-[color:var(--text-muted)]">{issue.createdAt ? formatDateDDMMYYYY(issue.createdAt) : '—'}</span>;
+    return <RelativeDate value={issue.createdAt} />;
   }
   if (colId === 'updated') {
-    return <span className="text-xs text-[color:var(--text-muted)]">{issue.updatedAt ? formatDateDDMMYYYY(issue.updatedAt) : '—'}</span>;
+    return <RelativeDate value={issue.updatedAt} />;
   }
   if (colId === 'description') {
     const desc = issue.description ?? '';
@@ -186,7 +136,7 @@ function renderCell(
     return labels.length ? (
       <span className="flex flex-wrap gap-1">
         {labels.slice(0, 2).map((l) => (
-          <span key={l} className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] text-[color:var(--text-muted)]">
+          <span key={l} className="inline-flex max-w-[110px] truncate rounded-full bg-[color:var(--bg-elevated)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--text-muted)]">
             {l}
           </span>
         ))}
@@ -226,7 +176,7 @@ function renderCell(
   }
   if (colId === 'actions') {
     return (
-      <div className="flex items-center justify-end gap-1">
+      <div className={`flex items-center justify-end gap-0.5 transition-opacity ${watchingStatus[issue._id] ? '' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}>
         <WatchButton
           watching={watchingStatus[issue._id] ?? false}
           loading={watchingLoadingId === issue._id}
@@ -238,7 +188,7 @@ function renderCell(
           type="button"
           onClick={() => openEdit(issue)}
           title="Edit"
-          className="p-1 rounded-md text-[color:var(--text-muted)] hover:text-[color:var(--accent)] hover:bg-[color:var(--accent-subtle)] opacity-0 group-hover:opacity-100 transition"
+          className="rounded-md p-1.5 text-[color:var(--text-muted)] transition hover:bg-[color:var(--accent-subtle)] hover:text-[color:var(--accent)]"
         >
           <EditIcon className="w-3.5 h-3.5" />
         </button>
@@ -246,7 +196,7 @@ function renderCell(
           type="button"
           onClick={() => setConfirmDeleteIssue(issue)}
           title="Delete"
-          className="p-1 rounded-md text-[color:var(--text-muted)] hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition"
+          className="rounded-md p-1.5 text-[color:var(--text-muted)] transition hover:bg-red-500/10 hover:text-red-500"
         >
           <FiTrash2 className="w-3.5 h-3.5" />
         </button>
@@ -286,7 +236,7 @@ export function IssuesTableView(props: IssuesTableViewProps) {
     visibleColumnIds.reduce((sum, colId) => sum + getColumnWidthPx(colId, columnWidths), 0);
 
   return (
-    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow">
       <div className="overflow-x-auto">
         <table
           className="w-full text-left text-sm"
@@ -299,8 +249,8 @@ export function IssuesTableView(props: IssuesTableViewProps) {
             ))}
           </colgroup>
           <thead>
-            <tr className="border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[color:var(--text-muted)]">
-              <th className="px-3 py-2.5 w-10 relative">
+            <tr className="border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/70 text-[color:var(--text-muted)]">
+              <th className="relative w-10 px-3 py-2.5">
                 <input
                   type="checkbox"
                   checked={issues.length > 0 && selectedIssueIds.size === issues.length}
@@ -315,7 +265,7 @@ export function IssuesTableView(props: IssuesTableViewProps) {
                 return (
                   <th
                     key={colId}
-                    className={`relative px-3 py-2.5 font-semibold uppercase text-[10px] tracking-wider select-none ${
+                    className={`relative select-none px-3 py-2.5 text-[11px] font-semibold tracking-wide ${
                       colId === 'actions' ? 'text-right' : 'text-left'
                     }`}
                   >
@@ -341,7 +291,7 @@ export function IssuesTableView(props: IssuesTableViewProps) {
           </thead>
           <tbody className="divide-y divide-[color:var(--border-subtle)]/50">
             {issues.map((issue) => {
-              const priorityColor = getPriorityMeta(issue.priority)?.color;
+              const selected = selectedIssueIds.has(issue._id);
               return (
                 <tr
                   key={issue._id}
@@ -362,13 +312,17 @@ export function IssuesTableView(props: IssuesTableViewProps) {
                       if (pid) navigate(`/projects/${pid}/issues/${encodeURIComponent(getIssueKey(issue))}`);
                     }
                   }}
-                  style={{ borderLeftColor: priorityColor ?? 'transparent' }}
-                  className="group bg-[color:var(--bg-surface)] hover:bg-[color:var(--bg-elevated)] transition-colors cursor-pointer border-l-[3px]"
+                  aria-selected={selected}
+                  className={`group cursor-pointer outline-none transition-colors focus-visible:bg-[color:var(--bg-elevated)] ${
+                    selected
+                      ? 'bg-[color:var(--accent-subtle)] hover:bg-[color:var(--accent-subtle)]'
+                      : 'bg-[color:var(--bg-surface)] hover:bg-[color:var(--bg-elevated)]/70'
+                  }`}
                 >
-                  <td className="px-3 py-2.5 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                  <td className={`overflow-hidden px-3 py-2.5 ${selected ? 'shadow-[inset_3px_0_0_var(--accent)]' : ''}`} onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
-                      checked={selectedIssueIds.has(issue._id)}
+                      checked={selected}
                       onChange={() => toggleSelectIssue(issue._id)}
                       className="rounded border-[color:var(--border-subtle)]"
                       aria-label={`Select ${getIssueKey(issue)}`}
@@ -377,7 +331,7 @@ export function IssuesTableView(props: IssuesTableViewProps) {
                   {visibleColumnIds.map((colId) => (
                     <td
                       key={colId}
-                      className={`px-3 py-2.5 overflow-hidden ${colId === 'actions' ? 'text-right' : ''}`}
+                      className={`overflow-hidden px-3 py-2.5 align-middle ${colId === 'actions' ? 'text-right' : ''}`}
                       onClick={colId === 'actions' ? (e) => e.stopPropagation() : undefined}
                     >
                       {renderCell(

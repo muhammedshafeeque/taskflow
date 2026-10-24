@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ProjectMember, ProjectRule } from '../../lib/api';
 import { ACTION_TYPES, NOTIFY_TARGETS } from './automationConstants';
+import { PersonMultiSelect, PersonSelect, toPeople } from '../people';
 
 const inputClass =
   'w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs placeholder-[color:var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 transition';
@@ -164,12 +165,14 @@ export default function AutomationRuleBuilder({
                     ))}
                   </select>
                 ) : isUser ? (
-                  <select className={inputClass} value={String(c.value ?? '')} onChange={(e) => patchCondition(i, { value: e.target.value })}>
-                    <option value="">Select…</option>
-                    {members.map((m) => (
-                      <option key={m.user._id} value={m.user._id}>{m.user.name}</option>
-                    ))}
-                  </select>
+                  <PersonSelect
+                    size="sm"
+                    value={String(c.value ?? '')}
+                    onChange={(v) => patchCondition(i, { value: v })}
+                    people={toPeople(members.map((m) => m.user))}
+                    placeholder="Select person…"
+                    aria-label="Person"
+                  />
                 ) : (
                   <input
                     className={inputClass}
@@ -203,13 +206,17 @@ export default function AutomationRuleBuilder({
               </select>
               <div className="space-y-1.5">
                 {a.type === 'assign' && (
-                  <select className={inputClass} value={String(a.to ?? '')} onChange={(e) => patchAction(i, { to: e.target.value })}>
-                    <option value="reporter">Reporter</option>
-                    <option value="lead">Project lead</option>
-                    {members.map((m) => (
-                      <option key={m.user._id} value={m.user._id}>{m.user.name}</option>
-                    ))}
-                  </select>
+                  <PersonSelect
+                    size="sm"
+                    value={String(a.to ?? '')}
+                    onChange={(v) => patchAction(i, { to: v })}
+                    people={toPeople(members.map((m) => m.user))}
+                    specialOptions={[
+                      { value: 'reporter', label: 'Reporter', hint: 'Whoever raised the issue' },
+                      { value: 'lead', label: 'Project lead' },
+                    ]}
+                    aria-label="Assign to"
+                  />
                 )}
                 {a.type === 'set_status' && (
                   <select className={inputClass} value={String(a.status ?? '')} onChange={(e) => patchAction(i, { status: e.target.value })}>
@@ -232,23 +239,15 @@ export default function AutomationRuleBuilder({
                 )}
                 {a.type === 'notify_users' && (
                   <>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[...NOTIFY_TARGETS, ...members.map((m) => ({ value: m.user._id, label: m.user.name }))].map((t) => {
-                        const on = (a.to as string[]).includes(t.value);
-                        return (
-                          <button
-                            key={t.value}
-                            type="button"
-                            onClick={() =>
-                              patchAction(i, { to: on ? (a.to as string[]).filter((x) => x !== t.value) : [...(a.to as string[]), t.value] })
-                            }
-                            className={`px-2 py-0.5 rounded-full border text-[11px] ${on ? 'border-[color:var(--accent)] text-[color:var(--accent)] bg-[color:var(--accent)]/10' : 'border-[color:var(--border-subtle)] text-[color:var(--text-muted)]'}`}
-                          >
-                            {t.label}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <PersonMultiSelect
+                      size="sm"
+                      values={a.to as string[]}
+                      onChange={(to) => patchAction(i, { to })}
+                      people={toPeople(members.map((m) => m.user))}
+                      specialOptions={NOTIFY_TARGETS}
+                      placeholder="Who should be notified?"
+                      aria-label="Notify"
+                    />
                     <input
                       className={inputClass}
                       value={String(a.message ?? '')}

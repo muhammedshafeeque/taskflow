@@ -47,6 +47,7 @@ import {
   type EngagementHoursSource,
   type ResourceSettingsRow,
 } from '../../lib/api';
+import { PersonSelect, toPeople } from '../../components/people';
 
 /* ─── Date helpers (day keys are UTC YYYY-MM-DD, matching the API) ───────── */
 
@@ -2017,14 +2018,15 @@ function EntryModal({
         {error && <ErrorBanner message={error} />}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Person">
-            <select required disabled={lockPerson && !!form.userId} value={form.userId} onChange={(e) => set('userId', e.target.value)} className={kitInputCls}>
-              <option value="">Select…</option>
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <PersonSelect
+              required
+              disabled={lockPerson && !!form.userId}
+              value={form.userId}
+              onChange={(v) => set('userId', v)}
+              people={toPeople(people)}
+              placeholder="Search person…"
+              aria-label="Person"
+            />
           </Field>
           <Field label="Category" hint="Free text, e.g. Support, Pre-sales, Training.">
             <input value={form.category} onChange={(e) => set('category', e.target.value)} className={kitInputCls} />

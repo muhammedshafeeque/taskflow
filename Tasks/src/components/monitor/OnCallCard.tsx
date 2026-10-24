@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { monitorApi, organizationsApi, type MonitorOnCall } from '../../lib/api';
+import { PersonSelect, toPeople } from '../people';
 
 type Member = { _id: string; name: string; email: string };
 
@@ -89,20 +90,15 @@ export default function OnCallCard({ projectId, canManage }: { projectId: string
             ))}
           </ol>
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            <select
-              className="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-2 py-1"
+            <PersonSelect
+              size="sm"
+              className="w-56"
               value=""
-              onChange={(e) => e.target.value && setPeople((p) => [...p, e.target.value])}
-            >
-              <option value="">+ Add person…</option>
-              {members
-                .filter((m) => !people.includes(m._id))
-                .map((m) => (
-                  <option key={m._id} value={m._id}>
-                    {m.name}
-                  </option>
-                ))}
-            </select>
+              onChange={(v) => v && setPeople((p) => [...p, v])}
+              people={toPeople(members.filter((m) => !people.includes(m._id)))}
+              placeholder="+ Add person to rotation…"
+              aria-label="Add person to on-call rotation"
+            />
             <label className="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
               Rotate every
               <input

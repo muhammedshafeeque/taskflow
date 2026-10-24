@@ -44,9 +44,8 @@ export function ActiveFilterChips({
   const dueLabel = (preset: string) => DUE_DATE_PRESET_OPTIONS.find((o) => o.value === preset)?.label ?? preset;
 
   const hasAnyFilter = hasAnyIssueFilters(filters);
-  if (!hasAnyFilter && quickFilter === 'all') return null;
-
-  const handleRemoveQuick = () => updateUrl({ quickFilter: 'all', page: 1 });
+  // Scope (mine/open/all) is shown by the header tabs, so only real filters appear here.
+  if (!hasAnyFilter) return null;
 
   const handleRemoveFilter = (key: keyof FiltersShape, value?: string) => {
     if (
@@ -62,13 +61,10 @@ export function ActiveFilterChips({
   };
 
   const handleClearAll = () => {
-    updateUrl({ quickFilter: 'all', filters: { ...DEFAULT_FILTERS }, page: 1 });
+    updateUrl({ quickFilter, filters: { ...DEFAULT_FILTERS }, page: 1 });
   };
 
   const chips: { id: string; label: string; category: string; onRemove: () => void }[] = [];
-
-  if (quickFilter === 'my') chips.push({ id: 'quick-my', label: 'My open issues', category: 'view', onRemove: handleRemoveQuick });
-  if (quickFilter === 'open') chips.push({ id: 'quick-open', label: 'Open issues', category: 'view', onRemove: handleRemoveQuick });
 
   filters.project?.forEach((id) =>
     chips.push({ id: `project-${id}`, label: `${projectName(id)}`, category: 'Project', onRemove: () => handleRemoveFilter('project', id) })
@@ -129,50 +125,43 @@ export function ActiveFilterChips({
     chips.push({ id: 'hasEstimate-true', label: 'Has estimate', category: 'Est.', onRemove: () => handleRemoveFilter('hasEstimate') });
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 py-2 border-b border-[color:var(--border-subtle)]">
-      <span className="text-[10px] font-semibold text-[color:var(--text-muted)] uppercase tracking-wider shrink-0 mr-0.5">
-        Filters
-      </span>
+    <div className="flex flex-wrap items-center gap-1.5 pb-2.5">
+      <span className="mr-0.5 shrink-0 text-[11px] font-semibold text-[color:var(--text-muted)]">Filtered by</span>
       {chips.map((chip) => (
         <span
           key={chip.id}
-          className="group inline-flex items-center gap-0.5 rounded-lg overflow-hidden border border-[color:var(--accent)]/25 bg-[color:var(--accent-subtle)] text-xs shrink-0"
+          className="group inline-flex h-7 shrink-0 items-center rounded-full border border-[color:var(--accent)]/30 bg-[color:var(--accent-subtle)] pl-2.5 pr-1 text-[12px]"
         >
-          {chip.category !== 'view' && (
-            <span className="px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--accent)]/70 bg-[color:var(--accent)]/10 border-r border-[color:var(--accent)]/20 uppercase tracking-wide">
-              {chip.category}
-            </span>
-          )}
+          <span className="mr-1 text-[color:var(--text-muted)]">{chip.category}:</span>
           {onOpenFilterModal ? (
             <button
               type="button"
               onClick={onOpenFilterModal}
-              className="px-2 py-0.5 text-[color:var(--accent)] font-medium hover:text-[color:var(--accent-muted)]"
+              className="max-w-[160px] truncate font-semibold text-[color:var(--accent)] hover:underline"
+              title={`Edit ${chip.category} filter`}
             >
               {chip.label}
             </button>
           ) : (
-            <span className="px-2 py-0.5 text-[color:var(--accent)] font-medium">{chip.label}</span>
+            <span className="max-w-[160px] truncate font-semibold text-[color:var(--accent)]">{chip.label}</span>
           )}
           <button
             type="button"
             onClick={chip.onRemove}
-            className="px-1 py-0.5 text-[color:var(--accent)]/60 hover:text-red-500 hover:bg-red-500/10 transition rounded-r-lg"
-            aria-label={`Remove ${chip.label}`}
+            className="ml-1 flex h-5 w-5 items-center justify-center rounded-full text-[color:var(--accent)]/70 transition hover:bg-red-500/15 hover:text-red-500"
+            aria-label={`Remove ${chip.category} ${chip.label}`}
           >
             <FiX className="h-3 w-3" aria-hidden />
           </button>
         </span>
       ))}
-      {chips.length > 1 && (
-        <button
-          type="button"
-          onClick={handleClearAll}
-          className="text-[11px] text-[color:var(--text-muted)] font-medium hover:text-red-500 transition underline-offset-2 hover:underline ml-1"
-        >
-          Clear all
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={handleClearAll}
+        className="ml-1 text-[12px] font-medium text-[color:var(--text-muted)] underline-offset-2 transition hover:text-red-500 hover:underline"
+      >
+        Clear {chips.length > 1 ? 'all' : ''}
+      </button>
     </div>
   );
 }

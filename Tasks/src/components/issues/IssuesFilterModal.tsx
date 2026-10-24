@@ -1,4 +1,6 @@
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { FiCheck, FiSearch, FiX } from 'react-icons/fi';
 import { MetaIconGlyph, type MetaIconKey } from '../../pages/ProjectSettings';
 import {
   STORY_POINT_OPTIONS,
@@ -55,103 +57,165 @@ interface IssuesFilterModalProps {
   versions?: ProjectVersion[];
 }
 
-function FilterOption({
-  label,
-  selected,
-  onClick,
-  meta,
-  metaKey,
-}: {
-  label: string;
-  selected: boolean;
-  onClick: () => void;
-  meta?: { icon?: string; color?: string };
-  metaKey?: string;
-}) {
+type SectionKey =
+  | 'project' | 'status' | 'type' | 'priority' | 'labels'
+  | 'assignee' | 'reporter' | 'sprint' | 'milestone' | 'versions'
+  | 'dates' | 'estimates' | 'hierarchy';
+
+type Option = { value: string; label: string; meta?: { icon?: string; color?: string }; hint?: string };
+
+/** Checkable option row with optional project-configured colour/icon. */
+function OptionRow({ option, selected, onToggle }: { option: Option; selected: boolean; onToggle: () => void }) {
+  const { meta } = option;
   return (
     <button
       type="button"
-      onClick={onClick}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs ${
-        selected ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-surface)]'
+      role="checkbox"
+      aria-checked={selected}
+      onClick={onToggle}
+      className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] transition ${
+        selected
+          ? 'bg-[color:var(--accent-subtle)] text-[color:var(--text-primary)]'
+          : 'text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)]'
       }`}
     >
-      <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 text-[10px] ${selected ? 'border-[color:var(--accent)]' : 'border-[color:var(--border-subtle)]'}`}>
-        {selected && '✓'}
+      <span
+        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+          selected
+            ? 'border-[color:var(--accent)] bg-[color:var(--accent)] text-white'
+            : 'border-[color:var(--border-emphasis)] group-hover:border-[color:var(--accent)]'
+        }`}
+      >
+        {selected && <FiCheck className="h-3 w-3" strokeWidth={3} aria-hidden />}
       </span>
-      {meta?.icon && metaKey && (
-        <span style={meta.color ? { color: meta.color } : undefined}>
-          <MetaIconGlyph icon={meta.icon as MetaIconKey} className="w-3.5 h-3.5" />
+      {meta?.icon ? (
+        <span className="shrink-0" style={meta.color ? { color: meta.color } : undefined}>
+          <MetaIconGlyph icon={meta.icon as MetaIconKey} className="h-3.5 w-3.5" />
         </span>
-      )}
-      {meta?.color && <span className="w-3 h-3 rounded shrink-0" style={{ backgroundColor: meta.color }} />}
-      {label}
+      ) : meta?.color ? (
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
+      ) : null}
+      <span className="min-w-0 flex-1 truncate">{option.label}</span>
+      {option.hint && <span className="shrink-0 text-[11px] text-[color:var(--text-muted)]">{option.hint}</span>}
     </button>
   );
 }
 
-function FilterSelect({
-  label,
-  selectedCount,
-  allLabel,
-  isOpen,
+/** Searchable multi-select list used by every list-type section. */
+function OptionList({
+  options,
+  selected,
   onToggle,
-  children,
+  onClear,
+  emptyText,
+  searchable,
 }: {
-  label?: string;
-  selectedCount: number;
-  allLabel: string;
-  isOpen: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
+  options: Option[];
+  selected: string[];
+  onToggle: (value: string) => void;
+  onClear: () => void;
+  emptyText: string;
+  searchable?: boolean;
 }) {
+  const [query, setQuery] = useState('');
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
+  }, [options, query]);
+
+  if (options.length === 0) {
+    return <p className="px-3 py-6 text-center text-[13px] text-[color:var(--text-muted)]">{emptyText}</p>;
+  }
+
   return (
-    <div className="relative">
-      {label && <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">{label}</label>}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center justify-between px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-left text-xs text-[color:var(--text-primary)]"
-      >
-        <span>{selectedCount ? `${selectedCount} selected` : allLabel}</span>
-        <span className="text-[color:var(--text-muted)]">{isOpen ? '▲' : '▼'}</span>
-      </button>
-      {isOpen && (
-        <div className="absolute z-10 mt-1 w-full py-1 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] shadow-xl max-h-48 overflow-y-auto">
-          {children}
-        </div>
+    <div className="space-y-2">
+      {(searchable ?? options.length > 7) && (
+        <label className="flex h-9 items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 focus-within:border-[color:var(--accent)]">
+          <FiSearch className="h-3.5 w-3.5 shrink-0 text-[color:var(--text-muted)]" aria-hidden />
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search…"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-muted)]"
+          />
+        </label>
       )}
+      <div className="flex items-center justify-between px-1 text-[11px] text-[color:var(--text-muted)]">
+        <span>{selected.length ? `${selected.length} selected` : 'Any — pick one or more'}</span>
+        {selected.length > 0 && (
+          <button type="button" onClick={onClear} className="font-medium text-[color:var(--accent)] hover:underline">
+            Clear
+          </button>
+        )}
+      </div>
+      <div className="space-y-0.5">
+        {shown.map((o) => (
+          <OptionRow key={o.value} option={o} selected={selected.includes(o.value)} onToggle={() => onToggle(o.value)} />
+        ))}
+        {shown.length === 0 && <p className="px-3 py-4 text-center text-[13px] text-[color:var(--text-muted)]">No matches for “{query}”.</p>}
+      </div>
     </div>
   );
 }
 
-function BoolCheckbox({
+/** Any / Yes / No segmented control for optional boolean filters. */
+function TriState({
   label,
-  checked,
+  value,
+  yes,
+  no,
   onChange,
 }: {
   label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
+  value: boolean | undefined;
+  yes: string;
+  no: string;
+  onChange: (v: boolean | undefined) => void;
 }) {
+  const opts: { v: boolean | undefined; text: string }[] = [
+    { v: undefined, text: 'Any' },
+    { v: true, text: yes },
+    { v: false, text: no },
+  ];
   return (
-    <label className="flex items-center gap-2 cursor-pointer">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="rounded border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-[color:var(--accent)]"
-      />
-      <span className="text-xs text-[color:var(--text-primary)]">{label}</span>
-    </label>
+    <div>
+      <p className="mb-1.5 text-[12px] font-semibold text-[color:var(--text-primary)]">{label}</p>
+      <div className="inline-flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] p-0.5">
+        {opts.map((o) => (
+          <button
+            key={o.text}
+            type="button"
+            aria-pressed={value === o.v}
+            onClick={() => onChange(o.v)}
+            className={`h-7 rounded-md px-3 text-[12px] font-medium transition ${
+              value === o.v
+                ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] shadow-sm ring-1 ring-[color:var(--border-subtle)]'
+                : 'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'
+            }`}
+          >
+            {o.text}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
+function ChipToggle({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <p className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)] pt-1 border-t border-[color:var(--border-subtle)] first:border-0 first:pt-0">
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`h-8 rounded-full border px-3 text-[12px] font-medium transition ${
+        active
+          ? 'border-[color:var(--accent)] bg-[color:var(--accent)] text-white'
+          : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-[color:var(--text-primary)] hover:border-[color:var(--border-emphasis)]'
+      }`}
+    >
       {children}
-    </p>
+    </button>
   );
 }
 
@@ -159,7 +223,6 @@ export function IssuesFilterModal(props: IssuesFilterModalProps) {
   const {
     filtersOpen,
     setFiltersOpen,
-    openFilterDropdown,
     setOpenFilterDropdown,
     filters,
     toggleFilter,
@@ -183,10 +246,24 @@ export function IssuesFilterModal(props: IssuesFilterModalProps) {
     versions = [],
   } = props;
 
-  const showProjectFilter = projects.length > 0;
-  const showSprintFilter = sprints.length > 0 || showProjectFilter;
-  const showMilestoneFilter = milestones.length > 0;
-  const showVersionFilter = versions.length > 0;
+  const [section, setSection] = useState<SectionKey>(projects.length > 0 ? 'project' : 'status');
+
+  const close = () => {
+    setFiltersOpen(false);
+    setOpenFilterDropdown(null);
+  };
+
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setFiltersOpen(false);
+        setOpenFilterDropdown(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [filtersOpen, setFiltersOpen, setOpenFilterDropdown]);
 
   function patchFilters(updates: Partial<FiltersShape>) {
     updateUrl({ filters: { ...filters, ...updates }, page: 1 });
@@ -201,242 +278,342 @@ export function IssuesFilterModal(props: IssuesFilterModalProps) {
 
   if (!filtersOpen) return null;
 
+  const assigneeSelected = [
+    ...filters.assignee.filter((id) => id !== UNASSIGNED_ASSIGNEE),
+    ...(filters.unassigned || filters.assignee.includes(UNASSIGNED_ASSIGNEE) ? [UNASSIGNED_ASSIGNEE] : []),
+  ];
+  const userOptions: Option[] = users.map((u) => ({ value: u._id, label: u.name, hint: u.email }));
+  const datesCount =
+    (filters.dueDatePreset ? 1 : 0) + (filters.hasDueDate === false ? 1 : 0) + (filters.hasStartDate !== undefined ? 1 : 0);
+  const estimatesCount =
+    filters.storyPoints.length + (filters.hasStoryPoints === false ? 1 : 0) + (filters.hasEstimate !== undefined ? 1 : 0);
+
+  const sections: { key: SectionKey; label: string; count: number; group: string; show: boolean }[] = [
+    { key: 'project', label: 'Project', count: filters.project?.length ?? 0, group: 'Scope', show: projects.length > 0 },
+    { key: 'status', label: 'Status', count: filters.status.length, group: 'Issue', show: true },
+    { key: 'type', label: 'Type', count: filters.type.length, group: 'Issue', show: true },
+    { key: 'priority', label: 'Priority', count: filters.priority.length, group: 'Issue', show: true },
+    { key: 'labels', label: 'Labels', count: filters.labels.length, group: 'Issue', show: true },
+    { key: 'assignee', label: 'Assignee', count: assigneeSelected.length, group: 'People', show: true },
+    { key: 'reporter', label: 'Reporter', count: filters.reporter.length, group: 'People', show: true },
+    { key: 'sprint', label: 'Sprint', count: filters.sprint.length, group: 'Planning', show: sprints.length > 0 || projects.length > 0 },
+    { key: 'milestone', label: 'Milestone', count: filters.milestone.length, group: 'Planning', show: milestones.length > 0 },
+    { key: 'versions', label: 'Versions', count: filters.fixVersion.length + filters.affectsVersions.length, group: 'Planning', show: versions.length > 0 },
+    { key: 'hierarchy', label: 'Sub-items', count: filters.hasParent !== undefined ? 1 : 0, group: 'Planning', show: true },
+    { key: 'dates', label: 'Dates', count: datesCount, group: 'Time', show: true },
+    { key: 'estimates', label: 'Estimates', count: estimatesCount, group: 'Time', show: true },
+  ];
+  const visible = sections.filter((x) => x.show);
+  const active = visible.find((x) => x.key === section) ?? visible[0];
+  const totalSelected = visible.reduce((n, x) => n + x.count, 0);
+
+  let content: ReactNode;
+  switch (active.key) {
+    case 'project':
+      content = (
+        <OptionList
+          options={projects.map((p) => ({ value: p._id, label: p.name, hint: p.key }))}
+          selected={filters.project ?? []}
+          onToggle={(v) => toggleFilter('project', v)}
+          onClear={() => patchFilters({ project: [] })}
+          emptyText="No projects."
+        />
+      );
+      break;
+    case 'status':
+      content = (
+        <OptionList
+          options={statusList.map((x) => ({ value: x, label: x, meta: getStatusMeta(x) }))}
+          selected={filters.status}
+          onToggle={(v) => toggleFilter('status', v)}
+          onClear={() => patchFilters({ status: [] })}
+          emptyText="No statuses configured."
+        />
+      );
+      break;
+    case 'type':
+      content = (
+        <OptionList
+          options={typeList.map((x) => ({ value: x, label: x, meta: getTypeMeta(x) }))}
+          selected={filters.type}
+          onToggle={(v) => toggleFilter('type', v)}
+          onClear={() => patchFilters({ type: [] })}
+          emptyText="No issue types configured."
+        />
+      );
+      break;
+    case 'priority':
+      content = (
+        <OptionList
+          options={priorityList.map((x) => ({ value: x, label: x, meta: getPriorityMeta(x) }))}
+          selected={filters.priority}
+          onToggle={(v) => toggleFilter('priority', v)}
+          onClear={() => patchFilters({ priority: [] })}
+          emptyText="No priorities configured."
+        />
+      );
+      break;
+    case 'labels':
+      content = (
+        <OptionList
+          options={allLabels.map((l) => ({ value: l, label: l }))}
+          selected={filters.labels}
+          onToggle={(v) => toggleFilter('labels', v)}
+          onClear={() => patchFilters({ labels: [] })}
+          emptyText="No labels on issues yet."
+          searchable
+        />
+      );
+      break;
+    case 'assignee':
+      content = (
+        <OptionList
+          options={[{ value: UNASSIGNED_ASSIGNEE, label: 'Unassigned', hint: 'No owner' }, ...userOptions]}
+          selected={assigneeSelected}
+          onToggle={(v) =>
+            v === UNASSIGNED_ASSIGNEE
+              ? patchFilters({ unassigned: !filters.unassigned ? true : undefined, assignee: filters.assignee.filter((id) => id !== UNASSIGNED_ASSIGNEE) })
+              : toggleFilter('assignee', v)
+          }
+          onClear={() => patchFilters({ assignee: [], unassigned: undefined })}
+          emptyText="No people found."
+          searchable
+        />
+      );
+      break;
+    case 'reporter':
+      content = (
+        <OptionList
+          options={userOptions}
+          selected={filters.reporter}
+          onToggle={(v) => toggleFilter('reporter', v)}
+          onClear={() => patchFilters({ reporter: [] })}
+          emptyText="No people found."
+          searchable
+        />
+      );
+      break;
+    case 'sprint':
+      content = (
+        <OptionList
+          options={[{ value: SPRINT_BACKLOG, label: 'Backlog', hint: 'Not in a sprint' }, ...sprints.map((x) => ({ value: x._id, label: x.name }))]}
+          selected={filters.sprint}
+          onToggle={(v) => toggleFilter('sprint', v)}
+          onClear={() => patchFilters({ sprint: [] })}
+          emptyText="No sprints."
+        />
+      );
+      break;
+    case 'milestone':
+      content = (
+        <OptionList
+          options={milestones.map((m) => ({ value: m._id, label: m.name }))}
+          selected={filters.milestone}
+          onToggle={(v) => toggleFilter('milestone', v)}
+          onClear={() => patchFilters({ milestone: [] })}
+          emptyText="No milestones."
+        />
+      );
+      break;
+    case 'versions':
+      content = (
+        <div className="space-y-5">
+          <div>
+            <p className="mb-1.5 px-1 text-[12px] font-semibold text-[color:var(--text-primary)]">Fix version</p>
+            <OptionList
+              options={versions.map((v) => ({ value: v.id, label: v.name }))}
+              selected={filters.fixVersion}
+              onToggle={(v) => toggleFilter('fixVersion', v)}
+              onClear={() => patchFilters({ fixVersion: [] })}
+              emptyText="No versions."
+              searchable={false}
+            />
+          </div>
+          <div>
+            <p className="mb-1.5 px-1 text-[12px] font-semibold text-[color:var(--text-primary)]">Affects version</p>
+            <OptionList
+              options={versions.map((v) => ({ value: v.id, label: v.name }))}
+              selected={filters.affectsVersions}
+              onToggle={(v) => toggleFilter('affectsVersions', v)}
+              onClear={() => patchFilters({ affectsVersions: [] })}
+              emptyText="No versions."
+              searchable={false}
+            />
+          </div>
+        </div>
+      );
+      break;
+    case 'hierarchy':
+      content = (
+        <TriState label="Parent issue" value={filters.hasParent} yes="Sub-items only" no="Top-level only" onChange={(v) => patchFilters({ hasParent: v })} />
+      );
+      break;
+    case 'dates':
+      content = (
+        <div className="space-y-5">
+          <div>
+            <p className="mb-1.5 text-[12px] font-semibold text-[color:var(--text-primary)]">Due date</p>
+            <div className="flex flex-wrap gap-1.5">
+              {DUE_DATE_PRESET_OPTIONS.map((opt) => (
+                <ChipToggle key={opt.value} active={filters.dueDatePreset === opt.value} onClick={() => toggleDueDatePreset(opt.value)}>
+                  {opt.label}
+                </ChipToggle>
+              ))}
+              <ChipToggle
+                active={filters.hasDueDate === false}
+                onClick={() => patchFilters({ hasDueDate: filters.hasDueDate === false ? undefined : false, dueDatePreset: undefined })}
+              >
+                No due date
+              </ChipToggle>
+            </div>
+          </div>
+          <TriState
+            label="Start date"
+            value={filters.hasStartDate}
+            yes="Has start date"
+            no="No start date"
+            onChange={(v) => patchFilters({ hasStartDate: v })}
+          />
+        </div>
+      );
+      break;
+    case 'estimates':
+      content = (
+        <div className="space-y-5">
+          <div>
+            <p className="mb-1.5 text-[12px] font-semibold text-[color:var(--text-primary)]">Story points</p>
+            <div className="flex flex-wrap gap-1.5">
+              {STORY_POINT_OPTIONS.map((sp) => (
+                <ChipToggle key={sp} active={filters.storyPoints.includes(sp)} onClick={() => toggleFilter('storyPoints', sp)}>
+                  {sp}
+                </ChipToggle>
+              ))}
+              <ChipToggle active={filters.hasStoryPoints === false} onClick={() => setHasStoryPointsFilter(filters.hasStoryPoints !== false)}>
+                Not estimated
+              </ChipToggle>
+            </div>
+          </div>
+          <TriState
+            label="Time estimate"
+            value={filters.hasEstimate}
+            yes="Has estimate"
+            no="No estimate"
+            onChange={(v) => patchFilters({ hasEstimate: v })}
+          />
+        </div>
+      );
+      break;
+  }
+
+  let lastGroup = '';
+
   return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4"
-      onClick={() => { setFiltersOpen(false); setOpenFilterDropdown(null); }}
-    >
-      <div
-        className="w-full max-w-lg max-h-[88vh] flex flex-col bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] rounded-2xl shadow-xl animate-scale-in"
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-[2px] animate-fade-in" onClick={close}>
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Filter issues"
+        className="flex h-full w-full max-w-[680px] flex-col border-l border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] shadow-2xl animate-slide-in-right"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 pt-6 pb-3 shrink-0">
-          <h2 className="text-sm font-semibold text-[color:var(--text-primary)]">Filter issues</h2>
-        </div>
-        <div className="px-6 overflow-y-auto flex-1 space-y-3 pb-4">
-          {showProjectFilter && (
-            <>
-              <SectionTitle>Project</SectionTitle>
-              <FilterSelect label="Project" selectedCount={filters.project?.length ?? 0} allLabel="All projects" isOpen={openFilterDropdown === 'project'} onToggle={() => setOpenFilterDropdown(openFilterDropdown === 'project' ? null : 'project')}>
-                {projects.map((p) => (
-                  <FilterOption key={p._id} label={`${p.name} (${p.key})`} selected={(filters.project ?? []).includes(p._id)} onClick={() => toggleFilter('project', p._id)} />
-                ))}
-              </FilterSelect>
-            </>
-          )}
-
-          <SectionTitle>Issue</SectionTitle>
-          <FilterSelect label="Status" selectedCount={filters.status.length} allLabel="All statuses" isOpen={openFilterDropdown === 'status'} onToggle={() => setOpenFilterDropdown(openFilterDropdown === 'status' ? null : 'status')}>
-            {statusList.map((s) => (
-              <FilterOption key={s} label={s} selected={filters.status.includes(s)} onClick={() => toggleFilter('status', s)} meta={getStatusMeta(s)} metaKey={getStatusMeta(s)?.icon} />
-            ))}
-          </FilterSelect>
-          <FilterSelect label="Type" selectedCount={filters.type.length} allLabel="All types" isOpen={openFilterDropdown === 'type'} onToggle={() => setOpenFilterDropdown(openFilterDropdown === 'type' ? null : 'type')}>
-            {typeList.map((t) => (
-              <FilterOption key={t} label={t} selected={filters.type.includes(t)} onClick={() => toggleFilter('type', t)} meta={getTypeMeta(t)} metaKey={getTypeMeta(t)?.icon} />
-            ))}
-          </FilterSelect>
-          <FilterSelect label="Priority" selectedCount={filters.priority.length} allLabel="All priorities" isOpen={openFilterDropdown === 'priority'} onToggle={() => setOpenFilterDropdown(openFilterDropdown === 'priority' ? null : 'priority')}>
-            {priorityList.map((p) => (
-              <FilterOption key={p} label={p} selected={filters.priority.includes(p)} onClick={() => toggleFilter('priority', p)} meta={getPriorityMeta(p)} metaKey={getPriorityMeta(p)?.icon} />
-            ))}
-          </FilterSelect>
-          <FilterSelect label="Labels" selectedCount={filters.labels.length} allLabel="All labels" isOpen={openFilterDropdown === 'labels'} onToggle={() => setOpenFilterDropdown(openFilterDropdown === 'labels' ? null : 'labels')}>
-            {allLabels.length === 0 ? (
-              <div className="px-3 py-2 text-[color:var(--text-muted)] text-xs">No labels in issues yet</div>
-            ) : (
-              allLabels.map((label) => (
-                <FilterOption key={label} label={label} selected={filters.labels.includes(label)} onClick={() => toggleFilter('labels', label)} />
-              ))
-            )}
-          </FilterSelect>
-
-          <SectionTitle>People</SectionTitle>
-          <FilterSelect label="Assignee" selectedCount={filters.assignee.length + (filters.unassigned ? 1 : 0)} allLabel="All assignees" isOpen={openFilterDropdown === 'assignee'} onToggle={() => setOpenFilterDropdown(openFilterDropdown === 'assignee' ? null : 'assignee')}>
-            <FilterOption
-              label="Unassigned"
-              selected={filters.unassigned === true || filters.assignee.includes(UNASSIGNED_ASSIGNEE)}
-              onClick={() => patchFilters({ unassigned: !filters.unassigned, assignee: filters.assignee.filter((id) => id !== UNASSIGNED_ASSIGNEE) })}
-            />
-            {users.map((u) => (
-              <FilterOption key={u._id} label={u.name} selected={filters.assignee.includes(u._id)} onClick={() => toggleFilter('assignee', u._id)} />
-            ))}
-          </FilterSelect>
-          <FilterSelect label="Reporter" selectedCount={filters.reporter.length} allLabel="All reporters" isOpen={openFilterDropdown === 'reporter'} onToggle={() => setOpenFilterDropdown(openFilterDropdown === 'reporter' ? null : 'reporter')}>
-            {users.map((u) => (
-              <FilterOption key={u._id} label={u.name} selected={filters.reporter.includes(u._id)} onClick={() => toggleFilter('reporter', u._id)} />
-            ))}
-          </FilterSelect>
-
-          {(showSprintFilter || showMilestoneFilter) && (
-            <>
-              <SectionTitle>Planning</SectionTitle>
-              {showSprintFilter && (
-                <FilterSelect label="Sprint" selectedCount={filters.sprint.length} allLabel="All sprints" isOpen={openFilterDropdown === 'sprint'} onToggle={() => setOpenFilterDropdown(openFilterDropdown === 'sprint' ? null : 'sprint')}>
-                  <FilterOption label="Backlog (no sprint)" selected={filters.sprint.includes(SPRINT_BACKLOG)} onClick={() => toggleFilter('sprint', SPRINT_BACKLOG)} />
-                  {sprints.map((s) => (
-                    <FilterOption key={s._id} label={s.name} selected={filters.sprint.includes(s._id)} onClick={() => toggleFilter('sprint', s._id)} />
-                  ))}
-                </FilterSelect>
-              )}
-              {showMilestoneFilter && (
-                <FilterSelect label="Milestone" selectedCount={filters.milestone.length} allLabel="All milestones" isOpen={openFilterDropdown === 'milestone'} onToggle={() => setOpenFilterDropdown(openFilterDropdown === 'milestone' ? null : 'milestone')}>
-                  {milestones.map((m) => (
-                    <FilterOption key={m._id} label={m.name} selected={filters.milestone.includes(m._id)} onClick={() => toggleFilter('milestone', m._id)} />
-                  ))}
-                </FilterSelect>
-              )}
-              <div>
-                <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Parent issue</label>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => patchFilters({ hasParent: undefined })}
-                    className={`px-2.5 py-1 rounded-md text-xs border ${filters.hasParent === undefined ? 'bg-[color:var(--accent)] text-white border-[color:var(--accent)]' : 'border-[color:var(--border-subtle)] text-[color:var(--text-muted)]'}`}
-                  >
-                    Any
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => patchFilters({ hasParent: true })}
-                    className={`px-2.5 py-1 rounded-md text-xs border ${filters.hasParent === true ? 'bg-[color:var(--accent)] text-white border-[color:var(--accent)]' : 'border-[color:var(--border-subtle)] text-[color:var(--text-muted)]'}`}
-                  >
-                    Has parent
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => patchFilters({ hasParent: false })}
-                    className={`px-2.5 py-1 rounded-md text-xs border ${filters.hasParent === false ? 'bg-[color:var(--accent)] text-white border-[color:var(--accent)]' : 'border-[color:var(--border-subtle)] text-[color:var(--text-muted)]'}`}
-                  >
-                    No parent
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-
-          {showVersionFilter && (
-            <>
-              <SectionTitle>Versions</SectionTitle>
-              <FilterSelect label="Fix version" selectedCount={filters.fixVersion.length} allLabel="All fix versions" isOpen={openFilterDropdown === 'fixVersion'} onToggle={() => setOpenFilterDropdown(openFilterDropdown === 'fixVersion' ? null : 'fixVersion')}>
-                {versions.map((v) => (
-                  <FilterOption key={v.id} label={v.name} selected={filters.fixVersion.includes(v.id)} onClick={() => toggleFilter('fixVersion', v.id)} />
-                ))}
-              </FilterSelect>
-              <FilterSelect label="Affects versions" selectedCount={filters.affectsVersions.length} allLabel="All affects versions" isOpen={openFilterDropdown === 'affectsVersions'} onToggle={() => setOpenFilterDropdown(openFilterDropdown === 'affectsVersions' ? null : 'affectsVersions')}>
-                {versions.map((v) => (
-                  <FilterOption key={v.id} label={v.name} selected={filters.affectsVersions.includes(v.id)} onClick={() => toggleFilter('affectsVersions', v.id)} />
-                ))}
-              </FilterSelect>
-            </>
-          )}
-
-          <SectionTitle>Dates</SectionTitle>
+        <header className="flex items-center justify-between gap-3 border-b border-[color:var(--border-subtle)] px-5 py-4">
           <div>
-            <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Due date</label>
-            <div className="space-y-2">
-              <BoolCheckbox
-                label="No due date"
-                checked={filters.hasDueDate === false}
-                onChange={(checked) => patchFilters({ hasDueDate: checked ? false : undefined, dueDatePreset: undefined })}
-              />
-              <FilterSelect selectedCount={filters.dueDatePreset ? 1 : 0} allLabel="Any due date" isOpen={openFilterDropdown === 'dueDate'} onToggle={() => setOpenFilterDropdown(openFilterDropdown === 'dueDate' ? null : 'dueDate')}>
-                {DUE_DATE_PRESET_OPTIONS.map((opt) => (
-                  <FilterOption
-                    key={opt.value}
-                    label={opt.label}
-                    selected={filters.dueDatePreset === opt.value}
-                    onClick={() => toggleDueDatePreset(opt.value)}
-                  />
-                ))}
-              </FilterSelect>
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Start date</label>
-            <div className="flex flex-wrap gap-3">
-              <BoolCheckbox
-                label="No start date"
-                checked={filters.hasStartDate === false}
-                onChange={(checked) => patchFilters({ hasStartDate: checked ? false : undefined })}
-              />
-              <BoolCheckbox
-                label="Has start date"
-                checked={filters.hasStartDate === true}
-                onChange={(checked) => patchFilters({ hasStartDate: checked ? true : undefined })}
-              />
-            </div>
-          </div>
-
-          <SectionTitle>Estimates</SectionTitle>
-          <div className="relative">
-            <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Story points</label>
-            <div className="flex items-center gap-2 mb-2">
-              <BoolCheckbox label="No story points" checked={filters.hasStoryPoints === false} onChange={setHasStoryPointsFilter} />
-            </div>
-            <FilterSelect selectedCount={filters.storyPoints.length} allLabel="Any story points" isOpen={openFilterDropdown === 'storyPoints'} onToggle={() => setOpenFilterDropdown(openFilterDropdown === 'storyPoints' ? null : 'storyPoints')}>
-              {STORY_POINT_OPTIONS.map((sp) => (
-                <FilterOption key={sp} label={sp} selected={filters.storyPoints.includes(sp)} onClick={() => toggleFilter('storyPoints', sp)} />
-              ))}
-            </FilterSelect>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Time estimate</label>
-            <div className="flex flex-wrap gap-3">
-              <BoolCheckbox
-                label="No estimate"
-                checked={filters.hasEstimate === false}
-                onChange={(checked) => patchFilters({ hasEstimate: checked ? false : undefined })}
-              />
-              <BoolCheckbox
-                label="Has estimate"
-                checked={filters.hasEstimate === true}
-                onChange={(checked) => patchFilters({ hasEstimate: checked ? true : undefined })}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2 px-6 py-4 border-t border-[color:var(--border-subtle)] shrink-0">
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={() => {
-                updateUrl({ filters: { ...DEFAULT_FILTERS }, page: 1 });
-                setFiltersOpen(false);
-                setOpenFilterDropdown(null);
-              }}
-              className="px-3 py-1.5 rounded-md text-xs text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)] hover:text-[color:var(--text-primary)]"
-            >
-              Clear all
-            </button>
-          )}
-          <div className="flex items-center gap-2 ml-auto">
-            <input
-              type="text"
-              placeholder="Save as..."
-              value={saveFilterName}
-              onChange={(e) => setSaveFilterName(e.target.value)}
-              className="px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs w-32 placeholder-[color:var(--text-muted)]"
-            />
-            <button
-              type="button"
-              onClick={() => saveCurrentFilter(saveFilterName)}
-              disabled={!saveFilterName.trim()}
-              className="px-3 py-2 rounded-lg text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-button-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Save filter
-            </button>
+            <h2 className="text-[15px] font-semibold text-[color:var(--text-primary)]">Filters</h2>
+            <p className="text-[12px] text-[color:var(--text-muted)]">
+              {totalSelected ? `${totalSelected} active · results update as you pick` : 'Results update as you pick'}
+            </p>
           </div>
           <button
             type="button"
-            onClick={() => { setFiltersOpen(false); setOpenFilterDropdown(null); }}
-            className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] text-xs text-[color:var(--text-primary)] hover:bg-[color:var(--bg-surface)] font-medium"
+            onClick={close}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[color:var(--text-muted)] transition hover:bg-[color:var(--bg-page)] hover:text-[color:var(--text-primary)]"
+            aria-label="Close filters"
           >
-            Done
+            <FiX className="h-4 w-4" aria-hidden />
           </button>
+        </header>
+
+        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+          {/* Category rail — tabs on mobile, sidebar on wider screens */}
+          <nav
+            className="flex shrink-0 gap-1 overflow-x-auto border-b border-[color:var(--border-subtle)] p-2 sm:w-48 sm:flex-col sm:overflow-y-auto sm:border-b-0 sm:border-r"
+            aria-label="Filter categories"
+          >
+            {visible.map((x) => {
+              const header = x.group !== lastGroup;
+              lastGroup = x.group;
+              return (
+                <div key={x.key} className="contents">
+                  {header && (
+                    <p className="hidden px-2.5 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)] first:pt-1 sm:block">
+                      {x.group}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSection(x.key)}
+                    aria-current={active.key === x.key}
+                    className={`flex h-8 shrink-0 items-center justify-between gap-2 rounded-lg px-2.5 text-[13px] font-medium transition ${
+                      active.key === x.key
+                        ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] shadow-sm ring-1 ring-[color:var(--border-subtle)]'
+                        : 'text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)] hover:text-[color:var(--text-primary)]'
+                    }`}
+                  >
+                    {x.label}
+                    {x.count > 0 && (
+                      <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[color:var(--accent)] px-1 text-[10px] font-bold text-white">
+                        {x.count}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </nav>
+
+          <section key={active.key} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 animate-fade-in">
+            <h3 className="mb-3 px-1 text-[13px] font-semibold text-[color:var(--text-primary)]">{active.label}</h3>
+            {content}
+          </section>
         </div>
-      </div>
+
+        <footer className="flex flex-wrap items-center gap-2 border-t border-[color:var(--border-subtle)] px-5 py-3">
+          <button
+            type="button"
+            disabled={!hasActiveFilters}
+            onClick={() => updateUrl({ filters: { ...DEFAULT_FILTERS }, page: 1 })}
+            className="h-8 rounded-lg px-3 text-[12px] font-medium text-[color:var(--text-muted)] transition hover:bg-red-500/10 hover:text-red-500 disabled:pointer-events-none disabled:opacity-40"
+          >
+            Clear all
+          </button>
+          <form
+            className="ml-auto flex items-center gap-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (saveFilterName.trim()) saveCurrentFilter(saveFilterName);
+            }}
+          >
+            <input
+              type="text"
+              placeholder="Name this view…"
+              value={saveFilterName}
+              onChange={(e) => setSaveFilterName(e.target.value)}
+              className="h-8 w-40 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 text-[12px] text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-muted)] focus:border-[color:var(--accent)]"
+            />
+            <button
+              type="submit"
+              disabled={!saveFilterName.trim() || !hasActiveFilters}
+              title={hasActiveFilters ? 'Save these filters as a view' : 'Pick at least one filter first'}
+              className="h-8 rounded-lg border border-[color:var(--border-subtle)] px-3 text-[12px] font-medium text-[color:var(--text-primary)] transition hover:border-[color:var(--border-emphasis)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Save view
+            </button>
+          </form>
+          <button type="button" onClick={close} className="btn-primary btn-primary-sm font-semibold">
+            Show results
+          </button>
+        </footer>
+      </aside>
     </div>,
     document.body
   );
