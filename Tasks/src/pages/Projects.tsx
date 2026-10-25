@@ -1,398 +1,436 @@
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Link, useLocation } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { FiGrid, FiList, FiPlus, FiSearch, FiStar, FiUser, FiX } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
-import { FiArrowRight, FiChevronLeft, FiChevronRight, FiPlus, FiSave, FiX } from 'react-icons/fi';
-import { EditIcon, TrashIcon } from '../components/icons/NavigationIcons';
-import { projectsApi, usersApi, projectTemplatesApi, type Project, type User, type ProjectTemplate } from '../lib/api';
+import { dashboardApi, projectsApi, type Project, type ProjectHealth } from '../lib/api';
 import ConfirmModal from '../components/ConfirmModal';
-import { PersonSelect, toPeople } from '../components/people';
+import ProjectFormModal from '../components/projects/ProjectFormModal';
+import { ProjectCard, ProjectListRow, type ProjectMetrics, type ProjectRow } from '../components/projects/projectCards';
+import { HEALTH } from '../components/dashboard/pmFormat';
+
+type Sort = 'attention' | 'activity' | 'open' | 'progress' | 'name';
+type HealthFilter = ProjectHealth | 'all';
+
+const SORTS: Array<{ id: Sort; label: string }> = [
+  { id: 'attention', label: 'Needs attention' },
+  { id: 'activity', label: 'Recently active' },
+  { id: 'open', label: 'Most open work' },
+  { id: 'progress', label: 'Progress' },
+  { id: 'name', label: 'Name' },
+];
+const HEALTH_ORDER: ProjectHealth[] = ['off_track', 'at_risk', 'on_track', 'idle'];
+const HEALTH_RANK: Record<ProjectHealth, number> = { off_track: 0, at_risk: 1, on_track: 2, idle: 3 };
+const STAR_KEY = 'atrium.projects.starred';
+const PAGE_SIZE = 100;
+
+function readStars(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(STAR_KEY) ?? '[]') as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+/** Every project the user can list, all pages. */
+async function loadAllProjects(token: string): Promise<Project[]> {
+  const out: Project[] = [];
+  for (let page = 1; page <= 20; page += 1) {
+    const res = await projectsApi.list(page, PAGE_SIZE, token);
+    if (!res.success || !res.data) break;
+    out.push(...res.data.data);
+    if (page >= res.data.totalPages) break;
+  }
+  return out;
+}
 
 export default function Projects() {
   const { token, user } = useAuth();
-  const location = useLocation();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState<'create' | 'edit' | null>(null);
-  const [users, setUsers] = useState<User[]>([]);
-  const [form, setForm] = useState({
-    name: '',
-    key: '',
-    description: '',
-    lead: '',
-    templateId: '',
-    applyTemplateId: '',
-  });
-  const [editId, setEditId] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [templates, setTemplates] = useState<ProjectTemplate[]>([]);
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const [projects, setProjects] = useState<Project[] | null>(null);
+  const [metrics, setMetrics] = useState<Map<string, ProjectMetrics>>(new Map());
+  const [error, setError] = useState<string | null>(null);
+  const [stars, setStars] = useState<Set<string>>(readStars);
+  const [form, setForm] = useState<{ project: Project | null } | null>(null);
+  const [deleting, setDeleting] = useState<Project | null>(null);
+  const [reload, setReload] = useState(0);
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  const limit = 10;
+  const q = params.get('q') ?? '';
+  const view = params.get('view') === 'list' ? 'list' : 'grid';
+  const sort = (SORTS.some((s) => s.id === params.get('sort')) ? params.get('sort') : 'attention') as Sort;
+  const health = (params.get('health') ?? 'all') as HealthFilter;
+  const mine = params.get('mine') === '1';
+  const starredOnly = params.get('starred') === '1';
+  const canCreate = Array.isArray(user?.permissions) && user.permissions.includes('project.project.create');
+
+  const setParam = useCallback(
+    (key: string, value: string | null) =>
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (value) next.set(key, value);
+          else next.delete(key);
+          return next;
+        },
+        { replace: true }
+      ),
+    [setParams]
+  );
 
   useEffect(() => {
-    if (!token || location.pathname !== '/projects') return;
-    setLoading(true);
-    projectsApi.list(page, limit, token).then((res) => {
-      setLoading(false);
-      if (res.success && res.data) {
-        setProjects(res.data.data);
-        setTotal(res.data.total);
-      }
+    if (!token) return;
+    let live = true;
+    void Promise.all([loadAllProjects(token), dashboardApi.getOverview(token)]).then(([list, overview]) => {
+      if (!live) return;
+      setProjects(list);
+      // Delivery data is best-effort: without it cards still list every project.
+      if (overview.success && overview.data) setMetrics(new Map(overview.data.projects.map((m) => [m.id, m])));
     });
-  }, [token, page, location.pathname]);
+    return () => {
+      live = false;
+    };
+  }, [token, reload]);
 
+  // "/" focuses search, "n" opens New project — unless typing somewhere.
   useEffect(() => {
-    if (!token || !modal) return;
-    usersApi.list(1, 100, token).then((res) => {
-      if (res.success && res.data) setUsers(res.data.data);
-    });
-  }, [token, modal]);
-
-  useEffect(() => {
-    if (!token || !modal) return;
-    Promise.all([projectTemplatesApi.list(token), projectTemplatesApi.listLibrary(token)]).then(
-      ([allRes, libRes]) => {
-        const all = allRes.success && allRes.data && Array.isArray(allRes.data) ? allRes.data : [];
-        const lib = libRes.success && libRes.data && Array.isArray(libRes.data) ? libRes.data : [];
-        const byId = new Map<string, (typeof all)[0]>();
-        for (const t of all) byId.set(t._id, t);
-        for (const t of lib) if (!byId.has(t._id)) byId.set(t._id, t);
-        setTemplates([...byId.values()]);
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      } else if (e.key === 'n' && canCreate && !form) {
+        e.preventDefault();
+        setForm({ project: null });
       }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canCreate, form]);
+
+  const toggleStar = (id: string) =>
+    setStars((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem(STAR_KEY, JSON.stringify([...next]));
+      } catch {
+        /* storage unavailable — stars last for this visit */
+      }
+      return next;
+    });
+
+  const rows: ProjectRow[] = useMemo(
+    () => (projects ?? []).map((p) => ({ project: p, metrics: metrics.get(p._id) ?? null, starred: stars.has(p._id) })),
+    [projects, metrics, stars]
+  );
+
+  const counts = useMemo(() => {
+    const c: Record<HealthFilter, number> = { all: rows.length, off_track: 0, at_risk: 0, on_track: 0, idle: 0 };
+    for (const r of rows) if (r.metrics) c[r.metrics.health] += 1;
+    return c;
+  }, [rows]);
+  const totals = useMemo(
+    () =>
+      rows.reduce(
+        (t, r) => ({ open: t.open + (r.metrics?.open ?? 0), overdue: t.overdue + (r.metrics?.overdue ?? 0), sprints: t.sprints + (r.metrics?.activeSprint ? 1 : 0) }),
+        { open: 0, overdue: 0, sprints: 0 }
+      ),
+    [rows]
+  );
+
+  const visible = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const filtered = rows.filter((r) => {
+      const p = r.project;
+      if (health !== 'all' && r.metrics?.health !== health) return false;
+      if (mine && p.lead?._id !== user?.id) return false;
+      if (starredOnly && !r.starred) return false;
+      if (!needle) return true;
+      return [p.name, p.key, p.description, p.lead?.name].some((v) => v?.toLowerCase().includes(needle));
+    });
+    const by: Record<Sort, (a: ProjectRow, b: ProjectRow) => number> = {
+      attention: (a, b) =>
+        (a.metrics ? HEALTH_RANK[a.metrics.health] : 9) - (b.metrics ? HEALTH_RANK[b.metrics.health] : 9) ||
+        (b.metrics?.overdue ?? 0) - (a.metrics?.overdue ?? 0) ||
+        (b.metrics?.open ?? 0) - (a.metrics?.open ?? 0),
+      activity: (a, b) => (b.metrics?.lastActivity ?? '').localeCompare(a.metrics?.lastActivity ?? ''),
+      open: (a, b) => (b.metrics?.open ?? -1) - (a.metrics?.open ?? -1),
+      progress: (a, b) => (b.metrics?.progressPct ?? -1) - (a.metrics?.progressPct ?? -1),
+      name: (a, b) => a.project.name.localeCompare(b.project.name),
+    };
+    // Starred projects lead, then the chosen order.
+    return filtered.sort((a, b) => Number(b.starred) - Number(a.starred) || by[sort](a, b) || a.project.name.localeCompare(b.project.name));
+  }, [rows, q, health, mine, starredOnly, sort, user?.id]);
+
+  const filtersOn = Boolean(q || health !== 'all' || mine || starredOnly);
+  const clearFilters = () =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        ['q', 'health', 'mine', 'starred'].forEach((k) => next.delete(k));
+        return next;
+      },
+      { replace: true }
     );
-  }, [token, modal]);
 
-  function openCreate() {
-    setForm({ name: '', key: '', description: '', lead: user?.id ?? '', templateId: '', applyTemplateId: '' });
-    setEditId(null);
-    setSubmitError('');
-    setModal('create');
-  }
-
-  function openEdit(p: Project) {
-    setForm({
-      name: p.name,
-      key: p.key,
-      description: p.description ?? '',
-      lead: typeof p.lead === 'object' && p.lead ? p.lead._id : '',
-      templateId: '',
-      applyTemplateId: '',
-    });
-    setEditId(p._id);
-    setSubmitError('');
-    setModal('edit');
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!token) return;
-    setSubmitting(true);
-    setSubmitError('');
-    if (modal === 'create') {
-      const res = await projectsApi.create(
-        { name: form.name, key: form.key.toUpperCase(), description: form.description || undefined, lead: form.lead, templateId: form.templateId || undefined },
-        token
-      );
-      if (res.success) {
-        setModal(null);
-        setPage(1);
-        projectsApi.list(1, limit, token).then((r) => {
-          if (r.success && r.data) {
-            setProjects(r.data.data);
-            setTotal(r.data.total);
-          }
-        });
-      } else setSubmitError(res.message ?? 'Failed');
-    } else if (editId) {
-      const body: Parameters<typeof projectsApi.update>[1] = {
-        name: form.name,
-        key: form.key.toUpperCase(),
-        description: form.description,
-        lead: form.lead,
-      };
-      if (form.applyTemplateId.trim()) body.templateId = form.applyTemplateId.trim();
-      const res = await projectsApi.update(editId, body, token);
-      if (res.success) {
-        setModal(null);
-        projectsApi.list(page, limit, token).then((r) => {
-          if (r.success && r.data) {
-            setProjects(r.data.data);
-            setTotal(r.data.total);
-          }
-        });
-      } else setSubmitError(res.message ?? 'Failed');
-    }
-    setSubmitting(false);
-  }
-
-  async function handleDelete(id: string) {
-    if (!token) return;
-    const res = await projectsApi.delete(id, token);
+  async function confirmDelete() {
+    if (!token || !deleting) return;
+    const res = await projectsApi.delete(deleting._id, token);
     if (res.success) {
-      setProjects((prev) => prev.filter((p) => p._id !== id));
-      setTotal((t) => Math.max(0, t - 1));
-      setDeleteConfirmId(null);
-    }
+      setProjects((prev) => (prev ?? []).filter((p) => p._id !== deleting._id));
+      setDeleting(null);
+    } else setError(res.message ?? 'Could not delete the project');
   }
 
-  const totalPages = Math.ceil(total / limit) || 1;
+  const attention = counts.off_track + counts.at_risk;
+  const actions = { onStar: toggleStar, onEdit: (p: Project) => setForm({ project: p }), onDelete: setDeleting };
 
   return (
-    <div className="p-8 animate-fade-in">
-      <div className="w-full px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between mb-6">
+    <div className="w-full px-4 py-6 sm:px-6 lg:px-8 animate-fade-in">
+      {/* Header */}
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
           <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
-          {Array.isArray(user?.permissions) &&
-            user.permissions.includes('project.project.create') && (
-              <button
-                type="button"
-                onClick={openCreate}
-                className="btn-primary btn-primary-sm shadow-sm shadow-indigo-900/20 inline-flex items-center justify-center gap-1.5"
-              >
-                <FiPlus className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                New project
-              </button>
-            )}
+          <p className="mt-1 text-sm text-[color:var(--text-muted)]">
+            {projects == null
+              ? 'Loading…'
+              : `${rows.length} project${rows.length === 1 ? '' : 's'} · ${totals.open} open issues · ${totals.sprints} active sprint${totals.sprints === 1 ? '' : 's'}`}
+            {attention > 0 && <span className="font-medium text-amber-600 dark:text-amber-400"> · {attention} need attention</span>}
+          </p>
         </div>
+        {canCreate && (
+          <button type="button" onClick={() => setForm({ project: null })} className="btn-primary inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm shadow-sm" title="New project (n)">
+            <FiPlus /> New project
+          </button>
+        )}
+      </header>
 
-        {loading ? (
-          <div className="text-[color:var(--text-muted)] animate-pulse">Loading…</div>
-        ) : projects.length === 0 ? (
-          <div className="text-center py-12 rounded-xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] text-[color:var(--text-muted)]">
-            No projects yet. Create one to get started.
+      {/* Health filters */}
+      <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <HealthTile active={health === 'all'} label="All projects" count={counts.all} hint={`${totals.overdue} overdue issues`} onClick={() => setParam('health', null)} />
+        {HEALTH_ORDER.map((h) => (
+          <HealthTile
+            key={h}
+            active={health === h}
+            label={HEALTH[h].label}
+            count={counts[h]}
+            dot={HEALTH[h].dot}
+            hint={HEALTH[h].hint}
+            onClick={() => setParam('health', health === h ? null : h)}
+          />
+        ))}
+      </div>
+
+      {/* Toolbar */}
+      <div className="sticky top-0 z-20 -mx-4 mt-4 flex flex-wrap items-center gap-2 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-page)]/90 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <label className="relative min-w-[12rem] flex-1 sm:max-w-sm">
+          <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--text-muted)]" />
+          <input
+            ref={searchRef}
+            value={q}
+            onChange={(e) => setParam('q', e.target.value || null)}
+            placeholder="Search name, key, lead…"
+            className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] py-2 pl-9 pr-8 text-sm outline-none transition focus:border-[color:var(--accent)] focus:ring-2 focus:ring-[color:var(--accent)]/20"
+          />
+          {q ? (
+            <button type="button" onClick={() => setParam('q', null)} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]" aria-label="Clear search">
+              <FiX />
+            </button>
+          ) : (
+            <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-[color:var(--border-subtle)] px-1.5 text-[10px] text-[color:var(--text-muted)] sm:block">/</kbd>
+          )}
+        </label>
+
+        <Toggle active={mine} onClick={() => setParam('mine', mine ? null : '1')} icon={<FiUser />} label="I lead" />
+        <Toggle active={starredOnly} onClick={() => setParam('starred', starredOnly ? null : '1')} icon={<FiStar />} label="Starred" />
+
+        <div className="ml-auto flex items-center gap-2">
+          <select
+            value={sort}
+            onChange={(e) => setParam('sort', e.target.value === 'attention' ? null : e.target.value)}
+            className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-2.5 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+            aria-label="Sort projects"
+          >
+            {SORTS.map((s) => (
+              <option key={s.id} value={s.id}>
+                Sort: {s.label}
+              </option>
+            ))}
+          </select>
+          <div className="flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-0.5" role="group" aria-label="Layout">
+            {(['grid', 'list'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setParam('view', v === 'grid' ? null : v)}
+                aria-pressed={view === v}
+                title={v === 'grid' ? 'Cards' : 'List'}
+                className={`rounded-md p-1.5 transition ${view === v ? 'bg-[color:var(--accent)]/15 text-[color:var(--accent)]' : 'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'}`}
+              >
+                {v === 'grid' ? <FiGrid /> : <FiList />}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {error && <p className="mt-4 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">{error}</p>}
+
+      {/* Content */}
+      <div className="mt-5">
+        {projects == null ? (
+          <Skeleton view={view} />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            title="No projects yet"
+            body={canCreate ? 'Create a project to start tracking issues, sprints and docs.' : 'Ask a project lead to add you to a project.'}
+            action={canCreate ? <button type="button" onClick={() => setForm({ project: null })} className="btn-primary rounded-lg px-4 py-2 text-sm">Create your first project</button> : undefined}
+          />
+        ) : visible.length === 0 ? (
+          <EmptyState
+            title="No projects match"
+            body="Try another search or clear the filters."
+            action={<button type="button" onClick={clearFilters} className="rounded-lg border border-[color:var(--border-subtle)] px-4 py-2 text-sm hover:border-[color:var(--accent)]/40">Clear filters</button>}
+          />
+        ) : view === 'grid' ? (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {visible.map((r) => (
+              <ProjectCard key={r.project._id} row={r} {...actions} />
+            ))}
           </div>
         ) : (
-          <ul className="space-y-3">
-            {projects.map((p) => (
-              <li
-                key={p._id}
-                className="flex items-center justify-between p-4 rounded-lg bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] border-l-[3px] border-l-[color:var(--accent)] card-shadow hover:border-[color:var(--accent)]/30 hover:shadow-[0_4px_16px_rgba(0,0,0,0.12)] transition-all group"
-              >
-                <Link
-                  to={`/projects/${p._id}/dashboard`}
-                  className="flex-1 min-w-0 block hover:opacity-90"
-                >
-                  <span className="font-bold text-sm">{p.name}</span>
-                  <span className="ml-2 text-[12px] text-[color:var(--text-muted)]">({p.key})</span>
-                  {p.description && (
-                    <p className="text-[12px] text-[color:var(--text-muted)] mt-0.5">
-                      {p.description}
-                    </p>
-                  )}
-                </Link>
-                <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <Link
-                    to={`/projects/${p._id}/dashboard`}
-                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-md text-xs border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] hover:bg-[color:var(--bg-surface)]"
-                  >
-                    Open
-                    <FiArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                  </Link>
-                  {p.canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => openEdit(p)}
-                      title="Edit"
-                      className="p-1.5 rounded-lg text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:bg-[color:var(--bg-button-secondary)] transition"
-                    >
-                      <EditIcon className="w-4 h-4" />
-                    </button>
-                  )}
-                  {p.canDelete && (
-                    <button
-                      type="button"
-                      onClick={() => setDeleteConfirmId(p._id)}
-                      title="Delete"
-                      className="p-1.5 rounded-lg text-[color:var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition"
-                    >
-                      <TrashIcon className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {totalPages > 1 && (
-          <div className="mt-6 flex justify-center gap-2">
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg btn-secondary border text-[color:var(--text-primary)] disabled:opacity-50"
-            >
-              <FiChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
-              Previous
-            </button>
-            <span className="px-3 py-1.5 text-[color:var(--text-muted)] text-sm">
-              Page {page} of {totalPages}
-            </span>
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg btn-secondary border text-[color:var(--text-primary)] disabled:opacity-50"
-            >
-              Next
-              <FiChevronRight className="h-4 w-4 shrink-0" aria-hidden />
-            </button>
+          <div className="overflow-x-auto rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] card-shadow">
+            <table className="w-full min-w-[640px] text-left">
+              <thead className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">
+                <tr>
+                  <th className="w-8 py-2.5 pl-3" />
+                  <th className="py-2.5 pr-3 font-medium">Project</th>
+                  <th className="px-3 py-2.5 font-medium">Health</th>
+                  <th className="px-3 py-2.5 font-medium">Progress</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Open</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Overdue</th>
+                  <th className="hidden px-3 py-2.5 font-medium lg:table-cell">Sprint</th>
+                  <th className="hidden px-3 py-2.5 font-medium md:table-cell">Lead</th>
+                  <th className="hidden px-3 py-2.5 font-medium xl:table-cell">Active</th>
+                  <th className="w-10 pr-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((r) => (
+                  <ProjectListRow key={r.project._id} row={r} {...actions} />
+                ))}
+              </tbody>
+            </table>
           </div>
+        )}
+        {filtersOn && visible.length > 0 && (
+          <p className="mt-4 text-center text-xs text-[color:var(--text-muted)]">
+            Showing {visible.length} of {rows.length} ·{' '}
+            <button type="button" onClick={clearFilters} className="text-[color:var(--accent)] hover:underline">
+              clear filters
+            </button>
+          </p>
         )}
       </div>
 
-      {modal &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4"
-            onClick={() => setModal(null)}
-          >
-            <div
-              className="w-full max-w-md bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] rounded-xl p-6 card-shadow shadow-xl animate-scale-in"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 className="text-sm font-semibold text-[color:var(--text-primary)] mb-3">
-                {modal === 'create' ? 'New project' : 'Edit project'}
-              </h2>
-              <form onSubmit={handleSubmit} className="space-y-3">
-                {submitError && (
-                  <p className="text-xs text-red-400">{submitError}</p>
-                )}
-                {modal === 'create' && (
-                  <div>
-                    <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">
-                      Workflow template
-                    </label>
-                    <select
-                      value={form.templateId}
-                      onChange={(e) => setForm((f) => ({ ...f, templateId: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
-                    >
-                      <option value="">Server default (same as built-in)</option>
-                      {templates
-                        .filter((t) => t._id !== 'default')
-                        .map((t) => (
-                          <option key={t._id} value={t._id}>
-                            {t.name}
-                            {t.isLibrary ? ' (library)' : ''}
-                          </option>
-                        ))}
-                    </select>
-                    <p className="text-[11px] text-[color:var(--text-muted)] mt-1">
-                      Statuses, issue types, priorities, custom fields, and field schemes.{' '}
-                      <Link to="/project-templates" className="text-[color:var(--accent)] hover:underline">
-                        Manage templates
-                      </Link>
-                    </p>
-                  </div>
-                )}
-                {modal === 'edit' && (
-                  <div>
-                    <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">
-                      Replace workflow from template
-                    </label>
-                    <select
-                      value={form.applyTemplateId}
-                      onChange={(e) => setForm((f) => ({ ...f, applyTemplateId: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
-                    >
-                      <option value="">Do not change statuses / types / priorities</option>
-                      {templates.map((t) => (
-                        <option key={t._id} value={t._id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[11px] text-amber-600 dark:text-amber-400/90 mt-1">
-                      Applying a template overwrites this project&apos;s statuses, issue types, and priorities. Existing
-                      issues keep their current values; validate boards and filters afterward.
-                    </p>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Name</label>
-                  <input
-                    type="text"
-                    value={form.name}
-                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                    required
-                    className="w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Key</label>
-                  <input
-                    type="text"
-                    value={form.key}
-                    onChange={(e) => setForm((f) => ({ ...f, key: e.target.value.toUpperCase() }))}
-                    required
-                    maxLength={10}
-                    className="w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Description</label>
-                  <textarea
-                    value={form.description}
-                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                    rows={2}
-                    className="w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Lead</label>
-                  <PersonSelect
-                    size="sm"
-                    value={form.lead}
-                    onChange={(v) => setForm((f) => ({ ...f, lead: v }))}
-                    people={toPeople(users)}
-                    placeholder="Choose project lead…"
-                    aria-label="Lead"
-                  />
-                </div>
-                <div className="flex gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setModal(null)}
-                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-muted)] hover:bg-[color:var(--bg-page)]"
-                  >
-                    <FiX className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="btn-primary btn-primary-sm disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
-                  >
-                    {submitting ? (
-                      'Saving…'
-                    ) : (
-                      <>
-                        <FiSave className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                        Save
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>,
-          document.body
-        )}
+      {form && (
+        <ProjectFormModal
+          project={form.project}
+          onClose={() => setForm(null)}
+          onSaved={(saved) => {
+            const created = !form.project;
+            setForm(null);
+            setReload((n) => n + 1);
+            if (created && saved?._id) navigate(`/projects/${saved._id}/dashboard`);
+          }}
+        />
+      )}
 
       <ConfirmModal
-        open={deleteConfirmId !== null}
-        title="Delete project"
-        message="Delete this project? This cannot be undone."
-        confirmLabel="Delete"
+        open={deleting !== null}
+        title={`Delete ${deleting?.name ?? 'project'}?`}
+        message={`This permanently deletes ${deleting?.key ?? 'the project'} and cannot be undone.`}
+        confirmLabel="Delete project"
         variant="danger"
-        onConfirm={() => deleteConfirmId && handleDelete(deleteConfirmId)}
-        onCancel={() => setDeleteConfirmId(null)}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setDeleting(null)}
       />
+    </div>
+  );
+}
+
+function HealthTile({ active, label, count, dot, hint, onClick }: { active: boolean; label: string; count: number; dot?: string; hint?: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={hint}
+      aria-pressed={active}
+      className={`rounded-xl border px-4 py-3 text-left transition ${
+        active
+          ? 'border-[color:var(--accent)] bg-[color:var(--accent)]/[0.08] ring-1 ring-[color:var(--accent)]/25'
+          : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] hover:border-[color:var(--accent)]/40'
+      }`}
+    >
+      <span className="flex items-center gap-1.5 text-xs text-[color:var(--text-muted)]">
+        {dot && <span className="h-2 w-2 rounded-full" style={{ background: dot }} />}
+        {label}
+      </span>
+      <span className="mt-0.5 block text-2xl font-bold tabular-nums">{count}</span>
+    </button>
+  );
+}
+
+function Toggle({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${
+        active
+          ? 'border-[color:var(--accent)] bg-[color:var(--accent)]/10 text-[color:var(--accent)]'
+          : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function Skeleton({ view }: { view: 'grid' | 'list' }) {
+  if (view === 'list') {
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="h-12 rounded-xl skeleton" />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      {Array.from({ length: 6 }, (_, i) => (
+        <div key={i} className="h-72 rounded-2xl skeleton" />
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center rounded-2xl border border-dashed border-[color:var(--border-subtle)] px-6 py-16 text-center">
+      <div className="mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-[color:var(--accent)]/10 text-[color:var(--accent)]">
+        <FiGrid className="h-5 w-5" />
+      </div>
+      <h2 className="text-base font-semibold">{title}</h2>
+      <p className="mt-1 max-w-sm text-sm text-[color:var(--text-muted)]">{body}</p>
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }
