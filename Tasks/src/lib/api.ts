@@ -4472,3 +4472,93 @@ export interface Customer360 {
 export const customer360Api = {
   get: (id: string, token: string) => api.get<Customer360>(`/customer-360/${encodeURIComponent(id)}`, token),
 };
+
+// ─── Employee 360 (/api/employee-360) ─────────────────────────────────────────
+
+export interface Employee360 {
+  isSelf: boolean;
+  employee: {
+    id: string;
+    userId: string | null;
+    name: string;
+    employeeCode: string;
+    email?: string;
+    phone?: string;
+    department?: string;
+    designation?: string;
+    employmentType?: string;
+    status: string;
+    joinedDate?: string;
+    location?: string;
+    manager: { id: string; name: string; designation?: string } | null;
+    reports: Array<{ id: string; name: string; designation?: string }>;
+  };
+  profile: { skills: string[]; seniority?: string; capacityHoursPerWeek: number; availableFrom: string | null };
+  flags: Array<{ level: 'red' | 'amber'; area: string; text: string }>;
+  work: {
+    summary: { open: number; overdue: number; dueSoon: number; doneLast30: number };
+    items: Array<{ id: string; key?: string; title: string; status: string; priority?: string; dueDate?: string; overdue: boolean; projectId: string; projectKey?: string }>;
+    hiddenProjects: number;
+  };
+  allocations: null | {
+    currentPercent: number;
+    items: Array<{
+      id: string;
+      projectId?: string;
+      project?: string;
+      projectKey?: string;
+      percent: number;
+      startDate: string;
+      endDate: string | null;
+      billable: boolean;
+      softBooked: boolean;
+      role?: string;
+      current: boolean;
+    }>;
+  };
+  timesheet: null | {
+    weeks: Array<{ weekStart: string; hours: number; billableHours: number; submission: string | null }>;
+    projects: Array<{ projectId?: string; name: string; hours: number }>;
+    lastWeek: { loggedHours: number; submitted: boolean };
+  };
+  leave: null | {
+    balanceDays: number;
+    takenThisYear: number;
+    onLeaveNow: Employee360LeaveItem | null;
+    upcoming: Employee360LeaveItem[];
+    pending: Employee360LeaveItem[];
+    recent: Employee360LeaveItem[];
+  };
+  attendance: null | {
+    days: number;
+    counts: Record<string, number>;
+    hours: number;
+    recent: Array<{ date: string; status: string; hours: number }>;
+  };
+  payroll: null | {
+    payslips: Array<{
+      period: string;
+      status: string;
+      paidAt?: string;
+      currency?: string;
+      gross?: number;
+      deductions?: number;
+      net?: number;
+      lopDays?: number;
+      monthlyCtc?: number;
+    }>;
+  };
+}
+
+export interface Employee360LeaveItem {
+  id: string;
+  type: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  days: number;
+}
+
+export const employee360Api = {
+  get: (id: string, token: string) => api.get<Employee360>(`/employee-360/${encodeURIComponent(id)}`, token),
+};

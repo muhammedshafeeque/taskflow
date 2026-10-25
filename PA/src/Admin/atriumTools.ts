@@ -62,6 +62,8 @@ export const ATRIUM_ENDPOINT_CATALOG = `Atrium API (paths relative to /api; GET 
   /links/search?type=TYPE&q=TEXT to find a record id. Answer "what's linked to X" / "which invoices belong to project Y" from here first.
 - Customer 360 (one portal customer: health, deals, contracts+SLA, projects+open issues, tickets+SLA, invoices, payments, monitoring):
   /customer-360/:customerId (find the id with /links/search?type=customer&q=NAME). Use for "how is customer X doing?".
+- Employee 360 (one person: work, allocations, timesheet, leave, attendance, payslips, skills): /employee-360/me or /employee-360/:employeeId
+  (find the id with /links/search?type=employee&q=NAME). Use for "what is X working on / is X free / my leave".
 - Projects: /projects, /projects/:id, /projects/:id/members, /projects/:id/timeline, /projects/:id/timesheet, /projects/:id/sprints/:sprintId/report
 - Issues: /issues?project=ID&status=..&assignee=USERID&priority=..&type=..&sprint=..&dueDate=overdue|today|this_week&unassigned=true&page=1&limit=50
   /issues/jql?jql=QUERY, /issues/search-global?q=TEXT, /issues/by-key?project=ID&key=KEY-12, /issues/:id, /issues/:id/history, /issues/:id/subtasks, /issues/:id/links, /issues/:id/comments, /issues/:id/work-logs, /issues/quick-filters/counts

@@ -181,6 +181,11 @@ describe('MCP endpoint', () => {
     const c360 = await call(tokens.ana, 'customer_360', { customer: 'Acme' });
     expect(c360.isError).toBe(true);
 
+    // Ana has no employee record in this workspace.
+    const me360 = await call(tokens.ana, 'employee_360', { person: 'me' });
+    expect(me360.isError).toBe(true);
+    expect(me360.text).toMatch(/no employee record/i);
+
     const removed = await call(tokens.ana, 'unlink_records', { link_id: edge!.linkId });
     expect(removed.isError).toBe(false);
     const gone = (await call(tokens.ana, 'linked_records', { type: 'project', record: 'APP' })).data as Linked;

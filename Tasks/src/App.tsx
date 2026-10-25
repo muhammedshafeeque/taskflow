@@ -106,6 +106,7 @@ import PortalProfile from './pages/portal/PortalProfile';
 import CustomerOrgs from './pages/admin/CustomerOrgs';
 import CustomerOrgDetail from './pages/admin/CustomerOrgDetail';
 import Customer360 from './pages/customers/Customer360';
+import Employee360 from './pages/employees/Employee360';
 import CustomerRequestApprovals from './pages/admin/CustomerRequestApprovals';
 import StandaloneAppSettings from './pages/StandaloneAppSettings';
 import KnowledgeBase from './pages/service/KnowledgeBase';
@@ -362,6 +363,7 @@ function AppRoutes() {
         <Route element={<HrmsModuleLayout />}>
           <Route path="/hrms" element={<HrmsDashboard />} />
           <Route path="/hrms/employees" element={<HrmsEmployees />} />
+          <Route path="/employees/:id" element={<Employee360 />} />
           <Route path="/hrms/attendance" element={<HrmsAttendance />} />
           <Route path="/hrms/leave" element={<HrmsLeave />} />
           <Route path="/hrms/payroll" element={<HrmsPayroll />} />
@@ -510,6 +512,7 @@ function AppRoutes() {
         <Route path="/profile" element={<Profile />} />
         <Route path="/profile/notifications" element={<NotificationPreferences />} />
         <Route path="/me" element={<SelfService />} />
+        <Route path="/employees/me" element={<Employee360 />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

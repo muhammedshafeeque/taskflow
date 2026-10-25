@@ -594,6 +594,21 @@ export function registerTools(server: McpServer, ctx: McpContext) {
     run(async ({ customer }: { customer: string }) => api.get(`/customer-360/${await resolveRecord(api, 'customer', customer)}`))
   );
 
+  tool(
+    'employee_360',
+    {
+      title: 'Employee 360',
+      description:
+        'One person: assigned work, allocations and capacity, timesheet (last 4 weeks), leave, attendance, payslips and skills, with flags ' +
+        '(over-allocated, overdue work, unsubmitted timesheet, leave clashing with due work). Use "me" for the current user. Sections the user may not see are null.',
+      inputSchema: { person: z.string().describe('"me", an employee id, or a name / employee code') },
+      annotations: read,
+    },
+    run(async ({ person }: { person: string }) =>
+      api.get(`/employee-360/${person.trim().toLowerCase() === 'me' ? 'me' : await resolveRecord(api, 'employee', person)}`)
+    )
+  );
+
   // ── Whole API (every module), limited to what this user may call ────────────
 
   const catalog = () => catalogFor(ctx.user);

@@ -279,7 +279,7 @@ export const RECORD_TYPE_DEFS: Record<RecordType, RecordTypeDef> = {
     title: (d) => String(d.name),
     subtitle: (d) => [str(d.employeeCode), str(d.designation)].filter(Boolean).join(' · ') || undefined,
     status: (d) => str(d.status),
-    link: (d) => `/hrms/employees?employee=${d._id}`,
+    link: (d) => `/employees/${d._id}`,
     refs: [{ field: 'managerId', to: 'employee', label: 'Manager', inverse: true }],
   },
   asset: {
