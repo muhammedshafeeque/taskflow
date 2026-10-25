@@ -8,6 +8,7 @@ import { api, billingApi, type BillingInvoice, type BillingInvoiceLine } from '.
 import { billingTypeLabel } from '../../lib/billingLineUtils';
 import { buildInvoicePdf, downloadInvoicePdfFromInvoice } from '../../lib/invoicePdf';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
+import RecordLinksPanel from '../../components/RecordLinksPanel';
 
 function refId(ref?: string | { _id: string }): string {
   if (!ref) return '';
@@ -365,6 +366,8 @@ export default function BillingInvoiceDetail() {
           )}
         </div>
       </section>
+
+      {id && <RecordLinksPanel type="invoice" id={id} />}
 
       {invoice.notes?.trim() && (
         <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5">

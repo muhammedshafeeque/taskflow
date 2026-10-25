@@ -15,6 +15,7 @@ import {
 } from '../../lib/quotePdf';
 import { formatDateDDMMYYYY } from '../../lib/dateFormat';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
+import RecordLinksPanel from '../../components/RecordLinksPanel';
 
 function refId(
   ref: CrmQuote['dealId'] | CrmQuote['leadId'] | CrmQuote['accountId'] | CrmQuote['customerOrgId'] | CrmQuote['contactId']
@@ -648,6 +649,7 @@ export default function CrmQuoteDetail() {
               <p className="text-sm text-[color:var(--text-muted)] whitespace-pre-wrap">{quote.notes}</p>
             </section>
           )}
+          {id && <RecordLinksPanel type="quote" id={id} />}
         </div>
       </div>
 

@@ -25,6 +25,7 @@ import {
   scoreClass,
   statusClass,
 } from './leadCatalog';
+import RecordLinksPanel from '../../components/RecordLinksPanel';
 
 const inputClass =
   'w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm';
@@ -587,6 +588,7 @@ export default function CrmLeadDetail() {
               {activities.length === 0 && <li className="text-sm text-[color:var(--text-muted)]">No activity yet.</li>}
             </ul>
           </section>
+          {id && <RecordLinksPanel type="lead" id={id} />}
         </aside>
       </div>
 

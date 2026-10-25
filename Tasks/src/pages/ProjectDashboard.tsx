@@ -52,6 +52,7 @@ import {
   StatusBreakdown,
   TrendChart,
 } from '../components/dashboard/PmWidgets';
+import RecordLinksPanel from '../components/RecordLinksPanel';
 
 type Tab = 'overview' | 'delivery' | 'breakdown' | 'team';
 const TABS: Array<{ id: Tab; label: string; icon: ReactNode }> = [
@@ -287,6 +288,7 @@ export default function ProjectDashboard() {
       ) : (
         <div className={loading ? 'opacity-70 transition-opacity' : 'transition-opacity'}>
           {tab === 'overview' && <OverviewTab data={overview} estimates={estimates} base={base} onTab={setTab} />}
+          {tab === 'overview' && projectId && <RecordLinksPanel type="project" id={projectId} className="mt-6" />}
           {tab === 'delivery' && <DeliveryTab data={overview} metrics={metrics} estimates={estimates} base={base} />}
           {tab === 'breakdown' && <BreakdownTab data={overview} metrics={metrics} project={project} base={base} />}
           {tab === 'team' && <TeamTab data={overview} base={base} />}

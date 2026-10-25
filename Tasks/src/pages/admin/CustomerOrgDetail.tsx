@@ -21,6 +21,7 @@ import {
   FiTrash2,
   FiBriefcase,
 } from 'react-icons/fi';
+import RecordLinksPanel from '../../components/RecordLinksPanel';
 
 type Tab = 'overview' | 'projects' | 'members' | 'requests';
 
@@ -513,6 +514,8 @@ export default function CustomerOrgDetail() {
               </div>
             </div>
           )}
+
+          {activeTab === 'overview' && id && <RecordLinksPanel type="customer" id={id} className="mt-6" />}
 
           {/* Projects Tab */}
           {activeTab === 'projects' && (

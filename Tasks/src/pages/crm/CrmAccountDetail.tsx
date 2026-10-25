@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import { crmApi, projectsApi, type CrmContract, type CrmQuote, type Project } from '../../lib/api';
 import { money } from '../../components/moduleKit';
+import RecordLinksPanel from '../../components/RecordLinksPanel';
 
 export default function CrmAccountDetail() {
   const { id } = useParams<{ id: string }>();
@@ -387,6 +388,7 @@ export default function CrmAccountDetail() {
           </ul>
         </section>
       </div>
+      {id && <RecordLinksPanel type="account" id={id} className="mt-6" />}
       {id && (
         <div className="mt-6">
           <CrmEmailPanel relatedType="account" relatedId={id} />

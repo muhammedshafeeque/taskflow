@@ -4337,3 +4337,57 @@ export interface MonitorAlertDelivery {
   timestamp?: string;
 }
 
+
+// ─── Record graph (/api/links) ────────────────────────────────────────────────
+
+export type RecordType =
+  | 'lead'
+  | 'deal'
+  | 'quote'
+  | 'contract'
+  | 'account'
+  | 'customer'
+  | 'project'
+  | 'issue'
+  | 'invoice'
+  | 'ticket'
+  | 'employee'
+  | 'asset'
+  | 'purchase_order';
+
+export interface RecordSummary {
+  type: RecordType;
+  id: string;
+  title: string;
+  subtitle?: string;
+  status?: string;
+  link: string;
+}
+
+export interface RecordGraphEdge {
+  linkId?: string;
+  source: 'link' | 'field';
+  relation: string;
+  direction: 'out' | 'in';
+  note?: string;
+  record: RecordSummary;
+}
+
+export interface RecordGraph {
+  record: RecordSummary;
+  edges: RecordGraphEdge[];
+  hidden: number;
+}
+
+export const linksApi = {
+  graph: (type: RecordType, id: string, token: string) =>
+    api.get<RecordGraph>(`/links/${type}/${encodeURIComponent(id)}`, token),
+  types: (token: string) => api.get<{ types: Array<{ type: RecordType; label: string }> }>('/links/types', token),
+  search: (type: RecordType, q: string, token: string) =>
+    api.get<{ records: RecordSummary[] }>(`/links/search?type=${type}&q=${encodeURIComponent(q)}`, token),
+  create: (
+    body: { from: { type: RecordType; id: string }; to: { type: RecordType; id: string }; relation?: string; note?: string },
+    token: string
+  ) => api.post<{ edge: RecordGraphEdge }>('/links', body, token),
+  remove: (linkId: string, token: string) => api.delete(`/links/${linkId}`, token),
+};

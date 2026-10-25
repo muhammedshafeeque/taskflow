@@ -35,6 +35,7 @@ import { IssueAiPanel } from '../components/ai/AiPanels';
 import DevLinksPanel from '../components/issue/DevLinksPanel';
 import IssueDocsPanel from '../components/docs/IssueDocsPanel';
 import type { TaskSecondaryTabsHandle } from '../components/issue/TaskSecondaryTabs';
+import RecordLinksPanel from '../components/RecordLinksPanel';
 
 const DEFAULT_STATUSES = ['Backlog', 'Todo', 'In Progress', 'Done'];
 const DEFAULT_TYPES = ['Task', 'Bug', 'Story', 'Epic'];
@@ -641,6 +642,7 @@ export default function IssueDetail() {
                 onDeleteWorkLog={deleteWorkLog}
                 submittingWorkLog={submittingWorkLog}
               />
+              <RecordLinksPanel type="issue" id={issue._id} className="mt-6" />
             </div>
           </div>
 
