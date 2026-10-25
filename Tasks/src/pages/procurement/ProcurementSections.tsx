@@ -7,6 +7,8 @@ import {
   ExportButton, Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, money, nameOf,
 } from '../../components/moduleKit';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
+import RecordLinksDrawer from '../../components/RecordLinksDrawer';
+import { useRecordLinksParam } from '../../hooks/useRecordLinksParam';
 
 const poStatusTone: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate' | 'violet'> = {
   draft: 'slate', pending_approval: 'amber', approved: 'blue', ordered: 'violet', received: 'green', cancelled: 'red',
@@ -30,6 +32,7 @@ function tableWrap(children: React.ReactNode) {
 type Line = { description: string; quantity: number; unitPrice: number };
 
 function PoList({ title, subtitle, fixedCategory }: { title: string; subtitle: string; fixedCategory?: string }) {
+  const [linksId, setLinksId] = useRecordLinksParam('po');
   const { token } = useAuth();
   const [rows, setRows] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<CrmAccount[]>([]);
@@ -123,6 +126,7 @@ function PoList({ title, subtitle, fixedCategory }: { title: string; subtitle: s
                     {(NEXT_STATUS[p.status] ?? []).map((t) => (
                       <button key={t.status} onClick={() => transition(p._id, t.status)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">{t.label}</button>
                     ))}
+                    <button onClick={() => setLinksId(p._id)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Links</button>
                     <button onClick={() => remove(p._id)} className="text-rose-500 hover:underline text-xs">Delete</button>
                   </td>
                 </tr>
@@ -168,6 +172,9 @@ function PoList({ title, subtitle, fixedCategory }: { title: string; subtitle: s
           </div>
           <Field label="Notes"><TextArea rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field>
         </Modal>
+      )}
+      {linksId && (
+        <RecordLinksDrawer type="purchase_order" id={linksId} title={rows.find((r) => r._id === linksId)?.title} onClose={() => setLinksId(null)} />
       )}
     </SectionPage>
   );

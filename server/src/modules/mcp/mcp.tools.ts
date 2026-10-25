@@ -116,6 +116,43 @@ async function resolveIssue(api: AtriumApi, idOrKey: string) {
   return hit._id;
 }
 
+const RECORD_TYPES = [
+  'lead',
+  'deal',
+  'quote',
+  'contract',
+  'account',
+  'customer',
+  'project',
+  'issue',
+  'invoice',
+  'ticket',
+  'employee',
+  'asset',
+  'purchase_order',
+] as const;
+type RecordType = (typeof RECORD_TYPES)[number];
+type RecordSummary = { type: RecordType; id: string; title: string; subtitle?: string; status?: string; link: string };
+type GraphEdge = { linkId?: string; source: 'link' | 'field'; relation: string; direction: 'out' | 'in'; note?: string; record: RecordSummary };
+
+const recordType = z.enum(RECORD_TYPES);
+const recordRef = z
+  .string()
+  .describe('Record id, an issue key (APP-12), a project key, or a name / number to look up (e.g. an invoice number)');
+
+/** Accepts an id, a project or issue key, or a name/number that matches exactly one record of that type. */
+async function resolveRecord(api: AtriumApi, type: RecordType, ref: string): Promise<string> {
+  if (OBJECT_ID.test(ref)) return ref;
+  if (type === 'project') return resolveProject(api, ref);
+  if (type === 'issue') return resolveIssue(api, ref);
+  const { records } = await api.get<{ records: RecordSummary[] }>('/links/search', { type, q: ref });
+  const exact = records.filter((r) => r.title.toLowerCase() === ref.toLowerCase() || r.title.toLowerCase().startsWith(`${ref.toLowerCase()} ·`));
+  const pick = exact.length === 1 ? exact : records;
+  if (pick.length === 1) return pick[0].id;
+  if (!pick.length) throw new Error(`No ${type} matching "${ref}" that you can access. Use find_records to search.`);
+  throw new Error(`"${ref}" matches several ${type} records: ${pick.slice(0, 5).map((r) => `${r.title} (${r.id})`).join('; ')}. Pass the id.`);
+}
+
 /** Some list endpoints return an array, others a page object. */
 function asList<T>(v: T[] | { data?: T[] } | null | undefined): T[] {
   if (Array.isArray(v)) return v;
@@ -499,6 +536,51 @@ export function registerTools(server: McpServer, ctx: McpContext) {
     run(async ({ status }: { status?: string }) => api.get('/resources/allocations', { userId: ctx.user.id, status: status ?? 'current' }))
   );
 
+  // ── Record graph ────────────────────────────────────────────────────────────
+
+  tool(
+    'find_records',
+    {
+      title: 'Find records',
+      description: `Search one record type (${RECORD_TYPES.join(', ')}) by name, number or key. Returns ids for linked_records and link_records.`,
+      inputSchema: { type: recordType, query: z.string().optional().describe('Text to match; omit for the most recent') },
+      annotations: read,
+    },
+    run(async ({ type, query }: { type: RecordType; query?: string }) => api.get('/links/search', { type, q: query ?? '' }))
+  );
+
+  tool(
+    'linked_records',
+    {
+      title: 'Linked records',
+      description:
+        'Everything connected to one record across modules: the deal, quote, contract, project, issues, tickets, invoices, POs, assets and people it links to, ' +
+        'whether set on the record itself (source "field") or added as an explicit link (source "link"). Records you cannot access are only counted.',
+      inputSchema: { type: recordType, record: recordRef },
+      annotations: read,
+    },
+    run(async ({ type, record }: { type: RecordType; record: string }) => {
+      const id = await resolveRecord(api, type, record);
+      const graph = await api.get<{ record: RecordSummary; edges: GraphEdge[]; hidden: number }>(`/links/${type}/${id}`);
+      return {
+        record: graph.record,
+        linked: graph.edges.map((e) => ({
+          type: e.record.type,
+          id: e.record.id,
+          title: e.record.title,
+          status: e.record.status,
+          detail: e.record.subtitle,
+          relation: e.relation,
+          direction: e.direction,
+          source: e.source,
+          linkId: e.linkId,
+          note: e.note,
+        })),
+        hiddenFromYou: graph.hidden,
+      };
+    })
+  );
+
   // ── Whole API (every module), limited to what this user may call ────────────
 
   const catalog = () => catalogFor(ctx.user);
@@ -588,6 +670,43 @@ export function registerTools(server: McpServer, ctx: McpContext) {
   if (ctx.readOnly) return;
 
   // ── Writes (hidden for read-only tokens; the API checks permissions again) ──
+
+  tool(
+    'link_records',
+    {
+      title: 'Link two records',
+      description:
+        'Add an explicit link between two records of any type (e.g. an issue that delivers a deal, a PO billed to a project). ' +
+        'You must be able to open both. Ask the user before linking.',
+      inputSchema: {
+        from_type: recordType,
+        from: recordRef,
+        to_type: recordType,
+        to: recordRef,
+        relation: z.string().max(40).optional().describe('Short label read from → to, e.g. "delivers", "blocks", "billed by" (default "related")'),
+        note: z.string().max(500).optional(),
+      },
+      annotations: write,
+    },
+    run(async (a: { from_type: RecordType; from: string; to_type: RecordType; to: string; relation?: string; note?: string }) => {
+      const [fromId, toId] = await Promise.all([resolveRecord(api, a.from_type, a.from), resolveRecord(api, a.to_type, a.to)]);
+      return api.post('/links', { from: { type: a.from_type, id: fromId }, to: { type: a.to_type, id: toId }, relation: a.relation, note: a.note });
+    })
+  );
+
+  tool(
+    'unlink_records',
+    {
+      title: 'Remove a record link',
+      description: 'Remove an explicit link (the linkId from linked_records). Links set on the record itself (source "field") are changed on that record instead. Ask the user first.',
+      inputSchema: { link_id: z.string().regex(OBJECT_ID).describe('linkId from linked_records') },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    },
+    run(async ({ link_id }: { link_id: string }) => {
+      await api.delete(`/links/${link_id}`);
+      return { removed: link_id };
+    })
+  );
 
   tool(
     'create_issue',

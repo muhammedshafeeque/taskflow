@@ -156,6 +156,33 @@ describe('MCP endpoint', () => {
     expect((issue.data as { comments: Array<{ text: string }> }).comments.map((c) => c.text)).toContain('Looks good');
   });
 
+  it('shows and edits the record graph within the user’s access', async () => {
+    type Linked = { record: { title: string }; linked: Array<{ type: string; title: string; source: string; relation: string; linkId?: string }>; hiddenFromYou: number };
+    const before = await call(tokens.ana, 'linked_records', { type: 'issue', record: 'APP-1' });
+    expect(before.isError).toBe(false);
+    expect((before.data as Linked).linked).toEqual([expect.objectContaining({ type: 'project', title: 'App', source: 'field', relation: 'Project' })]);
+
+    const linked = await call(tokens.ana, 'link_records', { from_type: 'project', from: 'APP', to_type: 'issue', to: 'APP-1', relation: 'delivers' });
+    expect(linked.isError).toBe(false);
+    const after = (await call(tokens.ana, 'linked_records', { type: 'project', record: 'APP' })).data as Linked;
+    const edge = after.linked.find((l) => l.source === 'link');
+    expect(edge).toMatchObject({ type: 'issue', title: 'APP-1 · Login screen', relation: 'delivers' });
+
+    // Ben's issue is invisible, so it cannot be linked.
+    const hidden = await call(tokens.ana, 'link_records', { from_type: 'project', from: 'APP', to_type: 'issue', to: 'SEC-1' });
+    expect(hidden.isError).toBe(true);
+
+    const readOnly = await rpc(tokens.anaRead, 'tools/list');
+    const names = (readOnly.body.result as { tools: Array<{ name: string }> }).tools.map((t) => t.name);
+    expect(names).toEqual(expect.arrayContaining(['linked_records', 'find_records']));
+    expect(names).not.toContain('link_records');
+
+    const removed = await call(tokens.ana, 'unlink_records', { link_id: edge!.linkId });
+    expect(removed.isError).toBe(false);
+    const gone = (await call(tokens.ana, 'linked_records', { type: 'project', record: 'APP' })).data as Linked;
+    expect(gone.linked.some((l) => l.source === 'link')).toBe(false);
+  });
+
   it('hides write tools from read-only tokens and the API refuses their writes', async () => {
     const list = await rpc(tokens.anaRead, 'tools/list');
     const names = (list.body.result as { tools: Array<{ name: string }> }).tools.map((t) => t.name);

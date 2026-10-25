@@ -6,6 +6,8 @@ import {
   ExportButton, Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextInput, money, nameOf,
 } from '../../components/moduleKit';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
+import RecordLinksDrawer from '../../components/RecordLinksDrawer';
+import { useRecordLinksParam } from '../../hooks/useRecordLinksParam';
 
 const assetStatusTone: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = {
   in_stock: 'blue', assigned: 'green', in_repair: 'amber', retired: 'slate',
@@ -21,6 +23,7 @@ function tableWrap(children: React.ReactNode) {
 }
 
 function AssetList({ title, subtitle, fixedCategory, warrantyMode = false }: { title: string; subtitle: string; fixedCategory?: string; warrantyMode?: boolean }) {
+  const [linksId, setLinksId] = useRecordLinksParam('asset');
   const { token } = useAuth();
   const [rows, setRows] = useState<Asset[]>([]);
   const [editing, setEditing] = useState<Partial<Asset> | null>(null);
@@ -87,6 +90,7 @@ function AssetList({ title, subtitle, fixedCategory, warrantyMode = false }: { t
                   <td className="px-4 py-2.5"><StatusPill label={a.status} tone={assetStatusTone[a.status]} /></td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{warrantyMode ? (a.amcExpiry ? new Date(a.amcExpiry).toLocaleDateString() : '—') : money(a.purchaseCost, a.currency)}</td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                    <button onClick={() => setLinksId(a._id)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Links</button>
                     <button onClick={() => setEditing(a)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Edit</button>
                     <button onClick={() => remove(a._id)} className="text-rose-500 hover:underline text-xs">Delete</button>
                   </td>
@@ -127,6 +131,9 @@ function AssetList({ title, subtitle, fixedCategory, warrantyMode = false }: { t
             )}
           </div>
         </Modal>
+      )}
+      {linksId && (
+        <RecordLinksDrawer type="asset" id={linksId} title={rows.find((r) => r._id === linksId)?.name} onClose={() => setLinksId(null)} />
       )}
     </SectionPage>
   );
