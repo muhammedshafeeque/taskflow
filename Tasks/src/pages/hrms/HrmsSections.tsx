@@ -7,6 +7,9 @@ import {
 } from '../../components/moduleKit';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 import { PersonSelect, toPeople } from '../../components/people';
+import RecordLinksDrawer from '../../components/RecordLinksDrawer';
+import { useRecordLinksParam } from '../../hooks/useRecordLinksParam';
+import { Link } from 'react-router-dom';
 
 const statusTone: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = {
   active: 'green', probation: 'blue', on_leave: 'amber', terminated: 'red',
@@ -24,6 +27,7 @@ function tableWrap(children: React.ReactNode) {
 
 // ── Employees ────────────────────────────────────────────────────────────────
 export function HrmsEmployees() {
+  const [linksId, setLinksId] = useRecordLinksParam('employee');
   const { token } = useAuth();
   const [rows, setRows] = useState<HrmsEmployee[]>([]);
   const [editing, setEditing] = useState<Partial<HrmsEmployee> | null>(null);
@@ -97,6 +101,8 @@ export function HrmsEmployees() {
                   <td className="px-4 py-2.5"><StatusPill label={e.status} tone={statusTone[e.status]} /></td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{e.leaveBalanceDays}d</td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                    <Link to={`/employees/${e._id}`} className="text-[color:var(--accent)] hover:underline text-xs mr-3">360</Link>
+                    <button onClick={() => setLinksId(e._id)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Links</button>
                     <button onClick={() => setEditing(e)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Edit</button>
                     <button onClick={() => remove(e._id)} className="text-rose-500 hover:underline text-xs">Delete</button>
                   </td>
@@ -138,6 +144,9 @@ export function HrmsEmployees() {
             <Field label="Location"><TextInput value={editing.location ?? ''} onChange={(e) => setEditing({ ...editing, location: e.target.value })} /></Field>
           </div>
         </Modal>
+      )}
+      {linksId && (
+        <RecordLinksDrawer type="employee" id={linksId} title={rows.find((r) => r._id === linksId)?.name} onClose={() => setLinksId(null)} />
       )}
     </SectionPage>
   );

@@ -21,6 +21,7 @@ import {
   FiTrash2,
   FiBriefcase,
 } from 'react-icons/fi';
+import RecordLinksPanel from '../../components/RecordLinksPanel';
 
 type Tab = 'overview' | 'projects' | 'members' | 'requests';
 
@@ -366,6 +367,12 @@ export default function CustomerOrgDetail() {
               </div>
               <p className="text-sm text-[color:var(--text-muted)] mt-1">{org.contactEmail}</p>
             </div>
+            <Link
+              to={`/customers/${id}`}
+              className="btn-primary btn-primary-sm px-4 py-2 rounded-lg text-sm"
+            >
+              Customer 360
+            </Link>
           </div>
 
           {/* Tabs */}
@@ -513,6 +520,8 @@ export default function CustomerOrgDetail() {
               </div>
             </div>
           )}
+
+          {activeTab === 'overview' && id && <RecordLinksPanel type="customer" id={id} className="mt-6" />}
 
           {/* Projects Tab */}
           {activeTab === 'projects' && (

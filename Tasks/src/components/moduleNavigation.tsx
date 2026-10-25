@@ -212,6 +212,7 @@ export function buildInboxNav(_user: NavUser): NavItem[] {
     ...(canAny(_user, 'taskflow.self.profile.read', 'taskflow.self.leave.apply', 'taskflow.self.attendance.mark', 'taskflow.self.payslip.read', 'taskflow.self.expense.claim', 'taskflow.self.asset.read', 'taskflow.self.directory.read')
       ? [{ to: '/me', label: 'Me (HR self-service)', icon: <UsersIcon /> }]
       : []),
+    { to: '/employees/me', label: 'My 360', icon: <UsersIcon /> },
     { to: '/profile', label: 'Profile & security', icon: <SettingsIcon />, end: true },
     { to: '/profile/notifications', label: 'Preferences', icon: <SettingsIcon /> },
   ];

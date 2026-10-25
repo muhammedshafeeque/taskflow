@@ -51,11 +51,19 @@ const WRITE_ALLOW: Array<{ method: 'POST' | 'PATCH'; pattern: RegExp; label: str
   { method: 'PATCH', pattern: /^\/api\/calendar\/events\/[\w-]+$/, label: 'update calendar event' },
   { method: 'PATCH', pattern: /^\/api\/monitor\/projects\/[\w-]+\/errors\/[\w-]+$/, label: 'update monitor error' },
   { method: 'PATCH', pattern: /^\/api\/hrms\/leave\/[\w-]+\/decision$/, label: 'decide leave request' },
+  { method: 'POST', pattern: /^\/api\/links$/, label: 'link two records' },
 ]
 
 /** Endpoint catalog shown to the model so it knows where data lives. */
 export const ATRIUM_ENDPOINT_CATALOG = `Atrium API (paths relative to /api; GET unless noted):
 - Search everything: /search?q=TEXT
+- Record graph (how records connect across modules — deal, quote, contract, project, issues, tickets, invoices, POs, assets, people):
+  /links/:type/:id (type = lead|deal|quote|contract|account|customer|project|issue|invoice|ticket|employee|asset|purchase_order),
+  /links/search?type=TYPE&q=TEXT to find a record id. Answer "what's linked to X" / "which invoices belong to project Y" from here first.
+- Customer 360 (one portal customer: health, deals, contracts+SLA, projects+open issues, tickets+SLA, invoices, payments, monitoring):
+  /customer-360/:customerId (find the id with /links/search?type=customer&q=NAME). Use for "how is customer X doing?".
+- Employee 360 (one person: work, allocations, timesheet, leave, attendance, payslips, skills): /employee-360/me or /employee-360/:employeeId
+  (find the id with /links/search?type=employee&q=NAME). Use for "what is X working on / is X free / my leave".
 - Projects: /projects, /projects/:id, /projects/:id/members, /projects/:id/timeline, /projects/:id/timesheet, /projects/:id/sprints/:sprintId/report
 - Issues: /issues?project=ID&status=..&assignee=USERID&priority=..&type=..&sprint=..&dueDate=overdue|today|this_week&unassigned=true&page=1&limit=50
   /issues/jql?jql=QUERY, /issues/search-global?q=TEXT, /issues/by-key?project=ID&key=KEY-12, /issues/:id, /issues/:id/history, /issues/:id/subtasks, /issues/:id/links, /issues/:id/comments, /issues/:id/work-logs, /issues/quick-filters/counts
@@ -70,7 +78,7 @@ export const ATRIUM_ENDPOINT_CATALOG = `Atrium API (paths relative to /api; GET 
 - Monitor: /monitor/projects, /monitor/projects/:projectId/overview, .../errors, .../errors/:groupId, .../alerts, .../uptime, .../vitals, .../releases, .../logs, .../http, .../live-users, /monitor/pm-suggestions
 - HRMS: /hrms/dashboard, /hrms/employees, /hrms/attendance, /hrms/leave, /hrms/payroll
 - Other modules: /contracts, /billing, /resources, /assets, /procurement, /accounts, /documents, /roadmaps, /audit-logs
-Allowed writes (atrium_write): POST /issues {project,title,type?,priority?,assignee?,description?,dueDate?}; PATCH /issues/:id {status?,priority?,assignee?,dueDate?,title?,...}; POST /issues/:id/comments {body}; POST /issues/:id/work-logs; POST/PATCH /crm/leads|activities|contacts|deals; POST /crm/activities/:id/complete; POST/PATCH /service/tickets; POST /service/tickets/:id/comments {body}; POST/PATCH /calendar/events; PATCH /monitor/projects/:p/errors/:g {status}; PATCH /hrms/leave/:id/decision.`
+Allowed writes (atrium_write): POST /issues {project,title,type?,priority?,assignee?,description?,dueDate?}; PATCH /issues/:id {status?,priority?,assignee?,dueDate?,title?,...}; POST /issues/:id/comments {body}; POST /issues/:id/work-logs; POST/PATCH /crm/leads|activities|contacts|deals; POST /crm/activities/:id/complete; POST/PATCH /service/tickets; POST /service/tickets/:id/comments {body}; POST/PATCH /calendar/events; PATCH /monitor/projects/:p/errors/:g {status}; PATCH /hrms/leave/:id/decision; POST /links {from:{type,id},to:{type,id},relation?,note?} to link two records.`
 
 export const ATRIUM_TOOLS: ToolDef[] = [
   {

@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import { crmApi, projectsApi, type CrmContract, type CrmQuote, type Project } from '../../lib/api';
 import { money } from '../../components/moduleKit';
+import RecordLinksPanel from '../../components/RecordLinksPanel';
 
 export default function CrmAccountDetail() {
   const { id } = useParams<{ id: string }>();
@@ -16,13 +17,14 @@ export default function CrmAccountDetail() {
   const canActivity = canAny(user, 'taskflow.crm.activity.create');
   const canUpdate = canAny(user, 'taskflow.crm.account.update');
   const canDelete = canAny(user, 'taskflow.crm.account.delete');
+  const canCustomer360 = canAny(user, 'taskflow.customer_portal.org.view', 'taskflow.customer_portal.org.manage');
   const canDeal = canAny(user, 'taskflow.crm.deal.create');
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [view, setView] = useState<{
-    account: { name: string; type: string; notes?: string; industry?: string; website?: string };
+    account: { name: string; type: string; notes?: string; industry?: string; website?: string; customerOrgId?: string };
     contacts: Array<{ _id: string; name: string; email?: string; isPrimary?: boolean }>;
     activities: Array<{ _id: string; type: string; subject: string }>;
     deals: Array<{ _id: string; title: string; value: number; status: string }>;
@@ -154,6 +156,11 @@ export default function CrmAccountDetail() {
             <Link to="/crm/accounts" className={btnSecondary}>
               <FiArrowLeft /> Accounts
             </Link>
+            {canCustomer360 && view.account.customerOrgId && (
+              <Link to={`/customers/${view.account.customerOrgId}`} className={btnSecondary}>
+                Customer 360
+              </Link>
+            )}
             {canDeal && (
               <Link to="/crm/deals" className={btnSecondary}>
                 <FiPlus /> Deal
@@ -387,6 +394,7 @@ export default function CrmAccountDetail() {
           </ul>
         </section>
       </div>
+      {id && <RecordLinksPanel type="account" id={id} className="mt-6" />}
       {id && (
         <div className="mt-6">
           <CrmEmailPanel relatedType="account" relatedId={id} />

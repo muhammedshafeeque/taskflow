@@ -6,6 +6,7 @@ import { StatusPill } from '../../components/moduleKit';
 import { TicketReplySuggest } from '../../components/ai/AiPanels';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 import { PersonSelect, toPeople } from '../../components/people';
+import RecordLinksPanel from '../../components/RecordLinksPanel';
 
 const PRIORITY_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = {
   urgent: 'red', high: 'amber', medium: 'blue', low: 'slate',
@@ -418,6 +419,7 @@ function TicketDetail({ id, onClose, onChanged, others }: { id: string; onClose:
                 </div>
               </div>
             </div>
+            <RecordLinksPanel type="ticket" id={id} className="mt-6" />
           </>
         )}
       </div>

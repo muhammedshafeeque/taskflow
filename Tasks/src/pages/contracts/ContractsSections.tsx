@@ -11,6 +11,7 @@ import {
   type SlaPolicy,
 } from '../../lib/api';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
+import RecordLinksPanel from '../../components/RecordLinksPanel';
 
 function accountLabel(accountId: CrmContract['accountId']): string {
   if (accountId && typeof accountId === 'object') return accountId.name;
@@ -1171,6 +1172,8 @@ export function ContractsAgreementDetail() {
           </div>
         )}
       </div>
+
+      {id && <RecordLinksPanel type="contract" id={id} />}
 
       {isHourly && (
         <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5 space-y-4">

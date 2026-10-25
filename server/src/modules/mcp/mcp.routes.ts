@@ -14,6 +14,7 @@ type McpRequest = Request & { viaApiToken?: boolean; apiTokenReadOnly?: boolean 
 const INSTRUCTIONS = `Atrium is a work-management platform (projects, issues, sprints, docs, resources).
 This connection acts as one signed-in user: every tool sees and changes only what that user can see and change in Atrium.
 Refer to projects by key (e.g. APP) and issues by key (e.g. APP-12). Use whoami to check the user and whether the token is read-only.
+To see how records connect across modules (deal → quote → contract → project → issues → tickets → invoices), use linked_records.
 Before creating or updating issues, read the project (get_project) to use status, type and priority names that exist there.
 For anything else in Atrium (CRM, HR, billing, accounts, service desk, assets, procurement, contracts, calendar, monitor, resources…),
 use api_areas → api_endpoints → api_request. Those only list and allow what this user's role permits, and Atrium re-checks every call.

@@ -43,6 +43,9 @@ import { docsRoutes } from '../modules/docs/docs.routes';
 import { mcpRoutes } from '../modules/mcp/mcp.routes';
 import { calendarRoutes } from '../modules/calendar/calendar.routes';
 import { searchRoutes } from '../modules/search/search.routes';
+import { linksRoutes } from '../modules/links/links.routes';
+import { customer360Routes } from '../modules/customer360/customer360.routes';
+import { employee360Routes } from '../modules/employee360/employee360.routes';
 import { aiRoutes } from '../modules/ai/ai.routes';
 import { apiTokenRoutes } from '../modules/apiTokens/apiToken.routes';
 import { publicSigningRoutes } from '../modules/documents/publicSigning.routes';
@@ -165,5 +168,8 @@ router.use('/monitor', monitorEnabled, monitorStaffRoutes);
 // First-party WhatsApp PA (internal key, private network only — nginx never routes /api/internal).
 router.use('/internal/pa', internalPaRoutes);
 router.use('/search', searchRoutes);
+router.use('/links', linksRoutes);
+router.use('/customer-360', customer360Routes);
+router.use('/employee-360', employee360Routes);
 
 export const apiRoutes = router;

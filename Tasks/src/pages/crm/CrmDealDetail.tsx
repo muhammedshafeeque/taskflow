@@ -41,6 +41,7 @@ import {
   refId,
   refName,
 } from './crmKit';
+import RecordLinksPanel from '../../components/RecordLinksPanel';
 
 const ACTIVITY_TYPES = ['call', 'meeting', 'email', 'task', 'note', 'demo', 'follow_up'];
 type LineItem = NonNullable<CrmDeal['lineItems']>[number];
@@ -352,6 +353,7 @@ export default function CrmDealDetail() {
               </ul>
             </Panel>
           )}
+          <RecordLinksPanel type="deal" id={id} />
         </div>
       </div>
 
