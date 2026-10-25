@@ -190,7 +190,7 @@ export const RECORD_TYPE_DEFS: Record<RecordType, RecordTypeDef> = {
     title: (d) => String(d.name),
     subtitle: () => undefined,
     status: (d) => str(d.status),
-    link: (d) => `/admin/customer-orgs/${d._id}`,
+    link: (d) => `/customers/${d._id}`,
     refs: [{ field: 'crmAccountId', to: 'account', label: 'CRM account', inverse: true }],
   },
   project: {

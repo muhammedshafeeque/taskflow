@@ -4391,3 +4391,84 @@ export const linksApi = {
   ) => api.post<{ edge: RecordGraphEdge }>('/links', body, token),
   remove: (linkId: string, token: string) => api.delete(`/links/${linkId}`, token),
 };
+
+// ─── Customer 360 (/api/customer-360) ─────────────────────────────────────────
+
+export type SlaState = 'ok' | 'at_risk' | 'breached' | 'none';
+
+export interface Customer360 {
+  customer: {
+    id: string;
+    name: string;
+    status?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    since?: string;
+    accounts: Array<{ id: string; name: string; type?: string }>;
+  };
+  health: Array<{ level: 'red' | 'amber'; area: string; text: string }>;
+  projects: Array<{ id: string; name: string; key?: string; archived: boolean }>;
+  hiddenProjects: number;
+  deals: null | {
+    summary: { open: number; pipeline: number; won: number };
+    items: Array<{ id: string; title: string; status: string; value?: number; currency?: string; stage?: string; expectedCloseDate?: string }>;
+  };
+  contracts: null | {
+    summary: { active: number; activeValue: number };
+    slaPolicies: Array<{ id: string; name: string; targets: Array<{ priority: string; firstResponseMinutes: number; resolutionMinutes: number }> }>;
+    items: Array<{
+      id: string;
+      title: string;
+      kind?: string;
+      status: string;
+      value?: number;
+      currency?: string;
+      endDate?: string;
+      renewalDate?: string;
+      renewsInDays: number | null;
+      slaPolicy?: string;
+    }>;
+  };
+  issues: {
+    summary: { open: number; overdue: number };
+    items: Array<{
+      id: string;
+      key?: string;
+      title: string;
+      status: string;
+      priority?: string;
+      dueDate?: string;
+      overdue: boolean;
+      assignee?: string;
+      projectId: string;
+    }>;
+  };
+  tickets: null | {
+    summary: { open: number };
+    sla: { breached: number; atRisk: number; onTrack: number };
+    csat: { average: number; responses: number } | null;
+    items: Array<{ id: string; subject: string; status: string; priority?: string; sla: SlaState; resolutionDueAt?: string; linkedIssueKey?: string }>;
+  };
+  invoices: null | {
+    summary: { invoiced: number; collected: number; outstanding: number; overdue: number; overdueCount: number; currency?: string };
+    items: Array<{ id: string; number: string; status: string; total: number; balance: number; currency?: string; issueDate?: string; dueDate?: string }>;
+    payments: Array<{ date: string; invoiceId?: string; invoiceNumber?: string; currency?: string; amount: number }>;
+  };
+  monitor: null | {
+    projects: Array<{
+      id: string;
+      name: string;
+      key: string;
+      projectId: string;
+      openErrors: number;
+      checks: number;
+      uptime: 'up' | 'down' | 'unknown';
+      downChecks: string[];
+      lastCheckedAt: string | null;
+    }>;
+  };
+}
+
+export const customer360Api = {
+  get: (id: string, token: string) => api.get<Customer360>(`/customer-360/${encodeURIComponent(id)}`, token),
+};

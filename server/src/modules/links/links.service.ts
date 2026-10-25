@@ -13,7 +13,7 @@ import { hasProjectFullAccess } from '../../middleware/requireProjectPermission'
 import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import { getPlatformEnabledModules } from '../core/core.service';
-import { isModuleEnabled } from '../../shared/constants/moduleAccess';
+import { isModuleEnabled, type ModuleId } from '../../shared/constants/moduleAccess';
 import { escapeRegex } from '../../utils/safeUrl';
 import { logAudit } from '../auditLogs/logAudit';
 import { RecordLink } from './recordLink.model';
@@ -62,10 +62,15 @@ export class GraphAccess {
 
   async canSeeType(type: RecordType): Promise<boolean> {
     const def = RECORD_TYPE_DEFS[type];
+    return this.can(def.module, def.permissions);
+  }
+
+  /** Module enabled and, unless `permissions` is empty, any one of them held. */
+  async can(module: ModuleId, permissions: string[]): Promise<boolean> {
     this.modules ??= getPlatformEnabledModules();
-    if (!isModuleEnabled(def.module, await this.modules)) return false;
-    if (!def.permissions.length) return true;
-    return def.permissions.some((p) => userHasPermission(this.viewer.permissions, p));
+    if (!isModuleEnabled(module, await this.modules)) return false;
+    if (!permissions.length) return true;
+    return permissions.some((p) => userHasPermission(this.viewer.permissions, p));
   }
 
   /** Projects this viewer may open: all in the workspace for project admins, else memberships. */

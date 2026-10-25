@@ -177,6 +177,10 @@ describe('MCP endpoint', () => {
     expect(names).toEqual(expect.arrayContaining(['linked_records', 'find_records']));
     expect(names).not.toContain('link_records');
 
+    // Customer 360 needs customer-org access, which Ana's role lacks.
+    const c360 = await call(tokens.ana, 'customer_360', { customer: 'Acme' });
+    expect(c360.isError).toBe(true);
+
     const removed = await call(tokens.ana, 'unlink_records', { link_id: edge!.linkId });
     expect(removed.isError).toBe(false);
     const gone = (await call(tokens.ana, 'linked_records', { type: 'project', record: 'APP' })).data as Linked;

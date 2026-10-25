@@ -105,6 +105,7 @@ import PortalProfile from './pages/portal/PortalProfile';
 // Admin customer pages
 import CustomerOrgs from './pages/admin/CustomerOrgs';
 import CustomerOrgDetail from './pages/admin/CustomerOrgDetail';
+import Customer360 from './pages/customers/Customer360';
 import CustomerRequestApprovals from './pages/admin/CustomerRequestApprovals';
 import StandaloneAppSettings from './pages/StandaloneAppSettings';
 import KnowledgeBase from './pages/service/KnowledgeBase';
@@ -499,6 +500,7 @@ function AppRoutes() {
         <Route element={<PortalAdminModuleLayout />}>
         <Route path="/admin/customer-orgs" element={<CustomerOrgs />} />
         <Route path="/admin/customer-orgs/:id" element={<CustomerOrgDetail />} />
+        <Route path="/customers/:id" element={<Customer360 />} />
         <Route path="/admin/customer-requests" element={<CustomerRequestApprovals />} />
         </Route>
 

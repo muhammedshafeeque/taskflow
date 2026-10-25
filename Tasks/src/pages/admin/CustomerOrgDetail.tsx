@@ -367,6 +367,12 @@ export default function CustomerOrgDetail() {
               </div>
               <p className="text-sm text-[color:var(--text-muted)] mt-1">{org.contactEmail}</p>
             </div>
+            <Link
+              to={`/customers/${id}`}
+              className="btn-primary btn-primary-sm px-4 py-2 rounded-lg text-sm"
+            >
+              Customer 360
+            </Link>
           </div>
 
           {/* Tabs */}

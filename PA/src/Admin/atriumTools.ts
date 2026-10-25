@@ -60,6 +60,8 @@ export const ATRIUM_ENDPOINT_CATALOG = `Atrium API (paths relative to /api; GET 
 - Record graph (how records connect across modules — deal, quote, contract, project, issues, tickets, invoices, POs, assets, people):
   /links/:type/:id (type = lead|deal|quote|contract|account|customer|project|issue|invoice|ticket|employee|asset|purchase_order),
   /links/search?type=TYPE&q=TEXT to find a record id. Answer "what's linked to X" / "which invoices belong to project Y" from here first.
+- Customer 360 (one portal customer: health, deals, contracts+SLA, projects+open issues, tickets+SLA, invoices, payments, monitoring):
+  /customer-360/:customerId (find the id with /links/search?type=customer&q=NAME). Use for "how is customer X doing?".
 - Projects: /projects, /projects/:id, /projects/:id/members, /projects/:id/timeline, /projects/:id/timesheet, /projects/:id/sprints/:sprintId/report
 - Issues: /issues?project=ID&status=..&assignee=USERID&priority=..&type=..&sprint=..&dueDate=overdue|today|this_week&unassigned=true&page=1&limit=50
   /issues/jql?jql=QUERY, /issues/search-global?q=TEXT, /issues/by-key?project=ID&key=KEY-12, /issues/:id, /issues/:id/history, /issues/:id/subtasks, /issues/:id/links, /issues/:id/comments, /issues/:id/work-logs, /issues/quick-filters/counts

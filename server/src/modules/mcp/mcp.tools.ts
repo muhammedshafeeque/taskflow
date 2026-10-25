@@ -581,6 +581,19 @@ export function registerTools(server: McpServer, ctx: McpContext) {
     })
   );
 
+  tool(
+    'customer_360',
+    {
+      title: 'Customer 360',
+      description:
+        'Everything about one portal customer: health flags (SLA breaches, overdue invoices, outages, overdue issues, renewals), deals, contracts and SLA, ' +
+        'projects and open issues, open tickets with SLA state, invoices, payments and monitoring. Sections the user may not see are null.',
+      inputSchema: { customer: z.string().describe('Customer id or name') },
+      annotations: read,
+    },
+    run(async ({ customer }: { customer: string }) => api.get(`/customer-360/${await resolveRecord(api, 'customer', customer)}`))
+  );
+
   // ── Whole API (every module), limited to what this user may call ────────────
 
   const catalog = () => catalogFor(ctx.user);
