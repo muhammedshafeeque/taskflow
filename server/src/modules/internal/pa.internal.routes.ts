@@ -44,6 +44,8 @@ clientRouter.post('/tickets', asyncHandler(client.createTicket));
 clientRouter.post('/tickets/:ref/comments', asyncHandler(client.commentOnTicket));
 clientRouter.get('/issues/by-key', asyncHandler(client.issueByKey));
 clientRouter.get('/kb/search', asyncHandler(client.searchKb));
+clientRouter.get('/docs', asyncHandler(client.searchDocs));
+clientRouter.get('/docs/:id', asyncHandler(client.getDoc));
 clientRouter.post('/requests', asyncHandler(client.createRequest));
 clientRouter.get('/billing/summary', asyncHandler(client.billingSummary));
 clientRouter.post('/files', singleFile, asyncHandler(client.uploadFile));

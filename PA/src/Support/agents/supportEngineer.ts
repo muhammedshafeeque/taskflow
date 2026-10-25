@@ -16,6 +16,7 @@ import {
   type SupportEngineerDecision,
 } from '../types';
 import { brandName } from '../../Config/brand';
+import type { ProjectDocContext } from '../context/paInternalClient';
 
 const ESCALATE_CATEGORIES = new Set([
   'BUG_REPORT',
@@ -38,6 +39,8 @@ export async function runSupportEngineer(input: {
   projects: AtriumProjectRef[];
   conversation: ConversationContextBundle;
   taskflow: TaskflowProjectContext;
+  /** Published Atrium Docs pages relevant to the message, with their text. */
+  projectDocs?: ProjectDocContext[];
   langHint?: 'ml' | 'en';
   agentCalls?: AgentCallLog[];
 }): Promise<SupportEngineerDecision> {
@@ -80,6 +83,8 @@ Rules:
 - Never invent ticket IDs, fixes, or internal QA details.
 - GENERAL_CONVERSATION / greetings: warm short reply offering help for the linked project(s); action REPLY. Prefer "Hello" / professional Malayalam over casual "Hi".
 - GENERAL_QUESTION / STATUS_REQUEST / SUPPORT_REQUEST without clear bug: answer from context if possible; else ask one clarifying question; action REPLY.
+- projectDocs are the project's own documentation (title, url, body). When they cover the question, read the body and answer it directly in your own words — the actual steps or facts, concise for WhatsApp (short lines or a few numbered steps). Do not just name the page or paste it. Add the page url at the end when one is given.
+- Never invent steps, settings or behaviour that the docs or other context do not state; if the docs only partly cover it, say what they cover and ask one clarifying question.
 - Clear bugs/errors/crashes/feature or change requests: action ESCALATE_QA, customerReply can be brief acknowledgment OR empty (pipeline may fill after QA).
 - Use conversation history; do not repeat the same question.
 - Language: match the customer (${input.langHint === 'ml' ? 'Malayalam script preferred' : 'English'}).`,
@@ -94,6 +99,7 @@ Rules:
             quoted: input.conversation.quotedText,
             openTickets: ticketLine,
             projectDetails: input.taskflow.projects,
+            projectDocs: (input.projectDocs || []).slice(0, 3),
             suggestEscalate: shouldEscalate,
           }),
         },

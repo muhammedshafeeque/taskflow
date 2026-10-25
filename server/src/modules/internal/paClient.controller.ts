@@ -20,6 +20,7 @@ import { BillingInvoice } from '../billing/models/billingInvoice.model';
 import { saveUpload, sendStoredFile } from '../uploads/files.service';
 import type { ClientScope } from './paScope';
 import { PaFile } from './paFile.model';
+import * as paDocs from './paClientDocs.service';
 
 const OPEN_STATUSES = ['open', 'pending', 'in_progress'];
 
@@ -199,6 +200,34 @@ export async function searchKb(req: Request, res: Response) {
       })),
     },
   });
+}
+
+/**
+ * GET /client/docs?q=&projectId=&issueId=&issueKey=&ticketId=&limit=&body=1
+ * Published Docs pages linked to this chat's projects / issues / tickets.
+ * q is matched by keyword; body=1 adds page text so PA can answer from it.
+ */
+export async function searchDocs(req: Request, res: Response) {
+  const { organizationId, scope } = clientContext(req);
+  requireLinked(scope);
+  const data = await paDocs.searchClientDocs(organizationId, scope, {
+    q: req.query.q ? String(req.query.q) : undefined,
+    projectId: req.query.projectId ? String(req.query.projectId) : undefined,
+    issueId: req.query.issueId ? String(req.query.issueId) : undefined,
+    issueKey: req.query.issueKey ? String(req.query.issueKey) : undefined,
+    ticketId: req.query.ticketId ? String(req.query.ticketId) : undefined,
+    limit: req.query.limit ? Number(req.query.limit) : undefined,
+    withBody: req.query.body === '1',
+  });
+  res.json({ success: true, data });
+}
+
+/** GET /client/docs/:id — full published page text if in this chat's scope. */
+export async function getDoc(req: Request, res: Response) {
+  const { organizationId, scope } = clientContext(req);
+  requireLinked(scope);
+  const data = await paDocs.getClientDoc(organizationId, scope, req.params.id);
+  res.json({ success: true, data });
 }
 
 /** POST /client/requests — portal service request for the client company. */

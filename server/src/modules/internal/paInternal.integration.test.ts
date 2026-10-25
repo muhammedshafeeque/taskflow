@@ -27,6 +27,8 @@ import { HrmsEmployee } from '../hrms/models/hrmsEmployee.model';
 import { ServiceTicket } from '../service-desk/models/serviceTicket.model';
 import { AuditLog } from '../auditLogs/auditLog.model';
 import { flushAuditLogs } from '../auditLogs/logAudit';
+import { DocSpace } from '../docs/models/docSpace.model';
+import { DocPage } from '../docs/models/docPage.model';
 import { PaChatBinding } from './paChatBinding.model';
 import { resetPaServiceAccountCacheForTests } from './paServiceAccount';
 import { setStorageForTests, type StorageDriver } from '../../services/storage';
@@ -270,6 +272,67 @@ describe('client context — downscoped on the server', () => {
     expect(denied).toMatchObject({ actorType: 'ai', meta: { status: 403, chatId: GROUP_A } });
     const svc = await User.findOne({ isServiceAccount: true }).lean();
     expect(String(denied?.user)).toBe(String(svc?._id));
+  });
+
+  it('reads docs linked to its projects/issues, not other clients', async () => {
+    const space = await DocSpace.create({
+      taskflowOrganizationId: ids.org,
+      key: 'ACME',
+      name: 'Acme Docs',
+      projectIds: [ids.projA],
+      audience: 'project',
+      audienceRole: 'viewer',
+      createdBy: ids.human,
+    });
+    const issueA = await Issue.findOne({ key: 'AAPP-1' }).select('_id').lean();
+    const page = await DocPage.create({
+      taskflowOrganizationId: ids.org,
+      spaceId: space._id,
+      title: 'How to reset password',
+      content: '<p>Use the forgot password link</p>',
+      text: 'Use the forgot password link',
+      status: 'published',
+      projectIds: [ids.projA],
+      issueIds: issueA ? [issueA._id] : [],
+      createdBy: ids.human,
+      updatedBy: ids.human,
+    });
+    await DocPage.create({
+      taskflowOrganizationId: ids.org,
+      spaceId: space._id,
+      title: 'Secret B roadmap',
+      content: '<p>hidden</p>',
+      text: 'hidden from client A',
+      status: 'published',
+      projectIds: [ids.projB],
+      createdBy: ids.human,
+      updatedBy: ids.human,
+    });
+
+    const list = await client('/api/internal/pa/client/docs?q=password', GROUP_A);
+    expect(list.status).toBe(200);
+    expect(list.body.data.pages.map((p: { title: string }) => p.title)).toContain('How to reset password');
+    expect(JSON.stringify(list.body)).not.toContain('Secret B roadmap');
+
+    // A natural question matches by keyword, and body=1 returns the page text to answer from.
+    const asked = await client(
+      `/api/internal/pa/client/docs?body=1&q=${encodeURIComponent('How can I reset my password?')}`,
+      GROUP_A
+    );
+    expect(asked.status).toBe(200);
+    expect(asked.body.data.pages[0].title).toBe('How to reset password');
+    expect(asked.body.data.pages[0].body).toMatch(/forgot password link/);
+    expect(JSON.stringify(asked.body)).not.toContain('Secret B roadmap');
+
+    const byIssue = await client(`/api/internal/pa/client/docs?issueKey=AAPP-1`, GROUP_A);
+    expect(byIssue.status).toBe(200);
+    expect(byIssue.body.data.pages.some((p: { id: string }) => p.id === String(page._id))).toBe(true);
+
+    const detail = await client(`/api/internal/pa/client/docs/${page._id}`, GROUP_A);
+    expect(detail.status).toBe(200);
+    expect(detail.body.data.body).toMatch(/forgot password/i);
+
+    expect((await client(`/api/internal/pa/client/docs/${page._id}`, 'b-group@g.us')).status).toBeGreaterThanOrEqual(400);
   });
 });
 

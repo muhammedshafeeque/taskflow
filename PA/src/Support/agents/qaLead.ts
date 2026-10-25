@@ -14,6 +14,7 @@ import {
   type QaDecision,
 } from '../types';
 import { brandName } from '../../Config/brand';
+import type { ProjectDocContext } from '../context/paInternalClient';
 
 export async function runQaLead(input: {
   message: string;
@@ -22,6 +23,8 @@ export async function runQaLead(input: {
   projects: AtriumProjectRef[];
   conversation: ConversationContextBundle;
   taskflow: TaskflowProjectContext;
+  /** Published Atrium Docs pages relevant to the message, with their text. */
+  projectDocs?: ProjectDocContext[];
   agentCalls?: AgentCallLog[];
 }): Promise<QaDecision> {
   const agentCalls = input.agentCalls || [];
@@ -48,7 +51,8 @@ Rules:
 - If confirmed BUG/CHANGE_REQUEST/FEATURE_REQUEST: isIssue true and fill issue.
 - Otherwise isIssue false with recommendedResponse for Support Engineer to tell the customer.
 - Never invent ticket keys that are not in the openTickets list.
-- Prefer tickets listed first — they are relevance-ranked.`,
+- Prefer tickets listed first — they are relevance-ranked.
+- projectDocs describe how the product is meant to work: use them to tell a real bug from expected behaviour or a usage question (then isIssue false, with recommendedResponse answering from the docs). Never invent doc content.`,
         },
         {
           role: 'user',
@@ -68,6 +72,11 @@ Rules:
             })),
             recentIssues: input.taskflow.recentIssues?.slice(0, 10),
             projectDetails: input.taskflow.projects,
+            projectDocs: (input.projectDocs || []).slice(0, 3).map((d) => ({
+              title: d.title,
+              url: d.url,
+              body: d.body.slice(0, 1500),
+            })),
           }),
         },
       ],

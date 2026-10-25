@@ -65,6 +65,7 @@ export const ATRIUM_ENDPOINT_CATALOG = `Atrium API (paths relative to /api; GET 
 - Users: /users, /users/:id
 - CRM: /crm/dashboard, /crm/executive-metrics, /crm/leads, /crm/leads/stats, /crm/leads/:id, /crm/deals, /crm/deals/forecast, /crm/accounts, /crm/accounts/:id/360, /crm/contacts, /crm/activities, /crm/pipelines, /crm/quotes, /crm/campaigns, /crm/contracts
 - Service desk: /service/dashboard, /service/tickets, /service/tickets/:id, /service/sla, /service/kb/search?q=TEXT, /customer/requests
+- Docs (project/ticket knowledge spaces): /docs/search?q=TEXT, /docs/links?issueId=ID, /docs/links?projectId=ID, /docs/pages/:id, /docs/spaces, /docs/spaces/:key/tree, /docs/overview
 - Calendar: /calendar/dashboard, /calendar/events?from=ISO&to=ISO
 - Monitor: /monitor/projects, /monitor/projects/:projectId/overview, .../errors, .../errors/:groupId, .../alerts, .../uptime, .../vitals, .../releases, .../logs, .../http, .../live-users, /monitor/pm-suggestions
 - HRMS: /hrms/dashboard, /hrms/employees, /hrms/attendance, /hrms/leave, /hrms/payroll

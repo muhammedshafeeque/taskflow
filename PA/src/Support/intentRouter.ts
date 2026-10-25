@@ -12,6 +12,7 @@ import {
   searchPurchaseOrders,
   type KbArticleHit,
 } from './context/ecosystemIngest';
+import { searchClientDocs, searchClientKb } from './context/paInternalClient';
 
 export type EcosystemIntent =
   | 'kb'
@@ -106,6 +107,37 @@ function formatKbReply(articles: KbArticleHit[], lang: ReplyLang): string {
   }`;
 }
 
+/** Service-desk KB for this chat, then the legacy ingest KB. */
+async function searchKbForChat(
+  query: string,
+  chatId?: string,
+  senderPhone?: string
+): Promise<KbArticleHit[]> {
+  if (chatId) {
+    try {
+      const kb = await searchClientKb(chatId, query, senderPhone);
+      if (kb.articles?.length) return kb.articles as KbArticleHit[];
+    } catch {
+      /* fall through to legacy ingest KB */
+    }
+  }
+  try {
+    return (await searchKb(query)).articles || [];
+  } catch {
+    return [];
+  }
+}
+
+/** True when this chat's project docs cover the question — the AI answers from them. */
+async function docsCover(chatId: string, query: string, senderPhone?: string): Promise<boolean> {
+  try {
+    const docs = await searchClientDocs(chatId, { q: query, limit: 1, senderPhone });
+    return Boolean(docs.pages?.length);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Try to answer with ecosystem intents. Returns reply text if handled.
  */
@@ -126,13 +158,14 @@ export async function tryEcosystemReply(input: {
   try {
     switch (detected.intent) {
       case 'kb': {
-        const data = await searchKb(detected.query || input.text);
-        if (!data.articles?.length) return { handled: false, intent: 'kb' };
-        return {
-          handled: true,
-          intent: 'kb',
-          reply: formatKbReply(data.articles, lang),
-        };
+        const query = detected.query || input.text;
+        // Project docs are read by the Support Engineer, which writes a proper answer.
+        if (await docsCover(input.group.chatId, query, input.senderPhone)) {
+          return { handled: false, intent: 'kb' };
+        }
+        const articles = await searchKbForChat(query, input.group.chatId, input.senderPhone);
+        if (!articles.length) return { handled: false, intent: 'kb' };
+        return { handled: true, intent: 'kb', reply: formatKbReply(articles, lang) };
       }
       case 'ticket_status': {
         const data = await listTicketDigest({
@@ -155,12 +188,33 @@ export async function tryEcosystemReply(input: {
           (t) =>
             `• ${t.linkedIssueKey || t._id.slice(-6)} — ${t.subject} (${t.status})`
         );
+        let docsNote = '';
+        try {
+          const keyed = tickets.find((t) => t.linkedIssueKey);
+          const docs = await searchClientDocs(input.group.chatId, {
+            ...(keyed?.linkedIssueKey
+              ? { issueKey: keyed.linkedIssueKey }
+              : { ticketId: tickets[0]._id }),
+            limit: 3,
+            senderPhone: input.senderPhone,
+          });
+          if (docs.pages?.length) {
+            docsNote =
+              (lang === 'ml' ? '\n\nബന്ധപ്പെട്ട ഡോക്‌സ്:\n' : '\n\nRelated docs:\n') +
+              docs.pages
+                .map((p) => `• ${p.emoji ? `${p.emoji} ` : ''}${p.title}${p.url ? ` — ${p.url}` : ''}`)
+                .join('\n');
+          }
+        } catch {
+          /* optional */
+        }
         return {
           handled: true,
           intent: 'ticket_status',
           reply:
             (lang === 'ml' ? 'ടിക്കറ്റ് സ്റ്റാറ്റസ്:\n' : 'Ticket status:\n') +
-            lines.join('\n'),
+            lines.join('\n') +
+            docsNote,
         };
       }
       case 'issue_status': {
@@ -172,12 +226,28 @@ export async function tryEcosystemReply(input: {
         const sprint = i.sprintName
           ? ` Sprint: ${i.sprintName}${i.sprintStatus ? ` (${i.sprintStatus})` : ''}.`
           : '';
+        let docsNote = '';
+        try {
+          const docs = await searchClientDocs(input.group.chatId, {
+            issueKey: detected.issueKey,
+            limit: 3,
+            senderPhone: input.senderPhone,
+          });
+          if (docs.pages?.length) {
+            const lines = docs.pages
+              .map((p) => `• ${p.emoji ? `${p.emoji} ` : ''}${p.title}${p.url ? ` — ${p.url}` : ''}`)
+              .join('\n');
+            docsNote = `\n\nRelated docs:\n${lines}`;
+          }
+        } catch {
+          /* optional */
+        }
         return {
           handled: true,
           intent: 'issue_status',
           reply: `${i.key}: ${i.title} — status ${i.status}.${
             i.assignee ? ` Assignee: ${i.assignee}.` : ''
-          }${sprint}`,
+          }${sprint}${docsNote}`,
         };
       }
       case 'portal_request': {
@@ -317,28 +387,24 @@ export async function tryEcosystemReply(input: {
 /** KB assist for support pipeline — returns article text if strong hit. */
 export async function lookupKbForSupport(
   text: string,
-  enabled: boolean
+  enabled: boolean,
+  opts: { chatId?: string; senderPhone?: string } = {}
 ): Promise<{ hit: boolean; reply?: string; title?: string }> {
   if (!enabled) return { hit: false };
-  try {
-    const data = await searchKb(text);
-    const articles = data.articles || [];
-    if (!articles.length) return { hit: false };
-    const top = articles[0];
-    // Require some overlap of significant tokens
-    const tokens = text
-      .toLowerCase()
-      .split(/\W+/)
-      .filter((w) => w.length >= 4);
-    const hay = `${top.title} ${top.body}`.toLowerCase();
-    const hits = tokens.filter((t) => hay.includes(t)).length;
-    if (hits < 1 && tokens.length > 2) return { hit: false };
-    return {
-      hit: true,
-      title: top.title,
-      reply: formatKbReply(articles, 'en'),
-    };
-  } catch {
-    return { hit: false };
-  }
+  const articles = await searchKbForChat(text, opts.chatId, opts.senderPhone);
+  if (!articles.length) return { hit: false };
+  const top = articles[0];
+  // Require some overlap of significant tokens
+  const tokens = text
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((w) => w.length >= 4);
+  const hay = `${top.title} ${top.body}`.toLowerCase();
+  const hits = tokens.filter((t) => hay.includes(t)).length;
+  if (hits < 1 && tokens.length > 2) return { hit: false };
+  return {
+    hit: true,
+    title: top.title,
+    reply: formatKbReply(articles, 'en'),
+  };
 }

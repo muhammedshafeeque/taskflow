@@ -35,6 +35,7 @@ import type { MediaSource } from '../Media/resolveMessageContent';
 import { sendReply } from '../Whatsap/sendReply';
 import { isOfficialSupportGroup } from './supportGroup';
 import { lookupKbForSupport, tryEcosystemReply } from './intentRouter';
+import { readDocsForQuestion } from './context/paInternalClient';
 import { pushToDevices } from '../Push/expoPush';
 
 export { isOfficialSupportGroup } from './supportGroup';
@@ -198,15 +199,25 @@ export async function runSupportPipeline(input: {
     return;
   }
 
-  // KB before tickets for questions / support (not clear bugs)
+  // Project docs the agents read before answering (full page text, best-effort).
+  const projectDocs =
+    analysis.category === 'GENERAL_CONVERSATION'
+      ? []
+      : await readDocsForQuestion(groupId, text, sender.phone);
+
+  // KB before tickets for questions / support (not clear bugs) — when no project doc covers it
   if (
     group.kbEnabled &&
+    !projectDocs.length &&
     !analysis.isIssue &&
     (analysis.category === 'GENERAL_QUESTION' ||
       analysis.category === 'SUPPORT_REQUEST' ||
       analysis.category === 'GENERAL_CONVERSATION')
   ) {
-    const kb = await lookupKbForSupport(text, true);
+    const kb = await lookupKbForSupport(text, true, {
+      chatId: groupId,
+      senderPhone: sender.phone,
+    });
     if (kb.hit && kb.reply) {
       await sendReply(msg, kb.reply, source, lang);
       await Promise.all([
@@ -253,6 +264,7 @@ export async function runSupportPipeline(input: {
       projects,
       conversation: convCtx,
       taskflow,
+      projectDocs,
       langHint: lang,
       agentCalls,
     }),
@@ -333,6 +345,7 @@ export async function runSupportPipeline(input: {
         projects,
         conversation: convCtx,
         taskflow,
+        projectDocs,
         agentCalls,
       }),
     ]);
