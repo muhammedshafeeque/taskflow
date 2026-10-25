@@ -700,6 +700,65 @@ export function registerTools(server: McpServer, ctx: McpContext) {
   // ── Writes (hidden for read-only tokens; the API checks permissions again) ──
 
   tool(
+    'bulk_update_issues',
+    {
+      title: 'Bulk update issues',
+      description:
+        'Change many issues at once: pick them by `issues` (keys or ids) and/or a `jql` query, then set any of assignee, sprint, status, priority, type, labels or due date. ' +
+        'Status, priority and type are matched to each project’s own names; sprint is an id or a sprint name in each issue’s project. ' +
+        'Returns per-issue errors and updates the rest. Use dryRun to preview. Ask the user before running it.',
+      inputSchema: {
+        issues: z.array(z.string()).max(500).optional().describe('Issue keys (APP-12) or ids'),
+        jql: z.string().optional().describe('Also select every issue matching this JQL, e.g. `project = APP AND status = Backlog`'),
+        max: z.number().int().min(1).max(500).optional().describe('Most issues a JQL selection may touch (default 200)'),
+        assignee: z.string().nullable().optional().describe('"me", a user id, or null to unassign'),
+        sprint: z.string().nullable().optional().describe('Sprint id or name (in each issue’s project), or null to move to the backlog'),
+        status: z.string().optional(),
+        priority: z.string().optional(),
+        type: z.string().optional(),
+        labels: z.array(z.string()).optional().describe('Replaces all labels on each issue'),
+        dueDate: z.string().nullable().optional().describe('YYYY-MM-DD or null'),
+        dryRun: z.boolean().optional().describe('Resolve and validate only; change nothing'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    run(async (a: BulkArgs) => bulkUpdateIssues(api, ctx, a))
+  );
+
+  tool(
+    'create_sprint',
+    {
+      title: 'Create sprint',
+      description:
+        'Create a sprint in a project. Sprints live on a Scrum board: if the project has none, a Scrum board with the project’s status columns is created first.',
+      inputSchema: {
+        project: z.string().describe('Project id or key'),
+        name: z.string().min(1).max(200),
+        startDate: z.string().optional().describe('YYYY-MM-DD'),
+        endDate: z.string().optional().describe('YYYY-MM-DD'),
+        board: z.string().regex(OBJECT_ID).optional().describe('Board id; default is the project’s first Scrum board'),
+      },
+      annotations: write,
+    },
+    run(async (a: { project: string; name: string; startDate?: string; endDate?: string; board?: string }) => {
+      const projectId = await resolveProject(api, a.project);
+      const { board, created } = a.board ? { board: { _id: a.board, name: undefined as string | undefined }, created: false } : await scrumBoardFor(api, projectId);
+      const sprint = await api.post<{ _id: string; name: string; status?: string }>('/sprints', {
+        name: a.name,
+        project: projectId,
+        board: board._id,
+        startDate: a.startDate,
+        endDate: a.endDate,
+      });
+      return {
+        sprint: { id: sprint._id, name: sprint.name, status: sprint.status },
+        board: { id: board._id, name: board.name, created },
+      };
+    })
+  );
+
+
+  tool(
     'link_records',
     {
       title: 'Link two records',
@@ -966,4 +1025,187 @@ export function toHtml(input: string): string {
     if (line.trim()) out.push(`<p>${inline(line)}</p>`);
   }
   return out.join('');
+}
+
+// ── Bulk update and sprint helpers ───────────────────────────────────────────
+
+type BulkArgs = {
+  issues?: string[];
+  jql?: string;
+  max?: number;
+  assignee?: string | null;
+  sprint?: string | null;
+  status?: string;
+  priority?: string;
+  type?: string;
+  labels?: string[];
+  dueDate?: string | null;
+  dryRun?: boolean;
+};
+type Named = { id?: string; _id?: string; name: string };
+type ProjectConfig = { _id: string; key: string; statuses?: Named[]; priorities?: Named[]; issueTypes?: Named[] };
+type SprintRow = { _id: string; name: string; status?: string; project?: Ref };
+type Target = { id: string; key?: string; projectId: string };
+
+const BULK_CHUNK = 100;
+
+/** Every issue matching `jql`, up to `max`. */
+async function issuesByJql(api: AtriumApi, jql: string, max: number): Promise<{ issues: RawIssue[]; total: number }> {
+  const out: RawIssue[] = [];
+  let total = 0;
+  for (let page = 1; out.length < max; page += 1) {
+    const res = await api.get<Paginated<RawIssue>>('/issues/jql', { jql, page, limit: 100 });
+    total = res.total;
+    out.push(...res.data);
+    if (page >= res.totalPages || !res.data.length) break;
+  }
+  return { issues: out.slice(0, max), total };
+}
+
+/** Exact name match in a project's list, ignoring case; returns the project's own spelling. */
+function canonical(list: Named[] | undefined, value: string): string | null {
+  if (!list?.length) return value; // project uses defaults — let the API decide
+  return list.find((x) => x.name.toLowerCase() === value.trim().toLowerCase())?.name ?? null;
+}
+
+export async function bulkUpdateIssues(api: AtriumApi, ctx: McpContext, a: BulkArgs) {
+  const fields = ['assignee', 'sprint', 'status', 'priority', 'type', 'labels', 'dueDate'] as const;
+  if (!fields.some((f) => a[f] !== undefined)) throw new Error(`Give at least one field to change: ${fields.join(', ')}`);
+  if (!a.issues?.length && !a.jql) throw new Error('Select issues with `issues` (keys or ids) and/or `jql`');
+
+  const failed: Array<{ issue: string; error: string }> = [];
+  const targets = new Map<string, Target>();
+  const add = (i: RawIssue) => {
+    const projectId = refId(i.project);
+    if (projectId) targets.set(i._id, { id: i._id, key: i.key, projectId });
+  };
+
+  // Keys resolve through JQL in batches; ids through a direct read.
+  const refs = [...new Set((a.issues ?? []).map((r) => r.trim()).filter(Boolean))];
+  const keys = refs.filter((r) => ISSUE_KEY.test(r)).map((r) => r.toUpperCase());
+  const ids = refs.filter((r) => OBJECT_ID.test(r));
+  for (const r of refs) if (!ISSUE_KEY.test(r) && !OBJECT_ID.test(r)) failed.push({ issue: r, error: 'Not an issue key or id' });
+  for (let i = 0; i < keys.length; i += 50) {
+    const batch = keys.slice(i, i + 50);
+    const { issues } = await issuesByJql(api, `key in (${batch.join(', ')})`, batch.length);
+    issues.forEach(add);
+    const found = new Set(issues.map((x) => x.key?.toUpperCase()));
+    for (const k of batch) if (!found.has(k)) failed.push({ issue: k, error: 'Not found, or not visible to you' });
+  }
+  await Promise.all(
+    ids.map(async (id) => {
+      try {
+        add(await api.get<RawIssue>(`/issues/${id}`));
+      } catch {
+        failed.push({ issue: id, error: 'Not found, or not visible to you' });
+      }
+    })
+  );
+  let jqlTotal: number | undefined;
+  if (a.jql) {
+    const max = a.max ?? 200;
+    const res = await issuesByJql(api, a.jql, max);
+    res.issues.forEach(add);
+    jqlTotal = res.total;
+    if (res.total > max) {
+      failed.push({ issue: `jql (${res.total - max} more)`, error: `Only the first ${max} matches were selected; raise max or narrow the query` });
+    }
+  }
+
+  // Per-project names and sprints, so each issue gets values valid in its own project.
+  const projectIds = [...new Set([...targets.values()].map((t) => t.projectId))];
+  const [configs, sprints] = await Promise.all([
+    Promise.all(projectIds.map((id) => api.get<ProjectConfig>(`/projects/${id}`))),
+    a.sprint
+      ? Promise.all(projectIds.map((id) => api.get<Paginated<SprintRow> | SprintRow[]>('/sprints', { project: id, limit: 100 }).then(asList)))
+      : Promise.resolve(projectIds.map(() => [] as SprintRow[])),
+  ]);
+  const configOf = new Map(projectIds.map((id, i) => [id, configs[i]]));
+  const sprintsOf = new Map(projectIds.map((id, i) => [id, sprints[i]]));
+
+  const groups = new Map<string, { updates: Record<string, unknown>; targets: Target[] }>();
+  for (const t of targets.values()) {
+    const cfg = configOf.get(t.projectId)!;
+    const updates: Record<string, unknown> = {};
+    const problems: string[] = [];
+    for (const [field, list] of [
+      ['status', cfg.statuses],
+      ['priority', cfg.priorities],
+      ['type', cfg.issueTypes],
+    ] as const) {
+      const value = a[field];
+      if (value === undefined) continue;
+      const name = canonical(list, value);
+      if (name) updates[field] = name;
+      else problems.push(`${field} "${value}" does not exist in ${cfg.key} (${(list ?? []).map((x) => x.name).join(', ')})`);
+    }
+    if (a.sprint !== undefined) {
+      if (a.sprint === null) updates.sprint = null;
+      else {
+        const list = sprintsOf.get(t.projectId) ?? [];
+        const hit = OBJECT_ID.test(a.sprint)
+          ? list.find((sp) => sp._id === a.sprint)
+          : list.find((sp) => sp.name.toLowerCase() === a.sprint!.trim().toLowerCase());
+        if (hit) updates.sprint = hit._id;
+        else problems.push(`sprint "${a.sprint}" is not a sprint of ${cfg.key}`);
+      }
+    }
+    if (a.assignee !== undefined) updates.assignee = a.assignee === 'me' ? ctx.user.id : a.assignee;
+    if (a.labels !== undefined) updates.labels = a.labels;
+    if (a.dueDate !== undefined) updates.dueDate = a.dueDate;
+
+    if (problems.length) {
+      failed.push({ issue: t.key ?? t.id, error: problems.join('; ') });
+      continue;
+    }
+    const sig = JSON.stringify(updates);
+    const g = groups.get(sig) ?? { updates, targets: [] };
+    g.targets.push(t);
+    groups.set(sig, g);
+  }
+
+  const planned = [...groups.values()].reduce((n, g) => n + g.targets.length, 0);
+  if (a.dryRun) {
+    return {
+      dryRun: true,
+      selected: targets.size,
+      wouldUpdate: planned,
+      jqlMatches: jqlTotal,
+      changes: [...groups.values()].map((g) => ({ updates: g.updates, issues: g.targets.map((t) => t.key ?? t.id) })),
+      failed,
+    };
+  }
+
+  let updated = 0;
+  const done: string[] = [];
+  for (const g of groups.values()) {
+    for (let i = 0; i < g.targets.length; i += BULK_CHUNK) {
+      const chunk = g.targets.slice(i, i + BULK_CHUNK);
+      try {
+        const res = await api.request<{ updated: number }>('PATCH', '/issues/bulk', { issueIds: chunk.map((t) => t.id), updates: g.updates });
+        updated += res?.updated ?? chunk.length;
+        done.push(...chunk.map((t) => t.key ?? t.id));
+      } catch (err) {
+        const why = err instanceof Error ? err.message : 'Update failed';
+        for (const t of chunk) failed.push({ issue: t.key ?? t.id, error: why });
+      }
+    }
+  }
+  return { selected: targets.size, updated, issues: done, jqlMatches: jqlTotal, failed };
+}
+
+/** The project's first Scrum board, or a new one whose columns are the project's statuses. */
+async function scrumBoardFor(api: AtriumApi, projectId: string): Promise<{ board: { _id: string; name?: string }; created: boolean }> {
+  const boards = asList(await api.get<Paginated<{ _id: string; name: string; type: string }> | Array<{ _id: string; name: string; type: string }>>('/boards', { project: projectId, limit: 100 }));
+  const scrum = boards.find((b) => b.type === 'Scrum');
+  if (scrum) return { board: scrum, created: false };
+  const project = await api.get<ProjectConfig & { name: string }>(`/projects/${projectId}`);
+  const statuses = [...(project.statuses ?? [])].sort((x, y) => ((x as { order?: number }).order ?? 0) - ((y as { order?: number }).order ?? 0));
+  const board = await api.post<{ _id: string; name: string }>('/boards', {
+    name: `${project.key} Scrum`,
+    type: 'Scrum',
+    project: projectId,
+    columns: statuses.map((st, order) => ({ name: st.name, statusId: st.name, order })),
+  });
+  return { board, created: true };
 }

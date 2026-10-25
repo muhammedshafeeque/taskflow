@@ -81,7 +81,8 @@ function tokenize(jql: string): string[] {
     }
     if (/[a-zA-Z_~]/.test(s[i])) {
       let word = '';
-      while (i < s.length && /[a-zA-Z0-9_.~]/.test(s[i])) {
+      // Hyphens join word parts, so issue keys like APP-12 stay one token.
+      while (i < s.length && (/[a-zA-Z0-9_.~]/.test(s[i]) || (s[i] === '-' && /[a-zA-Z0-9]/.test(s[i + 1] ?? '')))) {
         word += s[i++];
       }
       tokens.push(word);

@@ -1238,6 +1238,52 @@ export interface FindByJqlOptions {
   limit?: number;
 }
 
+/**
+ * JQL may name projects by key or name ("project = APP"); turn those into the ids of the
+ * viewer's projects. Unknown names match nothing instead of failing the query.
+ */
+async function resolveJqlProjects(
+  filter: Record<string, unknown>,
+  projectIds: unknown[]
+): Promise<Record<string, unknown>> {
+  const names = new Set<string>();
+  const collect = (node: unknown): void => {
+    if (Array.isArray(node)) return node.forEach(collect);
+    if (!node || typeof node !== 'object') return;
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (k === 'project') {
+        const op = v as { $in?: unknown[]; $nin?: unknown[] } | unknown;
+        const values = typeof op === 'string' ? [op] : [...((op as { $in?: unknown[] })?.$in ?? []), ...((op as { $nin?: unknown[] })?.$nin ?? [])];
+        for (const x of values) if (typeof x === 'string' && !mongoose.Types.ObjectId.isValid(x)) names.add(x);
+      } else collect(v);
+    }
+  };
+  collect(filter);
+  if (!names.size) return filter;
+
+  const projects = await Project.find({ _id: { $in: projectIds } }).select('key name').lean();
+  const idFor = (name: string) => {
+    const lower = name.toLowerCase();
+    const hit = projects.find((p) => p.key?.toLowerCase() === lower || p.name?.toLowerCase() === lower);
+    // An id no project has, so the condition matches nothing.
+    return hit ? hit._id : new mongoose.Types.ObjectId('000000000000000000000000');
+  };
+  const map = (x: unknown) => (typeof x === 'string' && names.has(x) ? idFor(x) : x);
+  const rewrite = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(rewrite);
+    if (!node || typeof node !== 'object' || node instanceof mongoose.Types.ObjectId) return node;
+    return Object.fromEntries(
+      Object.entries(node as Record<string, unknown>).map(([k, v]) => {
+        if (k !== 'project') return [k, rewrite(v)];
+        if (typeof v === 'string') return [k, map(v)];
+        const op = v as Record<string, unknown[]>;
+        return [k, Object.fromEntries(Object.entries(op).map(([o, list]) => [o, Array.isArray(list) ? list.map(map) : list]))];
+      })
+    );
+  };
+  return rewrite(filter) as Record<string, unknown>;
+}
+
 export async function findByJql(opts: FindByJqlOptions): Promise<PaginatedResult<unknown>> {
   const { jql, userId, page = 1, limit = 20 } = opts;
   const userObjectId = new mongoose.Types.ObjectId(userId);
@@ -1246,7 +1292,8 @@ export async function findByJql(opts: FindByJqlOptions): Promise<PaginatedResult
     return { data: [], total: 0, page, limit, totalPages: 0 };
   }
 
-  const { filter: jqlFilter, order } = parseJql(jql, userId);
+  const { filter: parsed, order } = parseJql(jql, userId);
+  const jqlFilter = await resolveJqlProjects(parsed, projectIds);
   const scopeFilter = { project: { $in: projectIds } };
   const filter = Object.keys(jqlFilter).length > 0
     ? { $and: [scopeFilter, jqlFilter] }

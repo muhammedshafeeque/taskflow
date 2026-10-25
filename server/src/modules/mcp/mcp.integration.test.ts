@@ -192,12 +192,55 @@ describe('MCP endpoint', () => {
     expect(gone.linked.some((l) => l.source === 'link')).toBe(false);
   });
 
+  it('creates a sprint, adding a Scrum board when the project has none', async () => {
+    type Created = { sprint: { id: string; name: string }; board: { id: string; name?: string; created: boolean } };
+    const first = await call(tokens.ana, 'create_sprint', { project: 'APP', name: 'Sprint 1' });
+    expect(first.isError).toBe(false);
+    expect((first.data as Created).board).toMatchObject({ name: 'APP Scrum', created: true });
+    const second = await call(tokens.ana, 'create_sprint', { project: 'APP', name: 'Sprint 2' });
+    expect((second.data as Created).board).toMatchObject({ id: (first.data as Created).board.id, created: false });
+  });
+
+  it('bulk-updates issues by key and JQL with per-issue errors', async () => {
+    type Bulk = { selected: number; updated?: number; wouldUpdate?: number; failed: Array<{ issue: string; error: string }>; issues?: string[] };
+    await Project.updateOne(
+      { key: 'APP' },
+      { $set: { statuses: [{ id: 'todo', name: 'To Do', order: 0 }, { id: 'prog', name: 'In Progress', order: 1 }, { id: 'done', name: 'Done', order: 2, isClosed: true }] } }
+    );
+
+    const preview = await call(tokens.ana, 'bulk_update_issues', { issues: ['app-1', 'SEC-1', 'nope'], status: 'in progress', dryRun: true });
+    expect(preview.isError).toBe(false);
+    const p = preview.data as Bulk;
+    expect(p).toMatchObject({ selected: 1, wouldUpdate: 1 });
+    expect(p.failed.map((f) => f.issue).sort()).toEqual(['SEC-1', 'nope']);
+    // Nothing changed on a dry run.
+    expect((await call(tokens.ana, 'get_issue', { issue: 'APP-1' })).data).toMatchObject({ status: 'To Do' });
+
+    const bad = await call(tokens.ana, 'bulk_update_issues', { issues: ['APP-1'], status: 'Shipped' });
+    expect((bad.data as Bulk).failed[0].error).toMatch(/status "Shipped" does not exist in APP/);
+
+    const res = await call(tokens.ana, 'bulk_update_issues', { jql: 'project = APP', status: 'In Progress', sprint: 'sprint 1', assignee: 'me' });
+    expect(res.isError).toBe(false);
+    const r = res.data as Bulk;
+    expect(r.failed).toEqual([]);
+    expect(r.updated).toBe(r.selected);
+    expect(r.issues).toContain('APP-1');
+    const issue = (await call(tokens.ana, 'get_issue', { issue: 'APP-1' })).data as { status: string; sprint?: string };
+    expect(issue.status).toBe('In Progress');
+    expect(issue.sprint).toBe('Sprint 1');
+
+    const noSprint = await call(tokens.ana, 'bulk_update_issues', { issues: ['APP-1'], sprint: 'Sprint 9' });
+    expect((noSprint.data as Bulk).failed[0].error).toMatch(/not a sprint of APP/);
+  });
+
   it('hides write tools from read-only tokens and the API refuses their writes', async () => {
     const list = await rpc(tokens.anaRead, 'tools/list');
     const names = (list.body.result as { tools: Array<{ name: string }> }).tools.map((t) => t.name);
     expect(names).toContain('search_issues');
     expect(names).not.toContain('create_issue');
     expect(names).not.toContain('update_issue');
+    expect(names).not.toContain('bulk_update_issues');
+    expect(names).not.toContain('create_sprint');
 
     const write = await call(tokens.anaRead, 'create_issue', { project: 'APP', title: 'Nope' });
     expect(write.isError).toBe(true);

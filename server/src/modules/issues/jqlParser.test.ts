@@ -22,6 +22,11 @@ describe('parseJql', () => {
     expect(notInResult.filter).toEqual({ labels: { $nin: ['bug', 'urgent'] } });
   });
 
+  it('keeps issue keys whole', () => {
+    expect(parseJql('key = APP-12', 'u1').filter).toEqual({ key: 'APP-12' });
+    expect(parseJql('key in (APP-1, WEB-22)', 'u1').filter).toEqual({ key: { $in: ['APP-1', 'WEB-22'] } });
+  });
+
   it('parses OR expressions into $or filter', () => {
     const result = parseJql('status = Open OR status = Closed');
     expect(result.filter).toEqual({
