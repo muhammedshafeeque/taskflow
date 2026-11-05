@@ -1,5 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { resolveMediaUrl } from '../../lib/mediaUrls';
+import { isVideoFileUrl } from '../../lib/videoFiles';
 
 export const VideoBlock = Node.create({
   name: 'videoBlock',
@@ -30,6 +31,16 @@ export const VideoBlock = Node.create({
             url: node.getAttribute('data-url') || '',
             name: node.getAttribute('data-name') || '',
           };
+        },
+      },
+      {
+        // Ahead of the image node, so editing an old post repairs a video stored as <img>.
+        tag: 'img[src]',
+        priority: 60,
+        getAttrs: (el) => {
+          if (typeof el === 'string') return false;
+          const src = (el as HTMLElement).getAttribute('src') || '';
+          return isVideoFileUrl(src) ? { url: src, name: (el as HTMLElement).getAttribute('alt') || '' } : false;
         },
       },
     ];

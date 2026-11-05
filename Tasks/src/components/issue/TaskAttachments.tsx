@@ -2,6 +2,7 @@ import { useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
 import type { Attachment } from '../../lib/api';
 import { getFilesFromDataTransfer } from '../../lib/clipboardFiles';
 import { uploadFile, attachmentsApi } from '../../lib/api';
+import { useMediaSessionReady } from '../../lib/mediaSession';
 import { AttachmentDownloadLinks } from '../attachment/AttachmentDownloadLinks';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -50,6 +51,7 @@ const TaskAttachments = forwardRef<TaskAttachmentsHandle, TaskAttachmentsProps>(
   ref
 ) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaReady = useMediaSessionReady();
 
   useImperativeHandle(
     ref,
@@ -66,10 +68,8 @@ const TaskAttachments = forwardRef<TaskAttachmentsHandle, TaskAttachmentsProps>(
     async (file: File) => {
       if (!token) return;
       const res = await uploadFile(file, token);
-      if (!res.success || !res.data) {
-        alert((res as { message?: string }).message ?? 'Upload failed');
-        return;
-      }
+      // Failures are shown by the upload tray.
+      if (!res.success || !res.data) return;
       const addRes = await attachmentsApi.add(
         issueId,
         {
@@ -198,7 +198,7 @@ const TaskAttachments = forwardRef<TaskAttachmentsHandle, TaskAttachmentsProps>(
           {videoAttachments.map((a) => (
             <div key={a._id} className="group px-4 py-3 border-t border-[color:var(--border-subtle)] first:border-t-0">
               <video
-                src={getDownloadUrl(a.url)}
+                src={mediaReady ? getDownloadUrl(a.url) : undefined}
                 className="w-full max-h-72 rounded-lg bg-black"
                 controls
                 playsInline

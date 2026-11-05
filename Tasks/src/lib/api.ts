@@ -1,4 +1,5 @@
 import { monitorHttp, skipClientHttp } from './monitorClient';
+import { startUpload, type UploadHandle } from './uploadTracker';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -150,44 +151,87 @@ export const api = {
     request<T>(path, { method: 'DELETE', body: JSON.stringify(body), token }),
 };
 
-export async function uploadFile(
-  file: File,
-  token?: string,
-  _retried = false
-): Promise<ApiResponse<{ url: string; originalName: string; mimeType: string; size: number }>> {
-  const formData = new FormData();
-  formData.append('file', file);
+export type UploadedFile = { url: string; originalName: string; mimeType: string; size: number };
+export type UploadResponse = ApiResponse<UploadedFile> & { cancelled?: boolean };
 
-  const headers: HeadersInit = {
-    ...taskflowOrgHeaders(),
-  };
-  if (token) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
-  }
-
-  const res = await fetch(`${API_BASE}/uploads`, {
-    method: 'POST',
-    body: formData,
-    headers,
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    if (res.status === 401 && token && !_retried) {
-      const nextAccess = await tryRefreshAccessToken();
-      if (nextAccess) {
-        return uploadFile(file, nextAccess, true);
-      }
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-    } else if (res.status === 401) {
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+/** XHR because fetch cannot report upload progress. `status` is 0 when no response arrived. */
+function postUpload(file: File, token: string | undefined, upload: UploadHandle): Promise<{ status: number; json: unknown }> {
+  return new Promise((resolve) => {
+    const noResponse = () => resolve({ status: 0, json: {} });
+    if (upload.signal.aborted) {
+      noResponse();
+      return;
     }
-    return {
-      success: false,
-      message: (json as ApiResponse).message || res.statusText || 'Upload failed',
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE}/uploads`);
+    for (const [name, value] of Object.entries(taskflowOrgHeaders())) xhr.setRequestHeader(name, value);
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) upload.progress(e.loaded / e.total);
     };
-  }
-  return json as ApiResponse<{ url: string; originalName: string; mimeType: string; size: number }>;
+    xhr.upload.onload = () => upload.processing();
+    xhr.onload = () => {
+      let json: unknown = {};
+      try {
+        json = JSON.parse(xhr.responseText);
+      } catch {
+        /* non-JSON error page, e.g. from the proxy */
+      }
+      resolve({ status: xhr.status, json });
+    };
+    xhr.onerror = noResponse;
+    xhr.onabort = noResponse;
+    upload.signal.addEventListener('abort', () => xhr.abort(), { once: true });
+    xhr.send(formData);
+  });
 }
+
+async function sendUpload(file: File, token: string | undefined, upload: UploadHandle, retried = false): Promise<UploadResponse> {
+  const { status, json } = await postUpload(file, token, upload);
+  if (upload.signal.aborted) return { success: false, cancelled: true, message: 'Upload cancelled' };
+  if (status >= 200 && status < 300) return json as UploadResponse;
+  if (status === 401) {
+    const nextAccess = token && !retried ? await tryRefreshAccessToken() : null;
+    if (nextAccess) return sendUpload(file, nextAccess, upload, true);
+    window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+  }
+  const fallback =
+    status === 0 ? 'Upload failed. Check your connection and try again.' : status === 413 ? 'File is too large' : 'Upload failed';
+  return { success: false, message: (json as ApiResponse).message || fallback };
+}
+
+/**
+ * Upload progress is published to the upload tracker, so every caller gets a bar in the
+ * global tray. Pass `scope` to show it inside a component instead (see useUploads).
+ */
+export async function uploadFile(file: File, token?: string, options: { scope?: string } = {}): Promise<UploadResponse> {
+  const upload = startUpload(file, options.scope);
+  const res = await sendUpload(file, token, upload);
+  if (res.success || res.cancelled) upload.done();
+  else upload.fail(res.message ?? 'Upload failed');
+  return res;
+}
+
+/** The cookie that lets <video> and "Open" links read auth-gated uploads (see mediaSession.ts). */
+export const mediaSessionApi = {
+  /** An access token left to expire by an idle or reopened tab is refreshed first; without it no cookie is set. */
+  async open(token: string): Promise<void> {
+    const post = (accessToken: string) =>
+      fetch(`${API_BASE}/uploads/session`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    const res = await post(token);
+    if (res.status !== 401) return;
+    const nextAccess = await tryRefreshAccessToken();
+    if (nextAccess) await post(nextAccess);
+  },
+  close: () => fetch(`${API_BASE}/uploads/session`, { method: 'DELETE', credentials: 'include' }),
+};
 
 /* Auth */
 export interface TaskflowOrganizationSummary {

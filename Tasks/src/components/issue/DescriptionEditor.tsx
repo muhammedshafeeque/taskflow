@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/core';
 import { useAuth } from '../../contexts/AuthContext';
 import { getFilesFromDataTransfer } from '../../lib/clipboardFiles';
 import { uploadFile } from '../../lib/api';
+import { insertUploadedFile } from '../richText/insertUploadedFile';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { baseEditorExtensions, editorContentClass } from '../richText/richTextEditorExtensions';
 import { VideoBlock, AttachmentBlock } from '../richText/richTextCustomNodes';
@@ -20,9 +21,7 @@ async function insertUploadedImages(editor: Editor | null, imageFiles: File[], t
   for (const file of imageFiles) {
     if (!file.type.startsWith('image/')) continue;
     const res = await uploadFile(file, token ?? undefined);
-    if (res.success && res.data) {
-      editor.chain().focus().setImage({ src: res.data.url, alt: res.data.originalName }).run();
-    }
+    if (res.success && res.data) insertUploadedFile(editor, res.data);
   }
 }
 
@@ -89,13 +88,7 @@ export default function DescriptionEditor({
     input.onchange = async () => {
       if (!input.files || !input.files[0]) return;
       const res = await uploadFile(input.files[0], token || undefined);
-      if (res.success && res.data) {
-        editor
-          ?.chain()
-          .focus()
-          .setImage({ src: res.data.url, alt: res.data.originalName })
-          .run();
-      }
+      if (res.success && res.data) insertUploadedFile(editor, res.data);
     };
     input.click();
   };
@@ -106,16 +99,8 @@ export default function DescriptionEditor({
     input.accept = 'video/*,.pdf,.xlsx,.xls,.docx,.doc';
     input.onchange = async () => {
       if (!input.files?.[0]) return;
-      const file = input.files[0];
-      const res = await uploadFile(file, token || undefined);
-      if (res.success && res.data) {
-        const { url, originalName, mimeType } = res.data;
-        if (file.type.startsWith('video/')) {
-          editor?.chain().focus().insertContent({ type: 'videoBlock', attrs: { url, name: originalName } }).run();
-        } else {
-          editor?.chain().focus().insertContent({ type: 'attachmentBlock', attrs: { url, name: originalName, mimeType } }).run();
-        }
-      }
+      const res = await uploadFile(input.files[0], token || undefined);
+      if (res.success && res.data) insertUploadedFile(editor, res.data);
     };
     input.click();
   };

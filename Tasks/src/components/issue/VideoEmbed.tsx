@@ -1,3 +1,4 @@
+import { useMediaSessionReady } from '../../lib/mediaSession';
 import { resolveMediaUrl } from '../../lib/mediaUrls';
 
 /** Strict allowlist — never interpolate raw URL fragments into iframe src. */
@@ -42,6 +43,7 @@ function vimeoId(url: string): string | null {
 
 export function VideoEmbed({ url }: { url: string }) {
   const resolved = resolveMediaUrl(url);
+  const mediaReady = useMediaSessionReady();
   const yt = youtubeId(url);
   if (yt) {
     return (
@@ -82,7 +84,7 @@ export function VideoEmbed({ url }: { url: string }) {
   }
   return (
     <div className="my-2 rounded-lg overflow-hidden border border-[color:var(--border-subtle)]">
-      <video controls className="w-full max-w-lg" src={resolved} playsInline preload="metadata">
+      <video controls className="w-full max-w-lg" src={mediaReady ? resolved : undefined} playsInline preload="metadata">
         Your browser does not support the video tag.
       </video>
     </div>

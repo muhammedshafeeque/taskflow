@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { authApi, organizationsApi, TASKFLOW_ACTIVE_ORG_STORAGE_KEY, type AuthUser } from '../lib/api';
+import { closeMediaSession, MEDIA_SESSION_RENEW_MS, openMediaSession } from '../lib/mediaSession';
 
 const ACCESS_KEY = 'pm_access_token';
 const REFRESH_KEY = 'pm_refresh_token';
@@ -64,7 +65,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(REFRESH_KEY);
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(TASKFLOW_ACTIVE_ORG_STORAGE_KEY);
+    closeMediaSession();
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    void openMediaSession(token);
+    const renew = setInterval(() => void openMediaSession(token), MEDIA_SESSION_RENEW_MS);
+    return () => clearInterval(renew);
+  }, [token]);
 
   useEffect(() => {
     const onUnauthorized = () => logout();

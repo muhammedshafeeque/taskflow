@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import { useAuth } from '../../contexts/AuthContext';
 import { getFilesFromDataTransfer } from '../../lib/clipboardFiles';
 import { uploadFile } from '../../lib/api';
+import { cancelScope, useUploads } from '../../lib/uploadTracker';
+import { UploadProgressList } from '../attachment/UploadProgress';
+import { insertUploadedFile } from '../richText/insertUploadedFile';
 import { BubbleMenu, EditorContent, useEditor } from '@tiptap/react';
 import Mention from '@tiptap/extension-mention';
 import { baseEditorExtensions, editorContentClass } from '../richText/richTextEditorExtensions';
@@ -27,44 +30,19 @@ async function processCommentEditorFiles(
   files: File[],
   editor: Editor | null,
   token: string | null | undefined,
-  setUploading: (v: boolean) => void,
+  uploadScope: string,
   setUploadError: (v: string | null) => void
 ) {
   if (!editor) return;
   for (const file of files) {
-    try {
-      setUploadError(null);
-      setUploading(true);
-      const res = await uploadFile(file, token ?? undefined);
-      if (!res.success || !res.data) {
-        setUploadError((res as { message?: string }).message ?? 'Upload failed');
-        continue;
-      }
-      const { url, originalName, mimeType } = res.data;
-      if (file.type.startsWith('image/')) {
-        editor.chain().focus().setImage({ src: url, alt: originalName }).run();
-      } else if (file.type.startsWith('video/')) {
-        editor
-          .chain()
-          .focus()
-          .insertContent({
-            type: 'videoBlock',
-            attrs: { url, name: originalName },
-          })
-          .run();
-      } else {
-        editor
-          .chain()
-          .focus()
-          .insertContent({
-            type: 'attachmentBlock',
-            attrs: { url, name: originalName, mimeType },
-          })
-          .run();
-      }
-    } finally {
-      setUploading(false);
+    setUploadError(null);
+    const res = await uploadFile(file, token ?? undefined, { scope: uploadScope });
+    if (res.cancelled) continue;
+    if (!res.success || !res.data) {
+      setUploadError(res.message ?? 'Upload failed');
+      continue;
     }
+    insertUploadedFile(editor, res.data);
   }
 }
 
@@ -78,8 +56,12 @@ export default function TaskCommentBox({
   onCancel,
 }: TaskCommentBoxProps) {
   const { token } = useAuth();
-  const [uploading, setUploading] = useState(false);
+  const uploadScope = useId();
+  const uploads = useUploads(uploadScope);
+  const uploading = uploads.length > 0;
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // Results of an upload can't land anywhere once the editor is gone.
+  useEffect(() => () => cancelScope(uploadScope), [uploadScope]);
   const mentionUsersRef = useRef<Array<{ _id: string; name: string; email: string }>>([]);
   useEffect(() => {
     mentionUsersRef.current = mentionUsers;
@@ -239,14 +221,14 @@ export default function TaskCommentBox({
           const fileArray = getFilesFromDataTransfer(event.dataTransfer);
           if (fileArray.length === 0) return false;
           event.preventDefault();
-          void processCommentEditorFiles(fileArray, editor, token, setUploading, setUploadError);
+          void processCommentEditorFiles(fileArray, editor, token, uploadScope, setUploadError);
           return true;
         },
         handlePaste(_view, event) {
           const fileArray = getFilesFromDataTransfer(event.clipboardData);
           if (fileArray.length === 0) return false;
           event.preventDefault();
-          void processCommentEditorFiles(fileArray, editor, token, setUploading, setUploadError);
+          void processCommentEditorFiles(fileArray, editor, token, uploadScope, setUploadError);
           return true;
         },
       },
@@ -267,15 +249,10 @@ export default function TaskCommentBox({
       if (!input.files || !input.files[0]) return;
       const file = input.files[0];
       setUploadError(null);
-      setUploading(true);
-      const res = await uploadFile(file, token || undefined);
-      setUploading(false);
+      const res = await uploadFile(file, token || undefined, { scope: uploadScope });
+      if (res.cancelled) return;
       if (res.success && res.data) {
-        editor
-          ?.chain()
-          .focus()
-          .setImage({ src: res.data.url, alt: res.data.originalName })
-          .run();
+        insertUploadedFile(editor, res.data);
       } else {
         setUploadError((res as { message?: string }).message ?? 'Image upload failed');
       }
@@ -291,18 +268,10 @@ export default function TaskCommentBox({
       if (!input.files || !input.files[0]) return;
       const file = input.files[0];
       setUploadError(null);
-      setUploading(true);
-      const res = await uploadFile(file, token || undefined);
-      setUploading(false);
+      const res = await uploadFile(file, token || undefined, { scope: uploadScope });
+      if (res.cancelled) return;
       if (res.success && res.data) {
-        editor
-          ?.chain()
-          .focus()
-          .insertContent({
-            type: 'videoBlock',
-            attrs: { url: res.data.url, name: res.data.originalName },
-          })
-          .run();
+        insertUploadedFile(editor, res.data);
       } else {
         setUploadError((res as { message?: string }).message ?? 'Video upload failed');
       }
@@ -317,22 +286,10 @@ export default function TaskCommentBox({
       if (!input.files || !input.files[0]) return;
       const file = input.files[0];
       setUploadError(null);
-      setUploading(true);
-      const res = await uploadFile(file, token || undefined);
-      setUploading(false);
+      const res = await uploadFile(file, token || undefined, { scope: uploadScope });
+      if (res.cancelled) return;
       if (res.success && res.data) {
-        editor
-          ?.chain()
-          .focus()
-          .insertContent({
-            type: 'attachmentBlock',
-            attrs: {
-              url: res.data.url,
-              name: res.data.originalName,
-              mimeType: res.data.mimeType,
-            },
-          })
-          .run();
+        insertUploadedFile(editor, res.data);
       } else {
         setUploadError((res as { message?: string }).message ?? 'File upload failed');
       }
@@ -480,6 +437,7 @@ export default function TaskCommentBox({
           </button>
         </BubbleMenu>
       )}
+      <UploadProgressList uploads={uploads} />
       <div className="px-4 py-2 border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] flex items-center justify-end gap-2">
         <button
           type="button"
@@ -494,7 +452,9 @@ export default function TaskCommentBox({
           disabled={submitting || uploading || !editor || isEditorHtmlEmpty(editor.getHTML())}
           className="px-3 py-1.5 rounded-md bg-[color:var(--accent)] text-xs text-white hover:opacity-95 disabled:opacity-60 disabled:bg-[color:var(--bg-elevated)] disabled:text-[color:var(--text-muted)] disabled:cursor-not-allowed transition-colors"
         >
-          {submitting || uploading
+          {uploading
+            ? 'Uploading…'
+            : submitting
             ? submitLabel === 'Comment'
               ? 'Sending…'
               : 'Saving…'

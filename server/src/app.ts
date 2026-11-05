@@ -47,6 +47,8 @@ app.use(
       }
       return cb(new Error(`CORS blocked for origin: ${origin}`));
     },
+    // Only the upload session cookie relies on this; the API itself uses bearer tokens.
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Organization-Id', 'X-Monitor-Key', 'Mcp-Session-Id', 'Mcp-Protocol-Version'],
   })

@@ -2,6 +2,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import DOMPurify from 'dompurify';
 import { resolveMediaUrl } from '../../lib/mediaUrls';
+import { videoImagesToBlocks } from '../../lib/videoFiles';
 import { isHtmlStored } from '../../lib/richTextStorage';
 import { VideoEmbed } from '../issue/VideoEmbed';
 import { AttachmentDownloadLinks } from '../attachment/AttachmentDownloadLinks';
@@ -54,7 +55,7 @@ function splitHtmlSegments(
   | { type: 'video'; url: string }
   | { type: 'attachment'; url: string; name: string; mimeType: string }
 )[] {
-  const afterVideo = splitHtmlByVideoBlocks(html);
+  const afterVideo = splitHtmlByVideoBlocks(videoImagesToBlocks(html));
   const merged: (
     | { type: 'html'; html: string }
     | { type: 'video'; url: string }

@@ -4,6 +4,7 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getFilesFromDataTransfer } from '../../lib/clipboardFiles';
 import { uploadFile } from '../../lib/api';
+import { insertUploadedFile } from '../richText/insertUploadedFile';
 import { baseEditorExtensions, editorContentClass } from '../richText/richTextEditorExtensions';
 import { VideoBlock, AttachmentBlock } from '../richText/richTextCustomNodes';
 import { contentToEditorHtml } from '../../lib/richTextStorage';
@@ -14,7 +15,7 @@ async function insertImages(editor: Editor | null, files: File[], token: string 
   if (!editor) return;
   for (const file of files) {
     const res = await uploadFile(file, token ?? undefined);
-    if (res.success && res.data) editor.chain().focus().setImage({ src: res.data.url, alt: res.data.originalName }).run();
+    if (res.success && res.data) insertUploadedFile(editor, res.data);
   }
 }
 
@@ -80,13 +81,7 @@ export default function DocEditor({ value, onChange, placeholder, stickyTop = 0 
   const onPickFile = () =>
     pick('video/*,.pdf,.xlsx,.xls,.docx,.doc,.pptx,.csv,.zip', async (file) => {
       const res = await uploadFile(file, token ?? undefined);
-      if (!res.success || !res.data) return;
-      const { url, originalName, mimeType } = res.data;
-      editor
-        ?.chain()
-        .focus()
-        .insertContent(file.type.startsWith('video/') ? { type: 'videoBlock', attrs: { url, name: originalName } } : { type: 'attachmentBlock', attrs: { url, name: originalName, mimeType } })
-        .run();
+      if (res.success && res.data) insertUploadedFile(editor, res.data);
     });
 
   return (

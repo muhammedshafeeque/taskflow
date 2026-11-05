@@ -15,7 +15,10 @@ export function AttachmentDownloadLinks({
   async function handleDownloadClick(e: MouseEvent<HTMLAnchorElement>) {
     e.preventDefault();
     try {
-      const res = await fetch(href, { cache: 'no-store' });
+      const res = await fetch(href, {
+        cache: 'no-store',
+        credentials: href.includes('/api/uploads/') ? 'include' : 'same-origin',
+      });
       if (!res.ok) throw new Error(`Download failed: ${res.status}`);
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);

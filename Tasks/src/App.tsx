@@ -211,6 +211,7 @@ import MonitorTelemetry from './pages/monitor/MonitorTelemetry';
 import MonitorAlerts from './pages/monitor/MonitorAlerts';
 import PublicSign from './pages/PublicSign';
 import { I18nProvider } from './i18n/I18nProvider';
+import { UploadProgressTray } from './components/attachment/UploadProgress';
 
 function PortalResetPasswordRedirect() {
   const [params] = useSearchParams();
@@ -560,6 +561,7 @@ function AppWithNotifications() {
       <MonitorInstrumentation />
       <AppDisplayTitle />
       <AppRoutes />
+      <UploadProgressTray />
     </NotificationsProvider>
   );
 }

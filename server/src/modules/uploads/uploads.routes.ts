@@ -9,6 +9,7 @@ import { ApiError } from '../../utils/ApiError';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { isAllowedType, MAX_UPLOAD_BYTES, PUBLIC_INLINE_EXT } from './fileValidation';
 import { saveUpload, sendStoredFile } from './files.service';
+import { clearUploadSession, hasUploadSession, setUploadSession } from './uploadSession';
 
 function staffOrCustomerAuth(req: Request, res: Response, next: NextFunction): void {
   // The PA authenticates with the internal key (handled inside authMiddleware).
@@ -46,11 +47,22 @@ const upload = multer({
   },
 });
 
+/** Lets this browser load uploads through <video> and plain links; see uploadSession.ts. */
+router.post('/session', staffOrCustomerAuth, (req: Request, res: Response) => {
+  setUploadSession(req, res);
+  res.status(204).end();
+});
+
+router.delete('/session', (req: Request, res: Response) => {
+  clearUploadSession(req, res);
+  res.status(204).end();
+});
+
 /** Public read for raster images only (needed by <img>); everything else requires auth. */
 router.get('/:filename', (req: Request, res: Response, next: NextFunction) => {
   const filename = path.basename(String(req.params.filename ?? ''));
-  const serve = () => sendStoredFile(res, filename).catch(next);
-  if (PUBLIC_INLINE_EXT.has(path.extname(filename).toLowerCase())) {
+  const serve = () => sendStoredFile(res, filename, undefined, req.headers.range).catch(next);
+  if (PUBLIC_INLINE_EXT.has(path.extname(filename).toLowerCase()) || hasUploadSession(req)) {
     void serve();
     return;
   }
