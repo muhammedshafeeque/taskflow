@@ -68,6 +68,7 @@ describe('sendStoredFile ranges', () => {
       name: 's3',
       put: async () => {},
       remove: async () => {},
+      head: async () => ({ size: BODY.length, contentType: 'video/mp4' }),
       get: async () => ({
         // Small chunks so ranges have to cross chunk boundaries.
         stream: Readable.from([BODY.subarray(0, 3), BODY.subarray(3, 7), BODY.subarray(7)]),

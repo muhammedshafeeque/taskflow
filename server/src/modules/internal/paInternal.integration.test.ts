@@ -53,6 +53,10 @@ function memoryStorage(): StorageDriver & { objects: Map<string, Buffer> } {
     async put(key, body) {
       objects.set(key, body);
     },
+    async head(key) {
+      const body = objects.get(key);
+      return body ? { size: body.length } : null;
+    },
     async get(key) {
       const body = objects.get(key);
       if (!body) return null;

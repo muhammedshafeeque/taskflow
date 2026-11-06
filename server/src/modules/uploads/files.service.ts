@@ -3,7 +3,7 @@ import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import type { Response } from 'express';
 import { ApiError } from '../../utils/ApiError';
-import { getStorage, readStoredObject } from '../../services/storage';
+import { getStorage, locateStoredObject } from '../../services/storage';
 import {
   isAllowedType,
   isServableKey,
@@ -51,7 +51,7 @@ function parseRange(header: string | undefined, size: number): { start: number; 
   return range.start > range.end || size === 0 ? 'unsatisfiable' : range;
 }
 
-/** Works for every storage driver; seeks cost a read from the start, fine at the upload size cap. */
+/** Fallback when a driver returns the whole object for a range request. */
 async function* sliceStream(source: Readable, start: number, end: number): AsyncGenerator<Buffer> {
   let position = 0;
   for await (const value of source) {
@@ -68,31 +68,32 @@ async function* sliceStream(source: Readable, start: number, end: number): Async
 export async function sendStoredFile(res: Response, key: string, downloadName?: string, rangeHeader?: string): Promise<void> {
   if (!key || key.includes('..') || key !== path.basename(key)) throw new ApiError(400, 'Invalid filename');
   if (!isServableKey(key)) throw new ApiError(403, 'File type blocked');
-  const obj = await readStoredObject(key);
-  if (!obj) throw new ApiError(404, 'Not found');
+  const located = await locateStoredObject(key);
+  if (!located) throw new ApiError(404, 'Not found');
   const ext = path.extname(key).toLowerCase();
   const inline = PUBLIC_INLINE_EXT.has(ext) || ext === '.pdf' || ext === '.mp4' || ext === '.webm';
   const name = (downloadName || key).replace(/["\r\n]/g, '');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cache-Control', 'private, max-age=3600');
   res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${name}"`);
-  res.type(obj.contentType || ext);
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.type(located.stat.contentType || ext);
 
-  const range = obj.size !== undefined ? parseRange(rangeHeader, obj.size) : null;
+  const range = parseRange(rangeHeader, located.stat.size);
   if (range === 'unsatisfiable') {
-    obj.stream.destroy();
-    res.status(416).setHeader('Content-Range', `bytes */${obj.size}`).end();
+    res.status(416).setHeader('Content-Range', `bytes */${located.stat.size}`).end();
     return;
   }
-  if (obj.size !== undefined) res.setHeader('Accept-Ranges', 'bytes');
+  const obj = await located.driver.get(key, range ?? undefined);
+  if (!obj) throw new ApiError(404, 'Not found');
   if (range) {
     res.status(206);
-    res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${obj.size}`);
+    res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${located.stat.size}`);
     res.setHeader('Content-Length', String(range.end - range.start + 1));
-  } else if (obj.size !== undefined) {
-    res.setHeader('Content-Length', String(obj.size));
+  } else {
+    res.setHeader('Content-Length', String(located.stat.size));
   }
-  const body = range ? Readable.from(sliceStream(obj.stream, range.start, range.end)) : obj.stream;
+  const body = range && !obj.ranged ? Readable.from(sliceStream(obj.stream, range.start, range.end)) : obj.stream;
   try {
     await pipeline(body, res);
   } catch (err) {

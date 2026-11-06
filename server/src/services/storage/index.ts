@@ -41,11 +41,25 @@ export function getStorage(): StorageDriver {
  * backend are still served from local disk.
  */
 export async function readStoredObject(key: string): Promise<StoredObject | null> {
+  const located = await locateStoredObject(key);
+  if (!located) return null;
+  return located.driver.get(key);
+}
+
+/** Find which backend holds `key`, without opening the body. */
+export async function locateStoredObject(key: string): Promise<{ driver: StorageDriver; stat: { size: number; contentType?: string } } | null> {
   const storage = getStorage();
-  const hit = await storage.get(key);
-  if (hit || storage.name === 'local') return hit;
-  localFallback ??= createLocalStorageDriver();
-  return localFallback.get(key);
+  const drivers: StorageDriver[] = [storage];
+  if (storage.name !== 'local') {
+    localFallback ??= createLocalStorageDriver();
+    drivers.push(localFallback);
+  }
+  for (const driver of drivers) {
+    if (!driver.head) continue;
+    const stat = await driver.head(key);
+    if (stat) return { driver, stat };
+  }
+  return null;
 }
 
 /** Tests: swap the backend (null restores env-based selection). */

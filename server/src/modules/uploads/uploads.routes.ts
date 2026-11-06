@@ -1,4 +1,4 @@
-import { Router, type Request, type Response, type NextFunction } from 'express';
+import express, { Router, type Request, type Response, type NextFunction } from 'express';
 import multer from 'multer';
 import path from 'path';
 import jwt from 'jsonwebtoken';
@@ -10,6 +10,7 @@ import { asyncHandler } from '../../utils/asyncHandler';
 import { isAllowedType, MAX_UPLOAD_BYTES, PUBLIC_INLINE_EXT } from './fileValidation';
 import { saveUpload, sendStoredFile } from './files.service';
 import { clearUploadSession, hasUploadSession, setUploadSession } from './uploadSession';
+import { largeUploads } from './largeUpload.service';
 
 function staffOrCustomerAuth(req: Request, res: Response, next: NextFunction): void {
   // The PA authenticates with the internal key (handled inside authMiddleware).
@@ -32,7 +33,70 @@ function staffOrCustomerAuth(req: Request, res: Response, next: NextFunction): v
   void authMiddleware(req, res, next);
 }
 
+function actorId(req: Request): string {
+  return req.user?.id || req.customerUser?.id || '';
+}
+
 const router = Router();
+
+const rawChunkBody = express.raw({ type: 'application/octet-stream', limit: 32 * 1024 * 1024 });
+function rawChunk(req: Request, res: Response, next: NextFunction) {
+  rawChunkBody(req, res, (err: unknown) => {
+    if ((err as { type?: string } | undefined)?.type === 'entity.too.large') {
+      next(new ApiError(413, 'Chunk is too large'));
+      return;
+    }
+    next(err);
+  });
+}
+
+/** Files above 50 MB. Each chunk stays small enough for a default 1 MB nginx limit. */
+router.post(
+  '/large',
+  staffOrCustomerAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { originalName?: string; mimeType?: string; size?: number };
+    const data = await largeUploads().start(actorId(req), {
+      originalName: String(body.originalName ?? ''),
+      mimeType: String(body.mimeType ?? ''),
+      size: Number(body.size),
+    });
+    res.status(201).json({ success: true, data });
+  })
+);
+
+router.put(
+  '/large/:id',
+  staffOrCustomerAuth,
+  rawChunk,
+  asyncHandler(async (req: Request, res: Response) => {
+    const chunk = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const data = await largeUploads().write(actorId(req), String(req.params.id), req.header('content-range'), chunk);
+    res.json({ success: true, data });
+  })
+);
+
+router.post(
+  '/large/:id/complete',
+  staffOrCustomerAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const saved = await largeUploads().complete(actorId(req), String(req.params.id));
+    res.status(201).json({
+      success: true,
+      data: { url: saved.url, originalName: saved.originalName, mimeType: saved.mimeType, size: saved.size },
+    });
+  })
+);
+
+router.delete(
+  '/large/:id',
+  staffOrCustomerAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    await largeUploads().abort(actorId(req), String(req.params.id));
+    res.status(204).end();
+  })
+);
+
 
 // Buffered so the bytes can be sniffed before they reach any storage backend.
 const upload = multer({

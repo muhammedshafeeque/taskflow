@@ -37,6 +37,15 @@ describe('local storage driver', () => {
     await roundTrip(createLocalStorageDriver(dir));
   });
 
+  it('serves a byte range from that offset', async () => {
+    const driver = createLocalStorageDriver(dir);
+    await driver.put('clip.txt', Buffer.from('abcdefghij'), 'text/plain');
+    const got = await driver.get('clip.txt', { start: 3, end: 5 });
+    expect(got?.ranged).toBe(true);
+    expect(got?.size).toBe(10);
+    expect(await readAll(got!.stream)).toEqual(Buffer.from('def'));
+  });
+
   it('never escapes its folder', async () => {
     const driver = createLocalStorageDriver(dir);
     await driver.put('../../escape.txt', Buffer.from('x'), 'text/plain');

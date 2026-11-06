@@ -203,13 +203,142 @@ async function sendUpload(file: File, token: string | undefined, upload: UploadH
   return { success: false, message: (json as ApiResponse).message || fallback };
 }
 
+/** Above this, the file is sent in chunks so a multi-gigabyte body never sits in API memory. */
+const DIRECT_UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
+
+const EXT_MIME: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  pdf: 'application/pdf',
+  txt: 'text/plain',
+  csv: 'text/csv',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  zip: 'application/zip',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+};
+
+function uploadMime(file: File): string {
+  if (file.type && file.type !== 'application/octet-stream') return file.type;
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  return EXT_MIME[ext] || file.type || 'application/octet-stream';
+}
+
+function putChunk(
+  id: string,
+  blob: Blob,
+  start: number,
+  end: number,
+  total: number,
+  token: string | undefined,
+  upload: UploadHandle
+): Promise<{ status: number; json: unknown }> {
+  return new Promise((resolve) => {
+    if (upload.signal.aborted) {
+      resolve({ status: 0, json: {} });
+      return;
+    }
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', `${API_BASE}/uploads/large/${id}`);
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.setRequestHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+    for (const [name, value] of Object.entries(taskflowOrgHeaders())) xhr.setRequestHeader(name, value);
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) upload.progress((start + e.loaded) / total);
+    };
+    xhr.onload = () => {
+      let json: unknown = {};
+      try {
+        json = JSON.parse(xhr.responseText);
+      } catch {
+        /* proxy error page */
+      }
+      resolve({ status: xhr.status, json });
+    };
+    xhr.onerror = () => resolve({ status: 0, json: {} });
+    xhr.onabort = () => resolve({ status: 0, json: {} });
+    upload.signal.addEventListener('abort', () => xhr.abort(), { once: true });
+    xhr.send(blob);
+  });
+}
+
+async function sendChunkedUpload(file: File, token: string | undefined, upload: UploadHandle): Promise<UploadResponse> {
+  let access = token;
+  const started = await api.post<{ id: string; chunkSize: number }>(
+    '/uploads/large',
+    { originalName: file.name, mimeType: uploadMime(file), size: file.size },
+    access
+  );
+  if (!started.success || !started.data) {
+    return { success: false, message: started.message || 'Could not start the upload' };
+  }
+  const { id, chunkSize } = started.data;
+  const fail = async (message: string): Promise<UploadResponse> => {
+    if (access) await api.delete(`/uploads/large/${id}`, access);
+    return { success: false, message };
+  };
+
+  for (let offset = 0; offset < file.size; ) {
+    if (upload.signal.aborted) {
+      if (access) await api.delete(`/uploads/large/${id}`, access);
+      return { success: false, cancelled: true, message: 'Upload cancelled' };
+    }
+    const end = Math.min(offset + chunkSize, file.size) - 1;
+    let attempt = 0;
+    let done = false;
+    while (!done) {
+      const res = await putChunk(id, file.slice(offset, end + 1), offset, end, file.size, access, upload);
+      if (upload.signal.aborted) {
+        if (access) await api.delete(`/uploads/large/${id}`, access);
+        return { success: false, cancelled: true, message: 'Upload cancelled' };
+      }
+      if (res.status === 401 && access && attempt === 0) {
+        const next = await tryRefreshAccessToken();
+        if (next) {
+          access = next;
+          attempt += 1;
+          continue;
+        }
+      }
+      if (res.status >= 200 && res.status < 300) {
+        done = true;
+        break;
+      }
+      if ((res.status === 0 || res.status >= 500) && attempt < 2) {
+        attempt += 1;
+        continue;
+      }
+      const message = (res.json as ApiResponse).message || (res.status === 413 ? 'File is too large' : 'Upload failed');
+      return fail(message);
+    }
+    offset = end + 1;
+  }
+
+  upload.processing();
+  const finished = await api.post<UploadedFile>(`/uploads/large/${id}/complete`, {}, access);
+  if (!finished.success || !finished.data) return fail(finished.message || 'Upload failed');
+  return { success: true, data: finished.data };
+}
+
 /**
  * Upload progress is published to the upload tracker, so every caller gets a bar in the
  * global tray. Pass `scope` to show it inside a component instead (see useUploads).
  */
 export async function uploadFile(file: File, token?: string, options: { scope?: string } = {}): Promise<UploadResponse> {
   const upload = startUpload(file, options.scope);
-  const res = await sendUpload(file, token, upload);
+  const res =
+    file.size > DIRECT_UPLOAD_MAX_BYTES
+      ? await sendChunkedUpload(file, token, upload)
+      : await sendUpload(file, token, upload);
   if (res.success || res.cancelled) upload.done();
   else upload.fail(res.message ?? 'Upload failed');
   return res;
