@@ -15,8 +15,10 @@
     "seed-org-customer-roles": "ts-node -r tsconfig-paths/register -r dotenv/config src/scripts/seed.ts --role-templates",
     "migrate-permissions-to-dot": "ts-node -r tsconfig-paths/register -r dotenv/config src/scripts/migrate-permissions-to-dot.ts",
     "import-ado": "ts-node -r dotenv/config src/scripts/import-azure-devops.ts",
-    "prebuild": "npm test",
-    "test": "jest --passWithNoTests",
+    "prebuild": "npm run test:unit",
+    "test": "jest --passWithNoTests --maxWorkers=2",
+    "test:unit": "jest --passWithNoTests --testPathIgnorePatterns=\"\\.integration\\.test\\.ts$\"",
+    "test:integration": "jest --passWithNoTests --maxWorkers=2 --testPathPatterns=\"\\.integration\\.test\\.ts$\"",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage --passWithNoTests"
   },
