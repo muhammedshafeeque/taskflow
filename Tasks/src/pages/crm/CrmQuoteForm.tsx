@@ -74,9 +74,9 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function addDaysIso(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
+function addDaysIso(days: number, fromIso?: string): string {
+  const d = fromIso ? new Date(`${fromIso}T00:00:00Z`) : new Date();
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
@@ -151,6 +151,7 @@ export default function CrmQuoteForm() {
     title: '',
     currency: 'USD',
     notes: '',
+    issueDate: todayIso(),
     validUntil: '',
     discountPercent: 0,
     taxCode: '',
@@ -280,6 +281,7 @@ export default function CrmQuoteForm() {
           title: q.title ?? '',
           currency: q.currency || 'USD',
           notes: q.notes ?? '',
+          issueDate: String(q.issueDate ?? q.createdAt ?? todayIso()).slice(0, 10),
           validUntil: q.validUntil ? String(q.validUntil).slice(0, 10) : '',
           discountPercent: q.discountPercent ?? 0,
           taxCode: q.taxCode ?? '',
@@ -408,6 +410,7 @@ export default function CrmQuoteForm() {
       title: form.title.trim() || undefined,
       currency: form.currency,
       notes: form.notes.trim() || undefined,
+      issueDate: form.issueDate || undefined,
       validUntil: form.validUntil || undefined,
       discountPercent: form.discountPercent,
       taxCode: form.taxCode || undefined,
@@ -677,10 +680,20 @@ export default function CrmQuoteForm() {
                     onChange={(code) => setForm((f) => ({ ...f, currency: code }))}
                   />
                 </label>
+                <label className="block">
+                  <span className={labelClass}>Issue date</span>
+                  <input
+                    type="date"
+                    value={form.issueDate}
+                    onChange={(e) => setForm((f) => ({ ...f, issueDate: e.target.value }))}
+                    className={inputClass}
+                  />
+                </label>
                 <div className="block">
                   <span className={labelClass}>Valid until</span>
                   <input
                     type="date"
+                    min={form.issueDate || undefined}
                     value={form.validUntil}
                     onChange={(e) => setForm((f) => ({ ...f, validUntil: e.target.value }))}
                     className={inputClass}
@@ -690,7 +703,7 @@ export default function CrmQuoteForm() {
                       <button
                         key={d}
                         type="button"
-                        onClick={() => setForm((f) => ({ ...f, validUntil: addDaysIso(d) }))}
+                        onClick={() => setForm((f) => ({ ...f, validUntil: addDaysIso(d, f.issueDate || undefined) }))}
                         className="text-[11px] px-2 py-0.5 rounded-md border border-[color:var(--border-subtle)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:border-[color:var(--accent)]"
                       >
                         +{d}d

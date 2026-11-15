@@ -223,6 +223,40 @@ function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
+/** Who is listing issues: their active workspace and whether they hold global project access. */
+export interface IssueListScope {
+  organizationId?: string;
+  /** Global project admin (see hasProjectFullAccess): may name any project in the workspace. */
+  fullProjectAccess?: boolean;
+}
+
+/**
+ * Projects whose issues a user may list. By default their memberships, limited to the active workspace so a
+ * user in several workspaces never gets another workspace's issues (whose ids the API would then refuse).
+ * When `requested` names projects, only the ones the user may read are kept: their memberships, or any
+ * project in the workspace for global project admins.
+ */
+export async function listableProjectIds(
+  userId: string,
+  scope: IssueListScope = {},
+  requested: string[] = []
+): Promise<mongoose.Types.ObjectId[]> {
+  const orgFilter = scope.organizationId && mongoose.Types.ObjectId.isValid(scope.organizationId)
+    ? { taskflowOrganizationId: new mongoose.Types.ObjectId(scope.organizationId) }
+    : {};
+  const wanted = requested.filter((id) => mongoose.Types.ObjectId.isValid(id)).map((id) => new mongoose.Types.ObjectId(id));
+  if (requested.length && scope.fullProjectAccess) {
+    return Project.find({ _id: { $in: wanted }, ...orgFilter }).distinct('_id') as Promise<mongoose.Types.ObjectId[]>;
+  }
+  const userObjectId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+  const memberIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
+  if (!memberIds.length) return [];
+  const candidates = requested.length ? wanted.filter((id) => memberIds.some((m) => String(m) === String(id))) : memberIds;
+  if (!candidates.length) return [];
+  if (!orgFilter.taskflowOrganizationId) return candidates as mongoose.Types.ObjectId[];
+  return Project.find({ _id: { $in: candidates }, ...orgFilter }).distinct('_id') as Promise<mongoose.Types.ObjectId[]>;
+}
+
 function endOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
 }
@@ -230,7 +264,8 @@ function endOfDay(d: Date): Date {
 export async function findAll(
   filters: ListIssuesFilters = {},
   pagination: PaginationOptions = { page: 1, limit: 20 },
-  userId?: string
+  userId?: string,
+  scope: IssueListScope = {}
 ): Promise<PaginatedResult<unknown>> {
   const { page, limit } = pagination;
   const skip = (page - 1) * limit;
@@ -241,15 +276,17 @@ export async function findAll(
     if (Array.isArray(v)) return v.filter(Boolean);
     return v.split(',').map((s) => s.trim()).filter(Boolean);
   };
-  const projectArr = toArr(filters.project);
-  if (projectArr.length > 0) {
-    filter.project = projectArr.length === 1 ? projectArr[0] : { $in: projectArr };
-  } else if (userId) {
-    const projectIds = await ProjectMember.find({ user: userId }).distinct('project');
+  let projectArr = toArr(filters.project);
+  if (userId) {
+    // Named projects are narrowed to the ones this user may read; otherwise every project they are on here.
+    const projectIds = await listableProjectIds(userId, scope, projectArr);
     if (projectIds.length === 0) {
       return { data: [], total: 0, page, limit, totalPages: 0 };
     }
+    if (projectArr.length) projectArr = projectIds.map(String);
     filter.project = projectIds.length === 1 ? projectIds[0] : { $in: projectIds };
+  } else if (projectArr.length > 0) {
+    filter.project = projectArr.length === 1 ? projectArr[0] : { $in: projectArr };
   }
   const statusArr = toArr(filters.status);
   let statusExcludeArr = toArr(filters.statusExclude);
@@ -1147,14 +1184,14 @@ export interface SearchGlobalOptions {
   page?: number;
   limit?: number;
   excludeIssueId?: string;
+  scope?: IssueListScope;
 }
 
 export async function searchGlobal(
   opts: SearchGlobalOptions
 ): Promise<PaginatedResult<unknown>> {
   const { userId, q, page = 1, limit = 10, excludeIssueId } = opts;
-  const userObjectId = new mongoose.Types.ObjectId(userId);
-  const projectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
+  const projectIds = await listableProjectIds(userId, opts.scope);
   if (projectIds.length === 0) {
     return { data: [], total: 0, page, limit, totalPages: 0 };
   }
@@ -1236,6 +1273,7 @@ export interface FindByJqlOptions {
   userId: string;
   page?: number;
   limit?: number;
+  scope?: IssueListScope;
 }
 
 /**
@@ -1286,8 +1324,7 @@ async function resolveJqlProjects(
 
 export async function findByJql(opts: FindByJqlOptions): Promise<PaginatedResult<unknown>> {
   const { jql, userId, page = 1, limit = 20 } = opts;
-  const userObjectId = new mongoose.Types.ObjectId(userId);
-  const projectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
+  const projectIds = await listableProjectIds(userId, opts.scope);
   if (projectIds.length === 0) {
     return { data: [], total: 0, page, limit, totalPages: 0 };
   }
@@ -1355,24 +1392,17 @@ async function aggregateIssueLabelCounts(match: Record<string, unknown>): Promis
 
 async function buildQuickFilterScope(
   userId: string,
-  projectId?: string
+  projectId?: string,
+  scope: IssueListScope = {}
 ): Promise<{ projectFilter: Record<string, unknown>; notClosedFilter: Record<string, unknown> } | null> {
-  const userObjectId = new mongoose.Types.ObjectId(userId);
-  let projectFilter: Record<string, unknown> = {};
-
-  if (projectId) {
-    projectFilter.project = projectId;
-  } else {
-    const projectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
-    if (projectIds.length === 0) return null;
-    projectFilter.project = { $in: projectIds };
-  }
+  const projectIds = await listableProjectIds(userId, scope, projectId ? [projectId] : []);
+  if (projectIds.length === 0) return null;
+  const projectFilter: Record<string, unknown> = { project: projectId ? projectIds[0] : { $in: projectIds } };
 
   let closedStatuses: string[] = [];
   if (projectId) {
     closedStatuses = await getClosedStatusNamesForProject(projectId);
   } else {
-    const projectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
     const projects = await Project.find({ _id: { $in: projectIds } }).select('statuses').lean();
     const fromDb = new Set<string>();
     for (const p of projects) {
@@ -1396,8 +1426,8 @@ async function buildQuickFilterScope(
   return { projectFilter, notClosedFilter };
 }
 
-export async function getQuickFilterCounts(userId: string, projectId?: string): Promise<QuickFilterCountsResult> {
-  const scope = await buildQuickFilterScope(userId, projectId);
+export async function getQuickFilterCounts(userId: string, projectId?: string, listScope: IssueListScope = {}): Promise<QuickFilterCountsResult> {
+  const scope = await buildQuickFilterScope(userId, projectId, listScope);
   if (!scope) return { my: 0, open: 0, all: 0, myOpenLabels: [], openLabels: [], allLabels: [] };
 
   const { projectFilter, notClosedFilter } = scope;

@@ -39,6 +39,11 @@ const MEMBER_PERMS = [
   'issue.comment.create',
   'issue.comment.read',
   'project.project.read',
+  // As in the default "Project Member" designation: sprint and board routes check these.
+  'sprint.sprint.read',
+  'sprint.sprint.update',
+  'board.board.read',
+  'board.board.update',
 ];
 
 let rpcId = 0;

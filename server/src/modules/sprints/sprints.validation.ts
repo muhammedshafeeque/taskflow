@@ -6,7 +6,8 @@ export const createSprintSchema = z.object({
   body: z.object({
     name: z.string().min(1),
     project: z.string().min(1),
-    board: z.string().min(1),
+    /** Scrum board of the project; omitted → the project's Scrum board (created if it has none). */
+    board: z.string().min(1).optional(),
     startDate: z.union([z.string(), z.date()]).optional(),
     endDate: z.union([z.string(), z.date()]).optional(),
     status: sprintStatusEnum.optional(),
@@ -16,6 +17,8 @@ export const createSprintSchema = z.object({
 export const updateSprintSchema = z.object({
   body: z.object({
     name: z.string().min(1).optional(),
+    /** Move the sprint to another Scrum board of the same project. */
+    board: z.string().min(1).optional(),
     startDate: z.union([z.string(), z.date()]).optional(),
     endDate: z.union([z.string(), z.date()]).optional(),
     status: sprintStatusEnum.optional(),

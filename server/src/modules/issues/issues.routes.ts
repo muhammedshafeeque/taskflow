@@ -35,6 +35,7 @@ import {
 import { asyncHandler } from '../../utils/asyncHandler';
 import { PROJECT_PERMISSIONS } from '../../shared/constants/permissions';
 import { requireIssuePermission, requireProjectPermissionFromBody } from '../../middleware/requireIssuePermission';
+import { requireProjectPermission } from '../../middleware/requireProjectPermission';
 import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import {
   listStageEstimates,
@@ -53,10 +54,10 @@ router.use(requireTaskflowUser);
 
 router.get('/', asyncHandler(getIssues));
 router.get('/quick-filters/counts', asyncHandler(getQuickFilterCounts));
-router.get('/search', searchIssuesQueryHandler, asyncHandler(searchIssues));
+router.get('/search', searchIssuesQueryHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.ISSUE.READ, { query: 'project' }), asyncHandler(searchIssues));
 router.get('/jql', ...jqlQueryHandler, asyncHandler(searchByJql));
 router.get('/search-global', ...searchGlobalQueryHandler);
-router.get('/by-key', byKeyQueryHandler, asyncHandler(getIssueByKey));
+router.get('/by-key', byKeyQueryHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.ISSUE.READ, { query: 'project' }), asyncHandler(getIssueByKey));
 router.get('/export', ...exportIssuesHandler);
 router.get('/watching-status', asyncHandler(getWatchingStatusBatch));
 router.post('/', requireProjectPermissionFromBody(PROJECT_PERMISSIONS.ISSUE.ISSUE.CREATE), ...createIssueHandler);

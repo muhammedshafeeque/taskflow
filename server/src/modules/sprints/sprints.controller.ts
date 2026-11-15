@@ -8,6 +8,7 @@ import {
 } from './sprints.validation';
 import * as sprintsService from './sprints.service';
 import { ApiError } from '../../utils/ApiError';
+import { listableProjectIds } from '../issues/issues.service';
 
 export async function createSprint(req: Request, res: Response): Promise<void> {
   const sprint = await sprintsService.create(req.body);
@@ -17,13 +18,14 @@ export async function createSprint(req: Request, res: Response): Promise<void> {
 export async function getSprints(req: Request, res: Response): Promise<void> {
   const page = parseInt(String(req.query.page), 10) || 1;
   const limit = Math.min(parseInt(String(req.query.limit), 10) || 20, 100);
-  const projectId = req.query.project as string | undefined;
-  const boardId = req.query.board as string | undefined;
-  const status = req.query.status as string | undefined;
-  const result = await sprintsService.findAll(
-    { projectId, boardId, status },
-    { page, limit }
-  );
+  const projectId = req.query.project ? String(req.query.project) : undefined;
+  const boardId = req.query.board ? String(req.query.board) : undefined;
+  const status = req.query.status ? String(req.query.status) : undefined;
+  // With a project the route has checked sprint access; otherwise only the user's projects in this workspace.
+  const scope = projectId
+    ? { projectId }
+    : { projectIds: await listableProjectIds(req.user!.id, { organizationId: req.activeOrganizationId }) };
+  const result = await sprintsService.findAll({ ...scope, boardId, status }, { page, limit });
   res.status(200).json({ success: true, data: result });
 }
 
@@ -53,7 +55,8 @@ export async function completeSprint(req: Request, res: Response): Promise<void>
 
 export async function getCompletionPreview(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
-  const projectId = req.query.project as string;
+  // The sprint's own project (checked by the route); a `project` query is accepted for older clients.
+  const projectId = (req as Request & { resolvedProjectId?: string }).resolvedProjectId ?? String(req.query.project ?? '');
   if (!projectId) throw new ApiError(400, 'Project ID is required');
   const data = await sprintsService.getCompletionPreview(id, projectId);
   res.status(200).json({ success: true, data });

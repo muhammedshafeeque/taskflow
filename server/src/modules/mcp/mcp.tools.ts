@@ -4,6 +4,8 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { htmlToText } from '../docs/docPages.service';
 import { AtriumApi, AtriumApiError } from './mcp.api';
 import { catalogFor, isBlockedPath, matchEntry, type CatalogEntry } from './apiCatalog';
+import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
+import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 
 /** Who the MCP session acts as. Everything else is fetched through the API with their token. */
 export interface McpContext {
@@ -97,23 +99,48 @@ function run<A>(fn: (args: A) => Promise<unknown>) {
   };
 }
 
+type ProjectRow = { _id: string; key: string; name: string; description?: string; status?: string; lead?: Ref };
+
+/** Every project the user is on in the active workspace (the API pages at most 100 at a time). */
+async function allProjects(api: AtriumApi, max = 2000): Promise<{ total: number; data: ProjectRow[] }> {
+  const data: ProjectRow[] = [];
+  let total = 0;
+  for (let page = 1; data.length < max; page += 1) {
+    const res = await api.get<Paginated<ProjectRow>>('/projects', { page, limit: 100 });
+    total = res.total;
+    data.push(...res.data);
+    if (page >= res.totalPages || !res.data.length) break;
+  }
+  return { total, data };
+}
+
 /** Accepts a project id or key and returns the id, using only projects the user can see. */
 async function resolveProject(api: AtriumApi, idOrKey: string) {
   if (OBJECT_ID.test(idOrKey)) return idOrKey;
-  const page = await api.get<Paginated<{ _id: string; key: string; name: string }>>('/projects', { page: 1, limit: 200 });
-  const hit = page.data.find((p) => p.key.toLowerCase() === idOrKey.toLowerCase() || p.name.toLowerCase() === idOrKey.toLowerCase());
+  const wanted = idOrKey.trim().toLowerCase();
+  const { data } = await allProjects(api);
+  const hit = data.find((p) => p.key.toLowerCase() === wanted) ?? data.find((p) => p.name.toLowerCase() === wanted);
   if (!hit) throw new Error(`No project "${idOrKey}" among the projects you can access. Use list_projects to see them.`);
   return hit._id;
 }
 
 /** Accepts an issue id or key (e.g. APP-12) and returns the issue id. */
 async function resolveIssue(api: AtriumApi, idOrKey: string) {
-  if (OBJECT_ID.test(idOrKey)) return idOrKey;
-  if (!ISSUE_KEY.test(idOrKey)) throw new Error('Give an issue key like APP-12 or an issue id');
-  const found = await api.get<Paginated<RawIssue>>('/issues/search-global', { q: idOrKey, page: 1, limit: 10 });
-  const hit = found.data.find((i) => i.key?.toLowerCase() === idOrKey.toLowerCase());
-  if (!hit) throw new Error(`Issue ${idOrKey.toUpperCase()} was not found among the issues you can access`);
+  const ref = idOrKey.trim();
+  if (OBJECT_ID.test(ref)) return ref;
+  if (!ISSUE_KEY.test(ref)) throw new Error('Give an issue key like APP-12 or an issue id');
+  // Exact key match within the user's projects in this workspace (a text search can rank APP-120 or another
+  // workspace's APP-12 first).
+  const found = await api.get<Paginated<RawIssue>>('/issues/jql', { jql: `key = ${ref.toUpperCase()}`, page: 1, limit: 5 });
+  const hit = found.data.find((i) => i.key?.toUpperCase() === ref.toUpperCase());
+  if (!hit) throw new Error(`Issue ${ref.toUpperCase()} was not found among the issues you can access`);
   return hit._id;
+}
+
+/** What to say instead of silently returning nothing when one part of a record can't be read. */
+function unavailable(err: unknown) {
+  if (err instanceof AtriumApiError) return err.status === 403 ? 'not permitted for you in this project' : `unavailable (${err.status}): ${err.message}`;
+  return 'unavailable';
 }
 
 const RECORD_TYPES = [
@@ -227,14 +254,14 @@ export function registerTools(server: McpServer, ctx: McpContext) {
     {
       title: 'List projects',
       description: 'Projects the current user is a member of in the active workspace.',
-      inputSchema: { limit: z.number().int().min(1).max(200).optional() },
+      inputSchema: { limit: z.number().int().min(1).max(2000).optional().describe('Most projects to return (default 100)') },
       annotations: read,
     },
     run(async ({ limit }: { limit?: number }) => {
-      const page = await api.get<Paginated<{ _id: string; key: string; name: string; description?: string; status?: string; lead?: Ref }>>('/projects', { page: 1, limit: limit ?? 100 });
+      const page = await allProjects(api, limit ?? 100);
       return {
         total: page.total,
-        projects: page.data.map((p) => ({ id: p._id, key: p.key, name: p.name, status: p.status, lead: refName(p.lead), description: p.description ? clip(p.description, 300) : undefined })),
+        projects: page.data.slice(0, limit ?? 100).map((p) => ({ id: p._id, key: p.key, name: p.name, status: p.status, lead: refName(p.lead), description: p.description ? clip(p.description, 300) : undefined })),
       };
     })
   );
@@ -268,11 +295,39 @@ export function registerTools(server: McpServer, ctx: McpContext) {
     'list_sprints',
     {
       title: 'List sprints',
-      description: "A project's sprints (planned, active and completed).",
+      description: "A project's sprints (planned, active and completed) and the Scrum board each one runs on.",
       inputSchema: { project: z.string().describe('Project id or key') },
       annotations: read,
     },
-    run(async ({ project }: { project: string }) => api.get('/sprints', { project: await resolveProject(api, project) }))
+    run(async ({ project }: { project: string }) => {
+      const res = await api.get<Paginated<{ _id: string; name: string; status: string; startDate?: string; endDate?: string; board?: Ref }>>('/sprints', { project: await resolveProject(api, project), limit: 100 });
+      return {
+        total: res.total,
+        sprints: res.data.map((sp) => ({ id: sp._id, name: sp.name, status: sp.status, startDate: sp.startDate, endDate: sp.endDate, board: refName(sp.board), boardId: refId(sp.board) })),
+      };
+    })
+  );
+
+  tool(
+    'list_boards',
+    {
+      title: 'List boards',
+      description: "A project's boards (Scrum and Kanban), with each board's sprint count and its active sprint.",
+      inputSchema: { project: z.string().describe('Project id or key') },
+      annotations: read,
+    },
+    run(async ({ project }: { project: string }) => {
+      type BoardRow = { _id: string; name: string; type: string; sprintCount?: number; activeSprint?: { _id: string; name: string } | null; columns?: Array<{ name: string }> };
+      const res = await api.get<Paginated<BoardRow>>('/boards', { project: await resolveProject(api, project), limit: 100 });
+      return res.data.map((b) => ({
+        id: b._id,
+        name: b.name,
+        type: b.type,
+        sprints: b.type === 'Scrum' ? b.sprintCount ?? 0 : undefined,
+        activeSprint: b.activeSprint ? { id: b.activeSprint._id, name: b.activeSprint.name } : null,
+        columns: b.columns?.map((c) => c.name),
+      }));
+    })
   );
 
   tool(
@@ -380,11 +435,18 @@ export function registerTools(server: McpServer, ctx: McpContext) {
       const id = await resolveIssue(api, issue);
       type Link = { linkType?: string; type?: string; direction?: string; issue?: RawIssue; target?: RawIssue; source?: RawIssue };
       type Comment = { body: string; author?: Ref; createdAt?: string };
+      // A section the user can't read is reported as such, so it isn't mistaken for "there are none".
+      const gaps: Record<string, string> = {};
+      const part = <T,>(name: string, p: Promise<T>, empty: T) =>
+        p.catch((err: unknown) => {
+          gaps[name] = unavailable(err);
+          return empty;
+        });
       const [i, subtaskRes, linkRes, commentRes] = await Promise.all([
         api.get<RawIssue>(`/issues/${id}`),
-        api.get<RawIssue[] | { data?: RawIssue[] }>(`/issues/${id}/subtasks`).catch(() => []),
-        api.get<Link[] | { data?: Link[] }>(`/issues/${id}/links`).catch(() => []),
-        includeComments === false ? Promise.resolve([]) : api.get<Comment[] | { data?: Comment[] }>(`/issues/${id}/comments`, { limit: 100 }).catch(() => []),
+        part('subtasks', api.get<RawIssue[] | { data?: RawIssue[] }>(`/issues/${id}/subtasks`), []),
+        part('links', api.get<Link[] | { data?: Link[] }>(`/issues/${id}/links`), []),
+        includeComments === false ? Promise.resolve([]) : part('comments', api.get<Comment[] | { data?: Comment[] }>(`/issues/${id}/comments`, { limit: 100 }), []),
       ]);
       const subtasks = asList(subtaskRes);
       const links = asList(linkRes);
@@ -405,6 +467,7 @@ export function registerTools(server: McpServer, ctx: McpContext) {
         }),
         // The API lists newest first; keep the latest 15 and show them in order.
         comments: comments.slice(0, 15).reverse().map((c) => ({ author: refName(c.author), at: c.createdAt, text: clip(htmlToText(c.body), 2000) })),
+        unavailable: Object.keys(gaps).length ? gaps : undefined,
       };
     })
   );
@@ -525,7 +588,7 @@ export function registerTools(server: McpServer, ctx: McpContext) {
 
   // ── Resources ──────────────────────────────────────────────────────────────
 
-  tool(
+  if (userHasPermission(ctx.user.permissions, TASK_FLOW_PERMISSIONS.TASKFLOW.RESOURCES.ALLOCATION.READ)) tool(
     'my_allocations',
     {
       title: 'My resource allocations',
@@ -730,33 +793,31 @@ export function registerTools(server: McpServer, ctx: McpContext) {
     {
       title: 'Create sprint',
       description:
-        'Create a sprint in a project. Sprints live on a Scrum board: if the project has none, a Scrum board with the project’s status columns is created first.',
+        'Create a sprint in a project. Sprints live on a Scrum board: by default the project’s first Scrum board, and if the project has none, Atrium creates one with the project’s status columns.',
       inputSchema: {
         project: z.string().describe('Project id or key'),
         name: z.string().min(1).max(200),
         startDate: z.string().optional().describe('YYYY-MM-DD'),
         endDate: z.string().optional().describe('YYYY-MM-DD'),
-        board: z.string().regex(OBJECT_ID).optional().describe('Board id; default is the project’s first Scrum board'),
+        board: z.string().optional().describe('Scrum board id or name (see list_boards); default is the project’s first Scrum board'),
       },
       annotations: write,
     },
     run(async (a: { project: string; name: string; startDate?: string; endDate?: string; board?: string }) => {
       const projectId = await resolveProject(api, a.project);
-      const { board, created } = a.board ? { board: { _id: a.board, name: undefined as string | undefined }, created: false } : await scrumBoardFor(api, projectId);
-      const sprint = await api.post<{ _id: string; name: string; status?: string }>('/sprints', {
+      const sprint = await api.post<{ _id: string; name: string; status?: string; board?: Ref; boardCreated?: boolean }>('/sprints', {
         name: a.name,
         project: projectId,
-        board: board._id,
+        board: a.board ? await resolveBoard(api, projectId, a.board) : undefined,
         startDate: a.startDate,
         endDate: a.endDate,
       });
       return {
         sprint: { id: sprint._id, name: sprint.name, status: sprint.status },
-        board: { id: board._id, name: board.name, created },
+        board: { id: refId(sprint.board), name: refName(sprint.board), created: sprint.boardCreated === true },
       };
     })
   );
-
 
   tool(
     'link_records',
@@ -1194,18 +1255,11 @@ export async function bulkUpdateIssues(api: AtriumApi, ctx: McpContext, a: BulkA
   return { selected: targets.size, updated, issues: done, jqlMatches: jqlTotal, failed };
 }
 
-/** The project's first Scrum board, or a new one whose columns are the project's statuses. */
-async function scrumBoardFor(api: AtriumApi, projectId: string): Promise<{ board: { _id: string; name?: string }; created: boolean }> {
-  const boards = asList(await api.get<Paginated<{ _id: string; name: string; type: string }> | Array<{ _id: string; name: string; type: string }>>('/boards', { project: projectId, limit: 100 }));
-  const scrum = boards.find((b) => b.type === 'Scrum');
-  if (scrum) return { board: scrum, created: false };
-  const project = await api.get<ProjectConfig & { name: string }>(`/projects/${projectId}`);
-  const statuses = [...(project.statuses ?? [])].sort((x, y) => ((x as { order?: number }).order ?? 0) - ((y as { order?: number }).order ?? 0));
-  const board = await api.post<{ _id: string; name: string }>('/boards', {
-    name: `${project.key} Scrum`,
-    type: 'Scrum',
-    project: projectId,
-    columns: statuses.map((st, order) => ({ name: st.name, statusId: st.name, order })),
-  });
-  return { board, created: true };
+/** A board of the project by id or (case-insensitive) name. */
+async function resolveBoard(api: AtriumApi, projectId: string, idOrName: string): Promise<string> {
+  if (OBJECT_ID.test(idOrName)) return idOrName;
+  const boards = asList(await api.get<Paginated<{ _id: string; name: string; type: string }>>('/boards', { project: projectId, limit: 100 }));
+  const hit = boards.find((b) => b.name.toLowerCase() === idOrName.trim().toLowerCase());
+  if (!hit) throw new Error(`No board "${idOrName}" in this project. Boards: ${boards.map((b) => `${b.name} (${b.type})`).join(', ') || 'none'}`);
+  return hit._id;
 }

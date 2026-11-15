@@ -33,6 +33,13 @@ function pushHistory(
   });
 }
 
+function parseDateInput(value: unknown): Date | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const d = new Date(String(value));
+  if (Number.isNaN(d.getTime())) throw new ApiError(400, 'Invalid date');
+  return d;
+}
+
 function summarizeContentChange(
   before: {
     title: string;
@@ -43,6 +50,7 @@ function summarizeContentChange(
     notes?: string;
     lineItems: ICrmQuoteLine[];
     validUntil?: Date;
+    issueDate?: Date;
   },
   after: {
     title: string;
@@ -53,6 +61,7 @@ function summarizeContentChange(
     notes?: string;
     lineItems: ICrmQuoteLine[];
     validUntil?: Date;
+    issueDate?: Date;
   }
 ): { message: string; meta: Record<string, unknown> } {
   const parts: string[] = [];
@@ -79,6 +88,11 @@ function summarizeContentChange(
   }
   if ((before.notes ?? '') !== (after.notes ?? '')) {
     parts.push('notes updated');
+  }
+  const beforeIssue = before.issueDate ? new Date(before.issueDate).toISOString().slice(0, 10) : '';
+  const afterIssue = after.issueDate ? new Date(after.issueDate).toISOString().slice(0, 10) : '';
+  if (beforeIssue !== afterIssue) {
+    parts.push(`issue date ${afterIssue || 'cleared'}`);
   }
   const beforeValid = before.validUntil ? new Date(before.validUntil).toISOString().slice(0, 10) : '';
   const afterValid = after.validUntil ? new Date(after.validUntil).toISOString().slice(0, 10) : '';
@@ -277,6 +291,7 @@ export async function createQuote(
     title: String(input.title ?? defaultTitle).trim(),
     status: 'draft',
     version: 1,
+    issueDate: parseDateInput(input.issueDate) ?? new Date(),
     validUntil: input.validUntil ? new Date(String(input.validUntil)) : undefined,
     lineItems,
     ...totals,
@@ -355,6 +370,7 @@ export async function sendQuote(
     ${(quote.discountAmount ?? 0) > 0 ? `<p>Discount: −${quote.discountAmount} ${quote.currency}</p>` : ''}
     ${(quote.taxTotal ?? 0) > 0 ? `<p>Tax: ${quote.taxTotal} ${quote.currency}</p>` : ''}
     <p><strong>Total: ${total} ${quote.currency}</strong></p>
+    <p>Issue date: ${new Date(quote.issueDate ?? quote.createdAt).toLocaleDateString()}</p>
     ${quote.validUntil ? `<p>Valid until: ${new Date(quote.validUntil).toLocaleDateString()}</p>` : ''}
     ${quote.notes ? `<p>${quote.notes}</p>` : ''}
     ${opts?.pdfBase64 ? '<p>A PDF copy of this quotation is attached.</p>' : ''}`,
@@ -447,12 +463,16 @@ export async function updateQuote(
     notes: existing.notes,
     lineItems: existing.lineItems.map((l) => ({ ...l })),
     validUntil: existing.validUntil,
+    issueDate: existing.issueDate ?? existing.createdAt,
   };
 
   if (input.title !== undefined) existing.title = String(input.title).trim();
   if (input.notes !== undefined) existing.notes = input.notes as string;
   if (input.validUntil !== undefined) {
     existing.validUntil = input.validUntil ? new Date(String(input.validUntil)) : undefined;
+  }
+  if (input.issueDate !== undefined) {
+    existing.issueDate = parseDateInput(input.issueDate) ?? existing.createdAt;
   }
   if (input.currency !== undefined) existing.currency = String(input.currency);
   if (input.taxCode !== undefined) existing.taxCode = input.taxCode ? String(input.taxCode) : undefined;
@@ -489,6 +509,7 @@ export async function updateQuote(
     notes: existing.notes,
     lineItems: existing.lineItems,
     validUntil: existing.validUntil,
+    issueDate: existing.issueDate ?? existing.createdAt,
   });
 
   // Bump version when a sent quote is revised

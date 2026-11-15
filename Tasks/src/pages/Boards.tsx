@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
@@ -16,7 +16,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationsContext';
-import { boardsApi, issuesApi, projectsApi, type Board, type Issue, type Project, getIssueKey } from '../lib/api';
+import { boardsApi, issuesApi, projectsApi, sprintsApi, type Board, type Issue, type Project, type Sprint, getIssueKey } from '../lib/api';
+import ConfirmModal from '../components/ConfirmModal';
 import { MetaBadge } from '../components/MetaBadge';
 import { WatchButton } from '../components/issue';
 import { KanbanScrollArea, KanbanDragPreview } from '../components/issues';
@@ -208,11 +209,30 @@ function BoardCard({
   );
 }
 
+/** Every issue matching `filters` (the API returns at most 100 per page). */
+async function fetchAllIssues(token: string, filters: Record<string, string>, max = 2000): Promise<Issue[] | null> {
+  const out: Issue[] = [];
+  for (let page = 1; out.length < max; page += 1) {
+    const res = await issuesApi.list({ page, limit: 100, token, ...filters });
+    if (!res.success || !res.data) return page === 1 ? null : out;
+    out.push(...res.data.data);
+    if (page >= (res.data.totalPages ?? 1) || res.data.data.length === 0) break;
+  }
+  return out;
+}
+
+const sprintDates = (sp: Sprint) =>
+  sp.startDate || sp.endDate
+    ? `${sp.startDate ? new Date(sp.startDate).toLocaleDateString() : '…'} – ${sp.endDate ? new Date(sp.endDate).toLocaleDateString() : '…'}`
+    : '';
+
 export default function Boards() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { token } = useAuth();
   const { subscribeProject } = useNotifications();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const boardParam = searchParams.get('board');
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
@@ -235,6 +255,73 @@ export default function Boards() {
   const [configColumns, setConfigColumns] = useState<Board['columns']>([]);
   const [configError, setConfigError] = useState('');
   const [configSaving, setConfigSaving] = useState(false);
+  // Scrum boards show one sprint at a time: the running one unless another is picked.
+  const [boardSprints, setBoardSprints] = useState<Sprint[]>([]);
+  const [sprintId, setSprintId] = useState<string | null>(null);
+  const [sprintsLoaded, setSprintsLoaded] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [notice, setNotice] = useState('');
+  const isScrum = selectedBoard?.type === 'Scrum';
+  const currentSprint = boardSprints.find((sp) => sp._id === sprintId) ?? null;
+
+  function selectBoard(board: Board | null) {
+    setSelectedBoard(board);
+    setBoardIssues([]);
+    setBoardSprints([]);
+    setSprintId(null);
+    setSprintsLoaded(false);
+    setBoardError(null);
+    setSearchParams(board ? { board: board._id } : {}, { replace: true });
+  }
+
+  function loadBoardList() {
+    if (!token || !projectId) return Promise.resolve();
+    return boardsApi.list(1, 100, projectId, token).then((res) => {
+      if (res.success && res.data) setBoards(res.data.data);
+    });
+  }
+
+  function loadBoardIssues() {
+    if (!token || !selectedBoard || !projectId) return;
+    if (isScrum && !sprintsLoaded) return;
+    if (isScrum && !sprintId) {
+      setBoardIssues([]);
+      return;
+    }
+    const filters: Record<string, string> = { project: projectId };
+    if (isScrum && sprintId) filters.sprint = sprintId;
+    fetchAllIssues(token, filters).then((issues) => {
+      if (issues) setBoardIssues(issues);
+      else setBoardError('Could not load issues for this board');
+    });
+  }
+
+  function loadBoardSprints(keepSelection = true) {
+    if (!token || !selectedBoard || selectedBoard.type !== 'Scrum' || !projectId) return;
+    sprintsApi.list(1, 100, projectId, selectedBoard._id, token).then((res) => {
+      const list = res.success && res.data ? res.data.data.filter((sp) => sp.status !== 'completed') : [];
+      setBoardSprints(list);
+      setSprintId((prev) =>
+        keepSelection && prev && list.some((sp) => sp._id === prev)
+          ? prev
+          : (list.find((sp) => sp.status === 'active') ?? list.find((sp) => sp.status === 'planned'))?._id ?? null
+      );
+      setSprintsLoaded(true);
+    });
+  }
+
+  async function confirmDeleteBoard() {
+    if (!token || !selectedBoard) return;
+    setDeleteOpen(false);
+    const res = await boardsApi.delete(selectedBoard._id, token);
+    if (!res.success) {
+      setBoardError(res.message ?? 'Could not delete the board');
+      return;
+    }
+    setNotice(res.data?.message ?? 'Board deleted');
+    selectBoard(null);
+    loadBoardList();
+  }
 
   useEffect(() => {
     if (!projectId) {
@@ -246,41 +333,43 @@ export default function Boards() {
   useEffect(() => {
     if (!projectId) return;
     return subscribeProject(projectId, () => {
-      if (token && projectId) {
-        boardsApi.list(1, 10, projectId, token).then((res) => {
-          if (res.success && res.data) setBoards(res.data.data);
-        });
-      }
-      if (token && selectedBoard) {
-        const pid = typeof selectedBoard.project === 'object' ? selectedBoard.project._id : projectId;
-        if (pid) {
-          issuesApi.list({ page: 1, limit: 100, token, project: pid }).then((res) => {
-            if (res.success && res.data) setBoardIssues(res.data.data);
-          });
-        }
-      }
+      loadBoardList();
+      // Sprint changes (started, completed, moved) arrive the same way; reloading sprints reloads the issues.
+      if (selectedBoard?.type === 'Scrum') loadBoardSprints();
+      else loadBoardIssues();
     });
-  }, [projectId, subscribeProject, token, selectedBoard]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, subscribeProject, token, selectedBoard, sprintId, sprintsLoaded]);
 
   useEffect(() => {
     if (!token || !projectId) return;
     setLoading(true);
-    boardsApi.list(1, 10, projectId, token).then((res) => {
-      setLoading(false);
-      if (res.success && res.data) {
-        setBoards(res.data.data);
-      }
-    });
+    loadBoardList().then(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, projectId]);
 
+  // Open the board named in ?board= (links from the sprint list), or close it when the param goes away.
   useEffect(() => {
-    if (!token || !selectedBoard) return;
-    const pid = typeof selectedBoard.project === 'object' ? selectedBoard.project._id : projectId;
-    if (!pid) return;
-    issuesApi.list({ page: 1, limit: 100, token, project: pid }).then((res) => {
-      if (res.success && res.data) setBoardIssues(res.data.data);
-    });
-  }, [token, selectedBoard, projectId]);
+    if (!boardParam) {
+      if (selectedBoard) selectBoard(null);
+      return;
+    }
+    if (selectedBoard?._id === boardParam) return;
+    const b = boards.find((x) => x._id === boardParam);
+    if (b) {
+      setSelectedBoard(b);
+      setBoardIssues([]);
+      setBoardSprints([]);
+      setSprintId(null);
+      setSprintsLoaded(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardParam, boards]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => loadBoardSprints(false), [token, selectedBoard?._id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(loadBoardIssues, [token, selectedBoard?._id, sprintId, sprintsLoaded]);
 
   useEffect(() => {
     if (!token || boardIssues.length === 0) return;
@@ -312,9 +401,7 @@ export default function Boards() {
     if (res.success) {
       setModal(false);
       setForm({ name: '', type: 'Kanban', project: projectId });
-      boardsApi.list(1, 10, projectId, token).then((r) => {
-        if (r.success && r.data) setBoards(r.data.data);
-      });
+      loadBoardList();
     } else setSubmitError(res.message ?? 'Failed');
   }
 
@@ -519,23 +606,80 @@ export default function Boards() {
           <div className="mb-6">
             <button
               type="button"
-              onClick={() => setSelectedBoard(null)}
+              onClick={() => selectBoard(null)}
               className="text-xs text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]"
             >
               ← All boards
             </button>
             <div className="mt-2 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">{selectedBoard.name}</h2>
-              <button
-                type="button"
-                onClick={openConfigModal}
-                className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-primary)] hover:bg-[color:var(--bg-surface)] transition"
-              >
-                Configure board
-              </button>
+              <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">
+                {selectedBoard.name}
+                <span className="ml-2 text-xs font-normal text-[color:var(--text-muted)]">{selectedBoard.type}</span>
+              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={openConfigModal}
+                  className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-primary)] hover:bg-[color:var(--bg-surface)] transition"
+                >
+                  Configure board
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeleteOpen(true)}
+                  className="px-3 py-1.5 rounded-md border border-red-500/40 text-xs text-red-300 hover:bg-[color:var(--bg-surface)] transition"
+                >
+                  Delete board
+                </button>
+              </div>
             </div>
+            {isScrum && sprintsLoaded && (
+              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-4 py-3">
+                {boardSprints.length > 0 ? (
+                  <>
+                    <label className="text-xs text-[color:var(--text-muted)]" htmlFor="board-sprint">Sprint</label>
+                    <select
+                      id="board-sprint"
+                      value={sprintId ?? ''}
+                      onChange={(e) => setSprintId(e.target.value || null)}
+                      className="px-2 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-primary)]"
+                    >
+                      {boardSprints.map((sp) => (
+                        <option key={sp._id} value={sp._id}>
+                          {sp.name} ({sp.status === 'active' ? 'active' : 'planned'})
+                        </option>
+                      ))}
+                    </select>
+                    {currentSprint && (
+                      <span className="text-xs text-[color:var(--text-muted)]">
+                        {sprintDates(currentSprint)}
+                        {currentSprint.status === 'planned' ? ' · not started — start it from Sprints' : ''}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-xs text-[color:var(--text-muted)]">
+                    No active or planned sprint on this board. Create one to plan work here.
+                  </span>
+                )}
+                <Link
+                  to={`/projects/${projectId}/sprints`}
+                  className="ml-auto text-xs text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]"
+                >
+                  Manage sprints →
+                </Link>
+                <Link
+                  to={`/projects/${projectId}/backlog`}
+                  className="text-xs text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]"
+                >
+                  Backlog →
+                </Link>
+              </div>
+            )}
           </div>
         ) : null}
+
+        {notice && !selectedBoard && <p className="mb-4 text-xs text-[color:var(--text-muted)]">{notice}</p>}
 
         {selectedBoard ? (
           <div className="space-y-2">
@@ -611,7 +755,10 @@ export default function Boards() {
                   <button
                     key={b._id}
                     type="button"
-                    onClick={() => setSelectedBoard(b)}
+                    onClick={() => {
+                      setNotice('');
+                      selectBoard(b);
+                    }}
                     className="p-6 rounded-2xl bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] hover:bg-[color:var(--bg-elevated)] text-left transition animate-fade-in"
                   >
                     <span className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-[color:var(--border-subtle)] text-xs">
@@ -621,6 +768,16 @@ export default function Boards() {
                     <p className="text-[color:var(--text-muted)] text-xs mt-0.5">
                       {b.type} · {typeof b.project === 'object' ? b.project.name : ''}
                     </p>
+                    {b.type === 'Scrum' && (
+                      <p className="text-xs mt-2 text-[color:var(--text-muted)]">
+                        {b.activeSprint ? (
+                          <>Active sprint: <span className="text-[color:var(--text-primary)]">{b.activeSprint.name}</span></>
+                        ) : (
+                          'No active sprint'
+                        )}
+                        {` · ${b.sprintCount ?? 0} sprint${(b.sprintCount ?? 0) === 1 ? '' : 's'}`}
+                      </p>
+                    )}
                   </button>
                 ))}
               </div>
@@ -686,6 +843,26 @@ export default function Boards() {
           </div>,
           document.body
         )}
+
+      <ConfirmModal
+        open={deleteOpen}
+        title="Delete board"
+        message={
+          selectedBoard ? (
+            <span>
+              Delete <strong>{selectedBoard.name}</strong>? Issues are not affected.
+              {selectedBoard.type === 'Scrum' && (selectedBoard.sprintCount ?? boardSprints.length) > 0
+                ? ' Its sprints move to the project’s next Scrum board; if there is none, the board can’t be deleted.'
+                : ''}
+            </span>
+          ) : (
+            ''
+          )
+        }
+        confirmLabel="Delete board"
+        onConfirm={confirmDeleteBoard}
+        onCancel={() => setDeleteOpen(false)}
+      />
 
       {configModal &&
         createPortal(

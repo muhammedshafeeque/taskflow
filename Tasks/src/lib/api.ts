@@ -2222,6 +2222,10 @@ export interface Board {
   type: 'Kanban' | 'Scrum';
   project: { _id: string; name: string; key: string };
   columns: BoardColumn[];
+  /** Sprints linked to this board (Scrum boards), from the board list. */
+  sprintCount?: number;
+  /** The sprint currently running on this board, from the board list. */
+  activeSprint?: { _id: string; name: string } | null;
 }
 
 export type BoardPatch = Partial<{
@@ -2240,7 +2244,8 @@ export const boardsApi = {
     api.post<Board>('/boards', body, token),
   update: (id: string, body: BoardPatch, token: string) =>
     api.patch<Board>(`/boards/${id}`, body, token),
-  delete: (id: string, token: string) => api.delete(`/boards/${id}`, token),
+  delete: (id: string, token: string) =>
+    api.delete<{ message: string; movedSprints: number; movedTo: { _id: string; name: string } | null }>(`/boards/${id}`, token),
 };
 
 /* Sprints */
@@ -2270,8 +2275,11 @@ export const sprintsApi = {
     return api.get<Paginated<Sprint>>(`/sprints?${p}`, token);
   },
   get: (id: string, token: string) => api.get<Sprint>(`/sprints/${id}`, token),
-  create: (body: { name: string; project: string; board: string }, token: string) =>
-    api.post<Sprint>('/sprints', body, token),
+  /** Without a board the project's Scrum board is used (and created if the project has none). */
+  create: (body: { name: string; project: string; board?: string; startDate?: string; endDate?: string }, token: string) =>
+    api.post<Sprint & { boardCreated?: boolean }>('/sprints', body, token),
+  update: (id: string, body: { name?: string; board?: string; startDate?: string; endDate?: string }, token: string) =>
+    api.patch<Sprint>(`/sprints/${id}`, body, token),
   start: (id: string, token: string) => api.post<Sprint>(`/sprints/${id}/start`, {}, token),
   complete: (id: string, token: string) => api.post<Sprint>(`/sprints/${id}/complete`, {}, token),
   delete: (id: string, token: string) => api.delete(`/sprints/${id}`, token),
@@ -2668,6 +2676,7 @@ export interface CrmQuote {
   taxCode?: string;
   lineItems?: CrmQuoteLine[];
   notes?: string;
+  issueDate?: string;
   validUntil?: string;
   projectId?: string;
   history?: CrmQuoteHistoryEntry[];
@@ -2948,6 +2957,7 @@ export const crmApi = {
       lineItems?: unknown[];
       currency?: string;
       notes?: string;
+      issueDate?: string;
       validUntil?: string;
       discountPercent?: number;
       taxCode?: string;

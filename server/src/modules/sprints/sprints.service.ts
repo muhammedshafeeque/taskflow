@@ -4,6 +4,8 @@ import { Issue } from '../issues/issue.model';
 import { ApiError } from '../../utils/ApiError';
 import { notifyProjectRefresh } from '../../websocket';
 import { getClosedStatusNamesForProject } from '../projects/statusClassification';
+import { scrumBoardForSprint } from '../boards/boards.service';
+import type mongoose from 'mongoose';
 
 async function getDoneStatuses(projectId: string): Promise<string[]> {
   return getClosedStatusNamesForProject(projectId);
@@ -18,27 +20,35 @@ function parseDate(value: string | Date | undefined): Date | undefined {
   return isNaN(d.getTime()) ? undefined : d;
 }
 
+/** Creates a sprint on a Scrum board of its project (the project's Scrum board, created if needed, when none is given). */
 export async function create(input: CreateSprintBody): Promise<unknown> {
+  const { board, created } = await scrumBoardForSprint(String(input.project), input.board);
+  const status = input.status ?? 'planned';
+  if (status === 'active' && (await Sprint.exists({ board: board._id, status: 'active' }))) {
+    throw new ApiError(400, `"${board.name}" already has an active sprint. Create this one as planned and start it later.`);
+  }
   const doc = await Sprint.create({
     name: input.name,
     project: input.project,
-    board: input.board,
+    board: board._id,
     startDate: parseDate(input.startDate as string | Date | undefined),
     endDate: parseDate(input.endDate as string | Date | undefined),
-    status: input.status ?? 'planned',
+    status,
   });
   notifyProjectRefresh(String(input.project));
-  return doc.toObject();
+  const sprint = await Sprint.findById(doc._id).populate('project', 'name key').populate('board', 'name type').lean();
+  return { ...(sprint ?? doc.toObject()), boardCreated: created || undefined };
 }
 
 export async function findAll(
-  filters: { projectId?: string; boardId?: string; status?: string } = {},
+  filters: { projectId?: string; projectIds?: mongoose.Types.ObjectId[]; boardId?: string; status?: string } = {},
   pagination: PaginationOptions = { page: 1, limit: 20 }
 ): Promise<PaginatedResult<unknown>> {
   const { page, limit } = pagination;
   const skip = (page - 1) * limit;
-  const filter: Record<string, string> = {};
+  const filter: Record<string, unknown> = {};
   if (filters.projectId) filter.project = filters.projectId;
+  else filter.project = { $in: filters.projectIds ?? [] };
   if (filters.boardId) filter.board = filters.boardId;
   if (filters.status) filter.status = filters.status;
 
@@ -46,6 +56,7 @@ export async function findAll(
     Sprint.find(filter)
       .populate('project', 'name key')
       .populate('board', 'name type')
+      .sort({ createdAt: -1 })
       .lean()
       .skip(skip)
       .limit(limit),
@@ -70,11 +81,22 @@ export async function findById(id: string): Promise<unknown | null> {
 }
 
 export async function update(id: string, input: UpdateSprintBody): Promise<unknown | null> {
-  const existing = await Sprint.findById(id).select('project').lean();
+  const existing = await Sprint.findById(id).select('project board status').lean();
   if (!existing) return null;
   const updateData: Record<string, unknown> = {};
   if (input.name !== undefined) updateData.name = input.name;
-  if (input.status !== undefined) updateData.status = input.status;
+  if (input.board !== undefined && input.board !== String(existing.board)) {
+    const { board } = await scrumBoardForSprint(String(existing.project), input.board);
+    const willBeActive = (input.status ?? existing.status) === 'active';
+    if (willBeActive && (await Sprint.exists({ board: board._id, status: 'active', _id: { $ne: id } }))) {
+      throw new ApiError(400, `"${board.name}" already has an active sprint`);
+    }
+    updateData.board = board._id;
+  }
+  if (input.status !== undefined && input.status !== existing.status) {
+    // Starting and completing have side effects (one active sprint per board, unfinished issues return to the backlog).
+    throw new ApiError(400, 'Use start or complete to change a sprint\'s status');
+  }
   if (input.startDate !== undefined) updateData.startDate = parseDate(input.startDate as string | Date | undefined);
   if (input.endDate !== undefined) updateData.endDate = parseDate(input.endDate as string | Date | undefined);
 

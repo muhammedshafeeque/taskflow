@@ -2,7 +2,7 @@
  * Maps colon-era permission codes (DB / old routes) to dot-notation strings.
  * Use in one-off migrations and when reading legacy documents.
  */
-import { CUSTOMER_PERMISSIONS, PROJECT_PERMISSIONS, TASK_FLOW_PERMISSIONS } from './permissions';
+import { ALL_PROJECT_PERMISSIONS, CUSTOMER_PERMISSIONS, PROJECT_PERMISSIONS, TASK_FLOW_PERMISSIONS } from './permissions';
 
 const TF = TASK_FLOW_PERMISSIONS;
 const PF = PROJECT_PERMISSIONS;
@@ -76,15 +76,36 @@ export const LEGACY_CUSTOMER_COLON_TO_DOT: Record<string, string> = {
 
 /**
  * Permissions that only make sense together. Writing to a comment thread you can't read leaves the
- * user posting blind (and the issue page showing no comments), so any comment action implies reading.
+ * user posting blind (and the issue page showing no comments), so any comment action implies reading —
+ * and likewise for every other project resource (see sameResourceViewRules).
  * `issue.issue.comment` is the older "comment on issue" code and implies creating comments.
  */
+const VIEW_VERBS = new Set(['read', 'list', 'view']);
+
+/**
+ * The same rule for every project resource: any action on it (create, update, delete, submit, manage…) implies
+ * seeing it. Without this, a designation that lets members log work or submit estimates, but has no matching
+ * read, leaves them unable to see what they just did (the issue page and AI assistants get a 403).
+ */
+function sameResourceViewRules(): Array<{ ifAny: string[]; grant: string[] }> {
+  const byResource = new Map<string, { view: string[]; act: string[] }>();
+  for (const code of ALL_PROJECT_PERMISSIONS as string[]) {
+    const dot = code.lastIndexOf('.');
+    if (dot <= 0) continue;
+    const entry = byResource.get(code.slice(0, dot)) ?? { view: [], act: [] };
+    (VIEW_VERBS.has(code.slice(dot + 1)) ? entry.view : entry.act).push(code);
+    byResource.set(code.slice(0, dot), entry);
+  }
+  return [...byResource.values()].filter((r) => r.view.length && r.act.length).map((r) => ({ ifAny: r.act, grant: r.view }));
+}
+
 const IMPLIED_PERMISSIONS: Array<{ ifAny: string[]; grant: string[] }> = [
   { ifAny: [PF.ISSUE.ISSUE.COMMENT], grant: [PF.ISSUE.COMMENT.CREATE] },
   {
     ifAny: [PF.ISSUE.ISSUE.COMMENT, PF.ISSUE.COMMENT.CREATE, PF.ISSUE.COMMENT.UPDATE, PF.ISSUE.COMMENT.DELETE, PF.ISSUE.COMMENT.LIST],
     grant: [PF.ISSUE.COMMENT.READ, PF.ISSUE.COMMENT.LIST],
   },
+  ...sameResourceViewRules(),
 ];
 
 export function withImpliedPermissions(perms: string[]): string[] {

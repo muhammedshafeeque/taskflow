@@ -280,7 +280,7 @@ export function buildQuotePdf(quote: CrmQuote, issuerOrName?: QuotePdfIssuer | s
 
   // ── Meta strip ────────────────────────────────────────────────────────
   const meta: Array<[string, string]> = [
-    ['Issue date', fmtDate(quote.createdAt)],
+    ['Issue date', fmtDate(quote.issueDate ?? quote.createdAt)],
     ['Valid until', fmtDate(quote.validUntil)],
     ['Currency', currency],
     ['Version', `v${quote.version ?? 1}`],

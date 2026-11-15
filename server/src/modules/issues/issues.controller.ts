@@ -20,6 +20,7 @@ import {
   exportIssuesQuerySchema,
 } from './issue.validation';
 import * as issuesService from './issues.service';
+import { hasProjectFullAccess } from '../../middleware/requireProjectPermission';
 import * as issueLinksService from './issueLinks.service';
 import * as issueHistoryService from './issueHistory.service';
 import * as watchersService from '../watchers/watchers.service';
@@ -48,12 +49,20 @@ export async function createIssue(req: Request & { user?: AuthPayload }, res: Re
   res.status(201).json({ success: true, data: issue });
 }
 
+/** The workspace and global project access the issue lists are scoped to. */
+function listScope(req: Request): issuesService.IssueListScope {
+  return {
+    organizationId: req.activeOrganizationId,
+    fullProjectAccess: hasProjectFullAccess(req.user?.permissions ?? []),
+  };
+}
+
 export async function getIssues(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
   const userId = req.user?.id;
   const page = parseInt(String(req.query.page), 10) || 1;
   const limit = Math.min(parseInt(String(req.query.limit), 10) || 20, 100);
   const filters = issuesService.queryToFilters(req.query as import('./issue.validation').ListIssuesQuery);
-  const result = await issuesService.findAll(filters, { page, limit }, userId);
+  const result = await issuesService.findAll(filters, { page, limit }, userId, listScope(req));
   res.status(200).json({ success: true, data: result });
 }
 
@@ -61,7 +70,7 @@ export async function getQuickFilterCounts(req: Request & { user?: AuthPayload }
   const userId = req.user?.id;
   if (!userId) throw new ApiError(401, 'Unauthorized');
   const project = req.query.project ? String(req.query.project) : undefined;
-  const data = await issuesService.getQuickFilterCounts(userId, project);
+  const data = await issuesService.getQuickFilterCounts(userId, project, listScope(req));
   res.status(200).json({ success: true, data });
 }
 
@@ -71,8 +80,8 @@ export async function exportIssuesExcel(req: Request & { user?: AuthPayload }, r
   const query = req.query as import('./issue.validation').ListIssuesQuery & { jql?: string };
   const filters = issuesService.queryToFilters(query);
   const result = query.jql?.trim()
-    ? await issuesService.findByJql({ jql: query.jql, userId, page: 1, limit: 10000 })
-    : await issuesService.findAll(filters, { page: 1, limit: 10000 }, userId);
+    ? await issuesService.findByJql({ jql: query.jql, userId, page: 1, limit: 10000, scope: listScope(req) })
+    : await issuesService.findAll(filters, { page: 1, limit: 10000 }, userId, listScope(req));
   const data = result.data as Array<{
     _id: string;
     key?: string;
@@ -200,6 +209,7 @@ export async function searchIssuesGlobal(req: Request & { user?: AuthPayload }, 
     page: page ? parseInt(page, 10) : 1,
     limit: limit ? parseInt(limit, 10) : 10,
     excludeIssueId,
+    scope: listScope(req),
   });
   res.status(200).json({ success: true, data: result });
 }
@@ -213,6 +223,7 @@ export async function searchByJql(req: Request & { user?: AuthPayload }, res: Re
     userId,
     page: page ? parseInt(page, 10) : 1,
     limit: limit ? parseInt(limit, 10) : 20,
+    scope: listScope(req),
   });
   res.status(200).json({ success: true, data: result });
 }

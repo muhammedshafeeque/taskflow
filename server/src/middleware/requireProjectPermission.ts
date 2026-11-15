@@ -170,3 +170,53 @@ export async function getProjectPermissionsForUser(
   }
   return permissions;
 }
+
+/**
+ * Project-scoped permission check for records that belong to a project (sprints, boards…): `resolveProjectId`
+ * finds the record's project (null when the record doesn't exist → 404). Pass several permissions to accept any.
+ */
+export function requireProjectPermissionVia(
+  permission: string | string[],
+  resolveProjectId: (req: Request) => Promise<string | null | undefined>,
+  notFoundMessage = 'Not found'
+) {
+  const required = (Array.isArray(permission) ? permission : [permission]).map(normalizePermission);
+  return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user) {
+        next(new ApiError(401, 'Authentication required'));
+        return;
+      }
+      const projectId = await resolveProjectId(req);
+      if (!projectId || !mongoose.Types.ObjectId.isValid(projectId)) {
+        next(new ApiError(404, notFoundMessage));
+        return;
+      }
+      const authUser = req.user as { id: string; permissions?: string[] };
+      const perms = await getProjectPermissionsForUser(projectId, authUser.id, authUser.permissions, req.activeOrganizationId);
+      if (!perms.length) {
+        next(new ApiError(403, 'You are not a member of this project'));
+        return;
+      }
+      if (!required.some((p) => userHasPermission(perms, p))) {
+        next(new ApiError(403, 'Insufficient permissions for this project'));
+        return;
+      }
+      (req as Request & { projectPermissions?: string[]; resolvedProjectId?: string }).projectPermissions = perms;
+      (req as Request & { resolvedProjectId?: string }).resolvedProjectId = projectId;
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+/** Reads the project of a record by id (from a route param), for requireProjectPermissionVia. */
+export function projectOfRecord(model: { findById: (id: string) => { select: (f: string) => { lean: () => Promise<unknown> } } }, param = 'id') {
+  return async (req: Request): Promise<string | null> => {
+    const id = req.params[param];
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+    const doc = (await model.findById(id).select('project').lean()) as { project?: unknown } | null;
+    return doc?.project ? String(doc.project) : null;
+  };
+}

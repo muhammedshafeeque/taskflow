@@ -154,7 +154,8 @@ export async function inviteToProject(
   projectId: string,
   email: string,
   invitedByUserId: string,
-  roleId?: string
+  roleId?: string,
+  designationId?: string
 ): Promise<unknown> {
   const project = await Project.findById(projectId).lean();
   if (!project) throw new ApiError(404, 'Project not found');
@@ -185,6 +186,18 @@ export async function inviteToProject(
     roleObjectId = role._id;
     roleName = (role as { name?: string }).name;
   }
+  // The designation decides the member's project permissions. Without one the member would fall back to the
+  // legacy role snapshot, which has no comment permissions and isn't updated when designations are edited.
+  let designationObjectId: mongoose.Types.ObjectId | null = null;
+  if (designationId) {
+    const designation = await ProjectDesignation.findOne({ _id: designationId, projectId }).select('_id name').lean();
+    if (!designation) throw new ApiError(400, 'Selected designation not found in this project');
+    designationObjectId = designation._id as mongoose.Types.ObjectId;
+    roleName = (designation as { name?: string }).name ?? roleName;
+  } else if (!roleId) {
+    const memberDesignation = await ProjectDesignation.findOne({ projectId, code: 'project_member' }).select('_id').lean();
+    designationObjectId = (memberDesignation?._id as mongoose.Types.ObjectId | undefined) ?? null;
+  }
   await ProjectInvitation.deleteOne({ project: projectId, user: userIdStr });
 
   const inviter = await User.findById(invitedByUserId).select('name').lean();
@@ -196,6 +209,7 @@ export async function inviteToProject(
     user: userIdStr,
     invitedBy: invitedByUserId,
     role: roleObjectId,
+    designationId: designationObjectId,
     status: 'pending',
   });
 
@@ -298,6 +312,29 @@ export async function cancelInvitation(
   await ProjectInvitation.findByIdAndUpdate(invitationId, { $set: { status: 'declined' } });
 }
 
+/**
+ * The designation an accepted invitation should place the member in: the one chosen when inviting, or, for
+ * invitations on the default member role (including ones created before designations were stored), the
+ * project's "Project Member" designation. Invitations on any other role keep that role's snapshot.
+ */
+async function resolveInvitationDesignation(
+  projectId: string,
+  invitation: { role?: unknown; designationId?: unknown }
+): Promise<{ _id: mongoose.Types.ObjectId; permissions: string[] } | null> {
+  const idOf = (v: unknown) =>
+    v && typeof v === 'object' && '_id' in (v as object) ? String((v as { _id: unknown })._id) : v ? String(v) : '';
+  const chosenId = idOf(invitation.designationId);
+  if (chosenId) {
+    const chosen = await ProjectDesignation.findOne({ _id: chosenId, projectId }).select('_id permissions').lean();
+    if (chosen) return { _id: chosen._id as mongoose.Types.ObjectId, permissions: chosen.permissions ?? [] };
+  }
+  const memberRole = await Role.findOne({ name: PROJECT_MEMBER_ROLE_NAME }).select('_id').lean();
+  const roleId = idOf(invitation.role);
+  if (roleId && memberRole && roleId !== String(memberRole._id)) return null;
+  const fallback = await ProjectDesignation.findOne({ projectId, code: 'project_member' }).select('_id permissions').lean();
+  return fallback ? { _id: fallback._id as mongoose.Types.ObjectId, permissions: fallback.permissions ?? [] } : null;
+}
+
 export async function acceptInvitation(invitationId: string, userId: string): Promise<{ projectId: string }> {
   const invitation = await ProjectInvitation.findById(invitationId)
     .populate('project', 'name')
@@ -319,12 +356,13 @@ export async function acceptInvitation(invitationId: string, userId: string): Pr
   const inviteeName = (invitation.user as { name?: string })?.name ?? 'A user';
   const inviterId = (invitation.invitedBy as { _id?: unknown })._id?.toString?.() ?? String(invitation.invitedBy);
 
-  const permSnapshot = await snapshotFromRoleId(invitation.role);
+  const designation = await resolveInvitationDesignation(projectId, invitation);
   await ProjectMember.create({
     project: new mongoose.Types.ObjectId(projectId),
     user: new mongoose.Types.ObjectId(userId),
     role: invitation.role,
-    permissions: permSnapshot,
+    designationId: designation?._id ?? null,
+    permissions: designation ? designation.permissions : await snapshotFromRoleId(invitation.role),
   });
   await upsertStaffFromProjectMember(projectId, userId);
   await ProjectInvitation.findByIdAndUpdate(invitationId, { $set: { status: 'accepted' } });

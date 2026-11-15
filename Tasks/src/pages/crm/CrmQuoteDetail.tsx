@@ -552,6 +552,10 @@ export default function CrmQuoteDetail() {
                 </div>
               )}
               <div className="flex justify-between gap-3">
+                <dt className="text-[color:var(--text-muted)]">Issue date</dt>
+                <dd>{formatDateDDMMYYYY(quote.issueDate ?? quote.createdAt ?? '') || '—'}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
                 <dt className="text-[color:var(--text-muted)]">Valid until</dt>
                 <dd>{quote.validUntil ? formatDateDDMMYYYY(quote.validUntil) : '—'}</dd>
               </div>

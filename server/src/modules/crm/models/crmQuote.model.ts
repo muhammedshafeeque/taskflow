@@ -45,6 +45,8 @@ export interface ICrmQuote extends Document {
   title: string;
   status: CrmQuoteStatus;
   version: number;
+  /** Date printed on the quotation; defaults to creation date, editable while draft/sent */
+  issueDate?: Date;
   validUntil?: Date;
   lineItems: ICrmQuoteLine[];
   /** Sum of line amounts (after line discounts, before quote discount & tax) */
@@ -93,6 +95,7 @@ const crmQuoteSchema = new Schema<ICrmQuote>(
     title: { type: String, required: true },
     status: { type: String, enum: ['draft', 'sent', 'accepted', 'rejected', 'expired'], default: 'draft' },
     version: { type: Number, default: 1 },
+    issueDate: { type: Date },
     validUntil: { type: Date },
     lineItems: { type: [quoteLineSchema], default: [] },
     subtotal: { type: Number, default: 0 },

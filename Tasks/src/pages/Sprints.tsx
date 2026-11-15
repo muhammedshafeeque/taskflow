@@ -23,6 +23,9 @@ export default function Sprints() {
   const [form, setForm] = useState({ name: '', project: '', board: '' });
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [pageError, setPageError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [movingId, setMovingId] = useState<string | null>(null);
   const [completeModal, setCompleteModal] = useState<{ sprint: Sprint; incompleteCount: number; incompleteIssues: { _id: string; key?: string; title: string }[] } | null>(null);
 
   useEffect(() => {
@@ -32,62 +35,82 @@ export default function Sprints() {
     }
   }, [projectId, navigate]);
 
-  useEffect(() => {
-    if (!token) return;
-    boardsApi.list(1, 100, projectId!, token).then((res) => {
+  // Sprints only run on Scrum boards.
+  const scrumBoards = boards.filter((b) => b.type === 'Scrum');
+
+  function loadBoards() {
+    if (!token || !projectId) return;
+    boardsApi.list(1, 100, projectId, token).then((res) => {
       if (res.success && res.data) setBoards(res.data.data);
     });
-  }, [token, projectId]);
+  }
 
-  useEffect(() => {
+  function loadSprints(p = page) {
     if (!token || !projectId) return;
-    setLoading(true);
-    sprintsApi.list(page, 10, projectId, undefined, token).then((res) => {
+    sprintsApi.list(p, 10, projectId, undefined, token).then((res) => {
       setLoading(false);
       if (res.success && res.data) {
         setSprints(res.data.data);
         setTotal(res.data.total);
-      }
+      } else setPageError(res.message ?? 'Could not load sprints');
     });
-  }, [token, projectId, page]);
+  }
+
+  useEffect(loadBoards, [token, projectId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => loadSprints(page), [token, projectId, page]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!token || !projectId) return;
-    if (!form.board) {
-      setSubmitError('Select a board before creating a sprint.');
-      return;
-    }
     setSubmitting(true);
     setSubmitError('');
+    // No board chosen → the server uses the project's Scrum board, creating one if there is none.
     const res = await sprintsApi.create(
-      { name: form.name, project: projectId, board: form.board },
+      { name: form.name, project: projectId, board: form.board || undefined },
       token
     );
     setSubmitting(false);
     if (res.success) {
       setModal(false);
-      setForm({ name: '', project: projectId, board: boards[0]?._id ?? '' });
-      sprintsApi.list(1, 10, projectId, undefined, token).then((r) => {
-        if (r.success && r.data) {
-          setSprints(r.data.data);
-          setTotal(r.data.total);
-        }
-      });
+      setForm({ name: '', project: projectId, board: '' });
+      if (res.data?.boardCreated) {
+        setNotice(`Created the Scrum board "${res.data.board?.name ?? ''}" for this sprint.`);
+        loadBoards();
+      }
+      setPage(1);
+      loadSprints(1);
     } else setSubmitError(res.message ?? 'Failed');
   }
 
   async function startSprint(id: string) {
     if (!token) return;
+    setPageError('');
     const res = await sprintsApi.start(id, token);
+    // Starting may complete the board's previous active sprint, so reload rather than patch one row.
+    if (res.success) {
+      loadSprints();
+      loadBoards();
+    } else setPageError(res.message ?? 'Could not start the sprint');
+  }
+
+  async function moveSprint(sprint: Sprint, boardId: string) {
+    if (!token || !boardId || boardId === sprint.board?._id) return;
+    setPageError('');
+    setMovingId(sprint._id);
+    const res = await sprintsApi.update(sprint._id, { board: boardId }, token);
+    setMovingId(null);
     if (res.success && res.data) {
-      setSprints((prev) => prev.map((s) => (s._id === id ? res.data! : s)));
-    }
+      setSprints((prev) => prev.map((s) => (s._id === sprint._id ? res.data! : s)));
+      loadBoards();
+    } else setPageError(res.message ?? 'Could not move the sprint');
   }
 
   async function openCompleteModal(sprint: Sprint) {
     if (!token || !projectId) return;
+    setPageError('');
     const res = await sprintsApi.getCompletionPreview(sprint._id, projectId, token);
+    if (!res.success) setPageError(res.message ?? 'Could not complete the sprint');
     if (res.success && res.data) {
       setCompleteModal({
         sprint,
@@ -101,10 +124,11 @@ export default function Sprints() {
     if (!token || !completeModal) return;
     const id = completeModal.sprint._id;
     const res = await sprintsApi.complete(id, token);
+    setCompleteModal(null);
     if (res.success && res.data) {
-      setCompleteModal(null);
       setSprints((prev) => prev.map((s) => (s._id === id ? res.data! : s)));
-    }
+      loadBoards();
+    } else setPageError(res.message ?? 'Could not complete the sprint');
   }
 
   const limit = 10;
@@ -118,19 +142,24 @@ export default function Sprints() {
           <button
             type="button"
             onClick={() => {
-              setForm({ name: '', project: projectId ?? '', board: boards[0]?._id ?? '' });
+              setForm({ name: '', project: projectId ?? '', board: scrumBoards[0]?._id ?? '' });
               setSubmitError('');
               setModal(true);
             }}
-            disabled={boards.length === 0}
             className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-primary)] hover:bg-[color:var(--bg-surface)] transition"
           >
             New sprint
           </button>
         </div>
-        {boards.length === 0 && (
-          <p className="mb-4 text-xs text-amber-400">
-            No board found for this project. Create a board first to use sprints.
+        {pageError && (
+          <p className="mb-4 text-xs text-red-400" role="alert">
+            {pageError}
+          </p>
+        )}
+        {notice && <p className="mb-4 text-xs text-[color:var(--text-muted)]">{notice}</p>}
+        {scrumBoards.length === 0 && (
+          <p className="mb-4 text-xs text-[color:var(--text-muted)]">
+            Sprints run on a Scrum board. This project has none yet — one is created with the project’s status columns when you add the first sprint.
           </p>
         )}
 
@@ -151,7 +180,19 @@ export default function Sprints() {
                   <span className="font-medium text-[color:var(--text-primary)] text-sm">{s.name}</span>
                   <p className="text-[color:var(--text-muted)] text-xs mt-0.5">
                     {typeof s.project === 'object' ? s.project.name : ''} ·{' '}
-                    {typeof s.board === 'object' ? s.board.name : ''}
+                    {s.board && typeof s.board === 'object' ? (
+                      <Link to={`/projects/${projectId}/boards?board=${s.board._id}`} className="hover:text-[color:var(--text-primary)] underline-offset-2 hover:underline">
+                        {s.board.name}
+                      </Link>
+                    ) : (
+                      <span className="text-amber-400">no board</span>
+                    )}
+                    {s.startDate || s.endDate ? (
+                      <>
+                        {' · '}
+                        {s.startDate ? new Date(s.startDate).toLocaleDateString() : '…'} – {s.endDate ? new Date(s.endDate).toLocaleDateString() : '…'}
+                      </>
+                    ) : null}
                   </p>
                   <span
                     className="inline-block mt-1 px-2 py-0.5 rounded text-[11px] bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)]"
@@ -160,6 +201,27 @@ export default function Sprints() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
+                  {s.status !== 'completed' && scrumBoards.length > 1 && (
+                    <select
+                      aria-label={`Board for ${s.name}`}
+                      value={s.board?._id ?? ''}
+                      disabled={movingId === s._id}
+                      onChange={(e) => moveSprint(s, e.target.value)}
+                      className="px-2 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-primary)]"
+                    >
+                      {scrumBoards.map((b) => (
+                        <option key={b._id} value={b._id}>{b.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  {s.status === 'active' && s.board?._id && (
+                    <Link
+                      to={`/projects/${projectId}/boards?board=${s.board._id}`}
+                      className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)]"
+                    >
+                      Open board
+                    </Link>
+                  )}
                   <Link
                     to={`/projects/${projectId}/sprints/${s._id}/report`}
                     className="px-3 py-1.5 rounded-md border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)]"
@@ -239,18 +301,25 @@ export default function Sprints() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Board</label>
-                  <select
-                    value={form.board}
-                    onChange={(e) => setForm((f) => ({ ...f, board: e.target.value }))}
-                    required
-                    className="w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
-                  >
-                    <option value="">Select board</option>
-                    {boards.map((b) => (
-                      <option key={b._id} value={b._id}>{b.name}</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs font-medium text-[color:var(--text-primary)] mb-1">Scrum board</label>
+                  {scrumBoards.length > 0 ? (
+                    <select
+                      value={form.board}
+                      onChange={(e) => setForm((f) => ({ ...f, board: e.target.value }))}
+                      className="w-full px-3 py-1.5 rounded-md bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-xs focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
+                    >
+                      {scrumBoards.map((b) => (
+                        <option key={b._id} value={b._id}>
+                          {b.name}
+                          {b.activeSprint ? ` (running: ${b.activeSprint.name})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-xs text-[color:var(--text-muted)]">
+                      A Scrum board will be created for this project.
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-2 pt-2">
                   <button
