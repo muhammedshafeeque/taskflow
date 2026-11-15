@@ -35,9 +35,31 @@ function pushHistory(
 
 function parseDateInput(value: unknown): Date | undefined {
   if (value === undefined || value === null || value === '') return undefined;
-  const d = new Date(String(value));
+  const s = String(value).trim();
+  // Calendar dates (YYYY-MM-DD from the date picker) are stored as that day at 00:00 UTC.
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00Z`) : new Date(s);
   if (Number.isNaN(d.getTime())) throw new ApiError(400, 'Invalid date');
   return d;
+}
+
+/** A stored calendar date as YYYY-MM-DD (the UTC day it was saved as), for emails and messages. */
+function calendarDay(d?: Date | string | null): string {
+  if (!d) return '';
+  const date = new Date(d);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+}
+
+/** The issue date is chosen by the user — it is never taken from when the quote was created. */
+function requireIssueDate(value: unknown): Date {
+  const d = parseDateInput(value);
+  if (!d) throw new ApiError(400, 'Choose the quotation’s issue date');
+  return d;
+}
+
+function assertValidAfterIssue(issueDate?: Date, validUntil?: Date) {
+  if (issueDate && validUntil && calendarDay(validUntil) < calendarDay(issueDate)) {
+    throw new ApiError(400, '“Valid until” cannot be before the issue date');
+  }
 }
 
 function summarizeContentChange(
@@ -273,6 +295,10 @@ export async function createQuote(
     if (!lead) throw new ApiError(404, 'Lead not found');
   }
 
+  const issueDate = requireIssueDate(input.issueDate);
+  const validUntil = parseDateInput(input.validUntil);
+  assertValidAfterIssue(issueDate, validUntil);
+
   const lineItems = normalizeLines((input.lineItems as LineInput[]) ?? []);
   const discountPercent = Math.min(100, Math.max(0, Number(input.discountPercent) || 0));
   const totals = calcTotals(lineItems, discountPercent);
@@ -291,8 +317,8 @@ export async function createQuote(
     title: String(input.title ?? defaultTitle).trim(),
     status: 'draft',
     version: 1,
-    issueDate: parseDateInput(input.issueDate) ?? new Date(),
-    validUntil: input.validUntil ? new Date(String(input.validUntil)) : undefined,
+    issueDate,
+    validUntil,
     lineItems,
     ...totals,
     discountPercent,
@@ -332,6 +358,7 @@ export async function sendQuote(
   if (quote.status === 'accepted' || quote.status === 'rejected' || quote.status === 'expired') {
     throw new ApiError(400, 'Cannot email an accepted, rejected, or expired quotation');
   }
+  if (!quote.issueDate) throw new ApiError(400, 'Set the quotation’s issue date before sending it');
   const accountName =
     quote.customerOrgId && typeof quote.customerOrgId === 'object' && 'name' in quote.customerOrgId
       ? String((quote.customerOrgId as { name?: string }).name ?? '')
@@ -370,8 +397,8 @@ export async function sendQuote(
     ${(quote.discountAmount ?? 0) > 0 ? `<p>Discount: −${quote.discountAmount} ${quote.currency}</p>` : ''}
     ${(quote.taxTotal ?? 0) > 0 ? `<p>Tax: ${quote.taxTotal} ${quote.currency}</p>` : ''}
     <p><strong>Total: ${total} ${quote.currency}</strong></p>
-    <p>Issue date: ${new Date(quote.issueDate ?? quote.createdAt).toLocaleDateString()}</p>
-    ${quote.validUntil ? `<p>Valid until: ${new Date(quote.validUntil).toLocaleDateString()}</p>` : ''}
+    <p>Issue date: ${calendarDay(quote.issueDate)}</p>
+    ${quote.validUntil ? `<p>Valid until: ${calendarDay(quote.validUntil)}</p>` : ''}
     ${quote.notes ? `<p>${quote.notes}</p>` : ''}
     ${opts?.pdfBase64 ? '<p>A PDF copy of this quotation is attached.</p>' : ''}`,
     'indigo'
@@ -463,17 +490,18 @@ export async function updateQuote(
     notes: existing.notes,
     lineItems: existing.lineItems.map((l) => ({ ...l })),
     validUntil: existing.validUntil,
-    issueDate: existing.issueDate ?? existing.createdAt,
+    issueDate: existing.issueDate,
   };
 
   if (input.title !== undefined) existing.title = String(input.title).trim();
   if (input.notes !== undefined) existing.notes = input.notes as string;
   if (input.validUntil !== undefined) {
-    existing.validUntil = input.validUntil ? new Date(String(input.validUntil)) : undefined;
+    existing.validUntil = parseDateInput(input.validUntil);
   }
   if (input.issueDate !== undefined) {
-    existing.issueDate = parseDateInput(input.issueDate) ?? existing.createdAt;
+    existing.issueDate = requireIssueDate(input.issueDate);
   }
+  assertValidAfterIssue(existing.issueDate, existing.validUntil);
   if (input.currency !== undefined) existing.currency = String(input.currency);
   if (input.taxCode !== undefined) existing.taxCode = input.taxCode ? String(input.taxCode) : undefined;
   if (input.discountPercent !== undefined) {
@@ -509,7 +537,7 @@ export async function updateQuote(
     notes: existing.notes,
     lineItems: existing.lineItems,
     validUntil: existing.validUntil,
-    issueDate: existing.issueDate ?? existing.createdAt,
+    issueDate: existing.issueDate,
   });
 
   // Bump version when a sent quote is revised

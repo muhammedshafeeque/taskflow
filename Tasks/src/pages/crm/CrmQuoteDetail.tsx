@@ -394,7 +394,9 @@ export default function CrmQuoteDetail() {
             <button
               type="button"
               onClick={openSendDialog}
-              className="btn-primary px-3 py-2 rounded-lg text-sm"
+              disabled={!quote.issueDate}
+              title={quote.issueDate ? undefined : 'Set the issue date (Edit) before sending'}
+              className="btn-primary px-3 py-2 rounded-lg text-sm disabled:opacity-50"
             >
               Send via email
             </button>
@@ -553,11 +555,17 @@ export default function CrmQuoteDetail() {
               )}
               <div className="flex justify-between gap-3">
                 <dt className="text-[color:var(--text-muted)]">Issue date</dt>
-                <dd>{formatDateDDMMYYYY(quote.issueDate ?? quote.createdAt ?? '') || '—'}</dd>
+                <dd>
+                  {quote.issueDate ? (
+                    formatDateDDMMYYYY(String(quote.issueDate).slice(0, 10))
+                  ) : (
+                    <span className="text-amber-400">Not set — edit to choose it</span>
+                  )}
+                </dd>
               </div>
               <div className="flex justify-between gap-3">
                 <dt className="text-[color:var(--text-muted)]">Valid until</dt>
-                <dd>{quote.validUntil ? formatDateDDMMYYYY(quote.validUntil) : '—'}</dd>
+                <dd>{quote.validUntil ? formatDateDDMMYYYY(String(quote.validUntil).slice(0, 10)) : '—'}</dd>
               </div>
               <div className="flex justify-between gap-3">
                 <dt className="text-[color:var(--text-muted)]">Created</dt>

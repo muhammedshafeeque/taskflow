@@ -644,7 +644,7 @@ export default function CrmQuotes() {
                       {q.lineItems?.length ?? 0}
                     </td>
                     <td className="px-3 py-2.5 align-middle text-[color:var(--text-muted)] whitespace-nowrap">
-                      {q.validUntil ? formatDateDDMMYYYY(q.validUntil) : '—'}
+                      {q.validUntil ? formatDateDDMMYYYY(String(q.validUntil).slice(0, 10)) : '—'}
                     </td>
                     <td className="px-3 py-2.5 align-middle text-right">
                       <div className="inline-flex flex-wrap justify-end gap-x-2 gap-y-1 text-[12px]">

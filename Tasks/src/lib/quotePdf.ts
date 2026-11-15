@@ -97,7 +97,8 @@ function fmtDate(d?: string): string {
   if (!d) return '-';
   const date = new Date(d);
   if (Number.isNaN(date.getTime())) return String(d).slice(0, 10);
-  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  // Quote dates are calendar days stored at 00:00 UTC; read them in UTC so no timezone shifts the day.
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
 function billingLabel(type?: string): string {
@@ -280,7 +281,7 @@ export function buildQuotePdf(quote: CrmQuote, issuerOrName?: QuotePdfIssuer | s
 
   // ── Meta strip ────────────────────────────────────────────────────────
   const meta: Array<[string, string]> = [
-    ['Issue date', fmtDate(quote.issueDate ?? quote.createdAt)],
+    ['Issue date', fmtDate(quote.issueDate)],
     ['Valid until', fmtDate(quote.validUntil)],
     ['Currency', currency],
     ['Version', `v${quote.version ?? 1}`],

@@ -151,7 +151,8 @@ export default function CrmQuoteForm() {
     title: '',
     currency: 'USD',
     notes: '',
-    issueDate: todayIso(),
+    // Chosen by the user; never defaulted to the day the quote is created.
+    issueDate: '',
     validUntil: '',
     discountPercent: 0,
     taxCode: '',
@@ -281,7 +282,8 @@ export default function CrmQuoteForm() {
           title: q.title ?? '',
           currency: q.currency || 'USD',
           notes: q.notes ?? '',
-          issueDate: String(q.issueDate ?? q.createdAt ?? todayIso()).slice(0, 10),
+          // Older quotes may have no issue date: leave it empty so the user picks one.
+          issueDate: q.issueDate ? String(q.issueDate).slice(0, 10) : '',
           validUntil: q.validUntil ? String(q.validUntil).slice(0, 10) : '',
           discountPercent: q.discountPercent ?? 0,
           taxCode: q.taxCode ?? '',
@@ -402,6 +404,14 @@ export default function CrmQuoteForm() {
       setError('Add at least one feature / line item');
       return;
     }
+    if (!form.issueDate) {
+      setError('Choose the issue date');
+      return;
+    }
+    if (form.validUntil && form.validUntil < form.issueDate) {
+      setError('“Valid until” cannot be before the issue date');
+      return;
+    }
     setSaving(true);
     setError('');
     const payload = {
@@ -410,7 +420,7 @@ export default function CrmQuoteForm() {
       title: form.title.trim() || undefined,
       currency: form.currency,
       notes: form.notes.trim() || undefined,
-      issueDate: form.issueDate || undefined,
+      issueDate: form.issueDate,
       validUntil: form.validUntil || undefined,
       discountPercent: form.discountPercent,
       taxCode: form.taxCode || undefined,
@@ -681,13 +691,21 @@ export default function CrmQuoteForm() {
                   />
                 </label>
                 <label className="block">
-                  <span className={labelClass}>Issue date</span>
+                  <span className={labelClass}>
+                    Issue date <span className="text-red-400" aria-hidden>*</span>
+                  </span>
                   <input
                     type="date"
+                    required
                     value={form.issueDate}
                     onChange={(e) => setForm((f) => ({ ...f, issueDate: e.target.value }))}
                     className={inputClass}
                   />
+                  {!form.issueDate && (
+                    <span className="mt-1 block text-[11px] text-[color:var(--text-muted)]">
+                      The date printed on the quotation — pick it; it isn’t the day you create it.
+                    </span>
+                  )}
                 </label>
                 <div className="block">
                   <span className={labelClass}>Valid until</span>
@@ -703,8 +721,10 @@ export default function CrmQuoteForm() {
                       <button
                         key={d}
                         type="button"
-                        onClick={() => setForm((f) => ({ ...f, validUntil: addDaysIso(d, f.issueDate || undefined) }))}
-                        className="text-[11px] px-2 py-0.5 rounded-md border border-[color:var(--border-subtle)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:border-[color:var(--accent)]"
+                        disabled={!form.issueDate}
+                        title={form.issueDate ? undefined : 'Choose the issue date first'}
+                        onClick={() => setForm((f) => ({ ...f, validUntil: addDaysIso(d, f.issueDate) }))}
+                        className="text-[11px] px-2 py-0.5 rounded-md border border-[color:var(--border-subtle)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:border-[color:var(--accent)] disabled:opacity-40 disabled:pointer-events-none"
                       >
                         +{d}d
                       </button>
