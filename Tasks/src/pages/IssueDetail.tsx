@@ -52,6 +52,8 @@ export default function IssueDetail() {
   const [project, setProject] = useState<Project | null>(null);
   const [projectPermissions, setProjectPermissions] = useState<string[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
+  // Why comments can't be shown or saved (e.g. no comment permission in this project) instead of an empty list.
+  const [commentsError, setCommentsError] = useState('');
   const [workLogs, setWorkLogs] = useState<import('../lib/api').WorkLog[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [subtasks, setSubtasks] = useState<Issue[]>([]);
@@ -229,7 +231,13 @@ export default function IssueDetail() {
   useEffect(() => {
     if (!token || !issue?._id) return;
     commentsApi.list(issue._id, 1, 50, token).then((res) => {
-      if (res.success && res.data) setComments(res.data.data);
+      if (res.success && res.data) {
+        setComments(res.data.data);
+        setCommentsError('');
+      } else {
+        setComments([]);
+        setCommentsError(`Comments can’t be shown: ${res.message ?? 'request failed'}`);
+      }
     });
   }, [token, issue?._id]);
 
@@ -313,6 +321,8 @@ export default function IssueDetail() {
     setSubmittingComment(false);
     if (res.success && res.data) {
       setComments((prev) => [res.data!, ...prev]);
+    } else {
+      setCommentsError(`Your comment wasn’t saved: ${res.message ?? 'request failed'}`);
     }
   }
 
@@ -325,6 +335,8 @@ export default function IssueDetail() {
     setEditingCommentId(null);
     if (res.success && res.data) {
       setComments((prev) => prev.map((c) => (c._id === commentId ? res.data! : c)));
+    } else {
+      setCommentsError(`Your change wasn’t saved: ${res.message ?? 'request failed'}`);
     }
   }
 
@@ -628,6 +640,11 @@ export default function IssueDetail() {
                 onAttachmentsChange={refreshAttachments}
                 currentUserId={user?.id}
               />
+              {commentsError && (
+                <p className="mt-6 text-xs text-red-400" role="alert">
+                  {commentsError}
+                </p>
+              )}
               <TaskActivityComments
                 issue={issue}
                 comments={comments}

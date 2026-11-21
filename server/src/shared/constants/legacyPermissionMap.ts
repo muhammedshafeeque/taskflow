@@ -108,6 +108,24 @@ const IMPLIED_PERMISSIONS: Array<{ ifAny: string[]; grant: string[] }> = [
   ...sameResourceViewRules(),
 ];
 
+/**
+ * Rights a colon-era code carried that later became separate permissions. Before 2026-06 comments had no
+ * permission of their own: whoever could view an issue could read its comments, and whoever could edit it could
+ * comment. When comment permissions were introduced, roles still on these codes (and members whose access comes
+ * from such a role) silently lost comments, because each code translated only to its one dot-notation twin.
+ */
+const LEGACY_COLON_ALSO_GRANTS: Record<string, string[]> = {
+  'issues:view': [PF.ISSUE.COMMENT.READ, PF.ISSUE.COMMENT.LIST],
+  'issues:edit': [PF.ISSUE.COMMENT.CREATE],
+};
+
+/** A permission code in dot notation, plus anything a colon-era code also granted. */
+function expandLegacyCode(p: string): string[] {
+  const dot = LEGACY_COLON_TO_DOT[p] ?? p;
+  const extra = LEGACY_COLON_ALSO_GRANTS[p];
+  return extra ? [dot, ...extra] : [dot];
+}
+
 export function withImpliedPermissions(perms: string[]): string[] {
   const set = new Set(perms);
   for (const rule of IMPLIED_PERMISSIONS) {
@@ -117,7 +135,7 @@ export function withImpliedPermissions(perms: string[]): string[] {
 }
 
 export function mapLegacyProjectOrGlobalPermissions(perms: string[]): string[] {
-  return withImpliedPermissions([...new Set(perms.map((p) => LEGACY_COLON_TO_DOT[p] ?? p))]);
+  return withImpliedPermissions([...new Set(perms.flatMap(expandLegacyCode))]);
 }
 
 export function mapLegacyCustomerPermissions(perms: string[]): string[] {
@@ -134,10 +152,12 @@ export function permissionToDot(p: string): string {
 export function userHasPermission(userPerms: string[], required: string): boolean {
   const needed = permissionToDot(required);
   return userPerms.some((p) => {
-    const dot = permissionToDot(p);
-    if (dot === needed) return true;
-    // Wildcard: "foo.bar.*" matches any permission that starts with "foo.bar."
-    if (dot.endsWith('.*') && needed.startsWith(dot.slice(0, -1))) return true;
-    return false;
+    // Same precedence as permissionToDot: staff codes first, then customer-portal codes.
+    const granted = !LEGACY_COLON_TO_DOT[p] && LEGACY_CUSTOMER_COLON_TO_DOT[p] ? [LEGACY_CUSTOMER_COLON_TO_DOT[p]] : expandLegacyCode(p);
+    return granted.some((dot) => {
+      if (dot === needed) return true;
+      // Wildcard: "foo.bar.*" matches any permission that starts with "foo.bar."
+      return dot.endsWith('.*') && needed.startsWith(dot.slice(0, -1));
+    });
   });
 }
