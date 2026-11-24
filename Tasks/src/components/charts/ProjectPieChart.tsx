@@ -1,4 +1,5 @@
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
+import { ResponsiveContainer } from './ResponsiveContainer';
 import { chartTooltipProps, projectPieLegendProps } from '../../lib/chartTheme';
 
 export type PieChartDatum = { name: string; value: number };

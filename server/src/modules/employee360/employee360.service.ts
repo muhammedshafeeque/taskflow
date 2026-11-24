@@ -46,7 +46,7 @@ export function weekStart(t: number): Date {
 
 export type EmployeeFlag = { level: 'red' | 'amber'; area: string; text: string };
 
-/** `id` is an employee id, or "me" for the viewer's own employee record. */
+/** `id` is an employee id, or "me" for the viewer's own employee record (null when they have none). */
 export async function getEmployee360(access: GraphAccess, id: string) {
   const viewerId = access.viewer.userId;
   const filter =
@@ -56,7 +56,10 @@ export async function getEmployee360(access: GraphAccess, id: string) {
         ? { taskflowOrganizationId: access.orgOid, _id: new mongoose.Types.ObjectId(id) }
         : null;
   const employee = filter ? await HrmsEmployee.findOne(filter).lean() : null;
-  if (!employee) throw new ApiError(404, id === 'me' ? 'You have no employee record in this workspace' : 'Employee not found');
+  if (!employee) {
+    if (id === 'me') return null;
+    throw new ApiError(404, 'Employee not found');
+  }
 
   const isSelf = Boolean(employee.userId && String(employee.userId) === viewerId);
   if (!isSelf && !(await access.canSeeType('employee'))) throw new ApiError(404, 'Employee not found');

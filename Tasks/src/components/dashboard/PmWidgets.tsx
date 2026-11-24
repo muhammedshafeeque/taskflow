@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts';
+import { ResponsiveContainer } from '../charts/ResponsiveContainer';
 import { FiActivity, FiAlertTriangle, FiArrowDownRight, FiArrowUpRight, FiCheckCircle, FiMoreHorizontal, FiPlus, FiTarget, FiUserX, FiZap } from 'react-icons/fi';
 import type { DashboardOverview, OverviewIssueRef } from '../../lib/api';
 import { chartTooltipProps } from '../../lib/chartTheme';

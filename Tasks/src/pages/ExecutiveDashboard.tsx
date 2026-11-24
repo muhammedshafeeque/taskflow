@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { dashboardApi, crmApi } from '../lib/api';
 import { canAny } from '../utils/moduleAccess';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { ResponsiveContainer } from '../components/charts/ResponsiveContainer';
 
 export default function ExecutiveDashboard() {
   const { token, user } = useAuth();

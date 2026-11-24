@@ -102,8 +102,8 @@ beforeAll(async () => {
     { name: 'Client B', slug: 'client-b', contactEmail: 'b@b.test', taskflowOrganizationId: org._id, createdBy: human._id },
   ]);
   const [projA, projB] = await Project.create([
-    { name: 'A App', key: 'AAPP', lead: human._id, taskflowOrganizationId: org._id },
-    { name: 'B App', key: 'BAPP', lead: human._id, taskflowOrganizationId: org._id },
+    { name: 'A App', key: 'AAPP', lead: human._id, taskflowOrganizationId: org._id, nextIssueNumber: 1 },
+    { name: 'B App', key: 'BAPP', lead: human._id, taskflowOrganizationId: org._id, nextIssueNumber: 1 },
   ]);
   await CustomerProjectMapping.create([
     { customerOrgId: clientA._id, projectId: projA._id, mappedBy: human._id },

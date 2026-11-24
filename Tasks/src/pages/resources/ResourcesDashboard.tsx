@@ -8,11 +8,11 @@ import {
   Legend,
   Pie,
   PieChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
+import { ResponsiveContainer } from '../../components/charts/ResponsiveContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { resourcesApi } from '../../lib/api';
 import MetricCard from '../../components/MetricCard';

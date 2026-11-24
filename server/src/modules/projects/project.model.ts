@@ -293,7 +293,8 @@ const projectSchema = new Schema<IProject>(
     taskflowOrganizationId: { type: Schema.Types.ObjectId, ref: 'Organization', default: null, index: true },
     orgId: { type: Schema.Types.ObjectId, ref: 'CustomerOrg', default: null },
     crmAccountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount', default: null, index: true },
-    nextIssueNumber: { type: Number, default: 1 },
+    // Last number given out: creating an issue increments it and uses the result, so the first key is -1.
+    nextIssueNumber: { type: Number, default: 0 },
     githubRepo: { type: String, lowercase: true, trim: true, default: null, index: true },
     githubMergedStatus: { type: String, default: null },
     statuses: { type: [projectStatusSchema], default: undefined },

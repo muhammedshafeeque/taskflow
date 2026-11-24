@@ -107,7 +107,7 @@ afterAll(async () => {
 
 describe('employee 360', () => {
   it('shows every section and flags to an HR viewer', async () => {
-    const e = await getEmployee360(as('hr', HR), ids.emp);
+    const e = (await getEmployee360(as('hr', HR), ids.emp))!;
     expect(e.isSelf).toBe(false);
     expect(e.employee).toMatchObject({ name: 'Ana', designation: 'Engineer', manager: { name: 'Hana' } });
     expect(e.profile.skills).toEqual(['react', 'node']);
@@ -130,13 +130,13 @@ describe('employee 360', () => {
   });
 
   it('lets people see themselves without HR permissions, minus payslips', async () => {
-    const e = await getEmployee360(as('ana'), 'me');
+    const e = (await getEmployee360(as('ana'), 'me'))!;
     expect(e.isSelf).toBe(true);
     expect(e.leave?.balanceDays).toBe(12);
     expect(e.allocations?.currentPercent).toBe(120);
     expect(e.payroll).toBeNull();
 
-    const withSlips = await getEmployee360(as('ana', ['taskflow.self.payslip.read']), 'me');
+    const withSlips = (await getEmployee360(as('ana', ['taskflow.self.payslip.read']), 'me'))!;
     // Only finalized/paid slips, and no CTC.
     expect(withSlips.payroll?.payslips.map((p) => p.period)).toEqual(['2026-09']);
     expect(withSlips.payroll?.payslips[0]).not.toHaveProperty('monthlyCtc');
@@ -145,13 +145,13 @@ describe('employee 360', () => {
   it('keeps other people out and scopes work to the viewer’s projects', async () => {
     await expect(getEmployee360(as('ben'), ids.emp)).rejects.toMatchObject({ statusCode: 404 });
 
-    const e = await getEmployee360(as('ben', ['taskflow.hr.employee.read']), ids.emp);
+    const e = (await getEmployee360(as('ben', ['taskflow.hr.employee.read']), ids.emp))!;
     expect(e.leave).toBeNull();
     expect(e.payroll).toBeNull();
     expect(e.allocations).toBeNull();
     // Ben is on APP only: SEC-1 is not counted.
     expect(e.work.summary.open).toBe(2);
     expect(e.work.hiddenProjects).toBe(1);
-    await expect(getEmployee360(as('ben'), 'me')).rejects.toMatchObject({ statusCode: 404 });
+    await expect(getEmployee360(as('ben'), 'me')).resolves.toBeNull(); // an empty state, not an error (AUT-6)
   });
 });

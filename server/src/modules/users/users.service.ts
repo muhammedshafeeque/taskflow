@@ -18,6 +18,9 @@ import * as inboxService from '../inbox/inbox.service';
 import { Project } from '../projects/project.model';
 import * as projectInvitationsService from '../projects/projectInvitations.service';
 import { hasProjectFullAccess } from '../../middleware/requireProjectPermission';
+import { assertCanGrant, assertCanManageAdmin, assertNotSelf, type GrantActor } from '../auth/grantGuard';
+import { adminReset as adminResetTwoFactor } from '../auth/twoFactor.service';
+import { logAudit } from '../auditLogs/logAudit';
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -132,10 +135,10 @@ export async function findById(id: string): Promise<unknown | null> {
 export async function update(
   id: string,
   input: UpdateUserBody,
-  currentUserId: string,
+  actor: GrantActor,
   hasEditPermission: boolean
 ): Promise<unknown | null> {
-  const isSelf = id === currentUserId;
+  const isSelf = id === actor.id;
 
   if (isSelf) {
     // Self-update: only name (profile updates like avatar go through auth/me)
@@ -156,24 +159,29 @@ export async function update(
     throw new ApiError(403, 'You do not have permission to edit other users');
   }
 
+  const target = await User.findById(id).select('role roleId enabled').lean();
+  if (!target) return null;
+  const currentRoleId = target.roleId ? String(target.roleId) : null;
+  // The edit form always sends the role: only a real change resets the person's overrides.
+  const roleChanged = input.roleId !== undefined && (input.roleId || null) !== currentRoleId;
+
+  assertCanManageAdmin(actor, target.role === 'admin' || input.role === 'admin', { targetUserId: id });
+
   // Admin update: name, roleId, enabled
-  if (input.roleId) {
-    const role = await Role.findById(input.roleId).lean();
-    if (!role) throw new ApiError(400, 'Invalid role');
-  }
+  const newRole = roleChanged && input.roleId ? await Role.findById(input.roleId).lean() : null;
+  if (roleChanged && input.roleId && !newRole) throw new ApiError(400, 'Invalid role');
+  if (newRole) assertCanGrant(actor, newRole.permissions ?? [], { targetUserId: id, roleId: input.roleId });
 
   const updateData: Record<string, unknown> = {};
   if (input.name !== undefined) updateData.name = input.name;
   if (input.role !== undefined) updateData.role = input.role;
-  if (input.roleId !== undefined) {
-    const existingUser = await User.findById(id).select('role').lean();
+  if (roleChanged) {
     updateData.roleId = input.roleId || null;
-    const newRole = input.roleId ? await Role.findById(input.roleId).lean() : null;
     const rolePerms = Array.isArray(newRole?.permissions) ? (newRole.permissions as string[]) : [];
     updateData.permissions = mergeTaskflowPermissionFloor(
       resolveEffectiveGlobalPermissions({
         rolePermissions: rolePerms,
-        role: (input.role ?? existingUser?.role ?? 'user') as any,
+        role: input.role ?? target.role ?? 'user',
         mustChangePassword: false,
         permissionOverrides: { granted: [], revoked: [] }
       })
@@ -188,6 +196,13 @@ export async function update(
     .lean();
 
   if (user) {
+    const changes: Record<string, { from: unknown; to: unknown }> = {};
+    if (roleChanged) changes.roleId = { from: currentRoleId, to: input.roleId || null };
+    if (input.role !== undefined && input.role !== target.role) changes.role = { from: target.role, to: input.role };
+    if (input.enabled !== undefined && input.enabled !== target.enabled) changes.enabled = { from: target.enabled, to: input.enabled };
+    if (Object.keys(changes).length > 0) {
+      logAudit({ userId: actor.id, action: 'user.access.update', resourceType: 'user', resourceId: id, meta: changes });
+    }
     await ensureGlobalProjectMembership(user);
   }
 
@@ -196,15 +211,29 @@ export async function update(
 
 export async function updatePermissionOverrides(
   id: string,
-  overrides: { granted: string[]; revoked: string[] }
+  overrides: { granted: string[]; revoked: string[] },
+  actor: GrantActor
 ): Promise<unknown | null> {
   const existingUser = await User.findById(id).populate('roleId', 'permissions').lean();
   if (!existingUser) return null;
   const existingGranted = existingUser.permissionOverrides?.granted ?? [];
 
   const role = existingUser.roleId as any;
-  const rolePerms = Array.isArray(role?.permissions) ? role.permissions : [];
-  
+  const rolePerms: string[] = Array.isArray(role?.permissions) ? role.permissions : [];
+  const existingRevoked = existingUser.permissionOverrides?.revoked ?? [];
+
+  assertNotSelf(actor, id);
+  assertCanManageAdmin(actor, existingUser.role === 'admin', { targetUserId: id });
+  // Grants someone else made may stay. Lifting a revoke hands the permission back, so it counts as a grant.
+  assertCanGrant(
+    actor,
+    [
+      ...overrides.granted.filter((p) => !existingGranted.includes(p)),
+      ...existingRevoked.filter((p) => !overrides.revoked.includes(p) && (rolePerms.includes(p) || overrides.granted.includes(p))),
+    ],
+    { targetUserId: id }
+  );
+
   const mergedPerms = mergeTaskflowPermissionFloor(
     resolveEffectiveGlobalPermissions({
       rolePermissions: rolePerms,
@@ -231,6 +260,17 @@ export async function updatePermissionOverrides(
   if (user) {
     await ensureGlobalProjectMembership(user);
 
+    logAudit({
+      userId: actor.id,
+      action: 'user.permissions.update',
+      resourceType: 'user',
+      resourceId: id,
+      meta: {
+        granted: overrides.granted,
+        revoked: overrides.revoked,
+        previous: { granted: existingGranted, revoked: existingRevoked },
+      },
+    });
     const newlyGranted = overrides.granted.filter((perm) => !existingGranted.includes(perm));
     if (newlyGranted.length > 0) {
       await inboxService
@@ -294,10 +334,12 @@ export type InviteOutcome = {
 export async function invite(
   input: InviteUserBody,
   taskflowOrganizationId: string | undefined,
-  inviterUserId: string | undefined
+  actor: GrantActor
 ): Promise<InviteOutcome> {
+  const inviterUserId = actor.id;
   const role = await Role.findById(input.roleId).lean();
   if (!role) throw new ApiError(400, 'Invalid role');
+  assertCanGrant(actor, role.permissions ?? [], { email: input.email, roleId: input.roleId });
 
   const normalizedEmail = input.email.toLowerCase().trim();
   const existing = await User.findOne({ email: normalizedEmail }).lean();
@@ -317,9 +359,7 @@ export async function invite(
 
     const org = await Organization.findById(organizationId).select('name').lean();
     const workspaceName = (org as { name?: string } | null)?.name ?? 'Atrium workspace';
-    const inviter = inviterUserId
-      ? await User.findById(inviterUserId).select('name').lean()
-      : null;
+    const inviter = await User.findById(inviterUserId).select('name').lean();
     const inviterName = (inviter as { name?: string } | null)?.name ?? 'A teammate';
     const appBase = process.env.FRONTEND_URL ?? '';
 
@@ -341,7 +381,7 @@ export async function invite(
           type: 'workspace_join',
           title: `Added to workspace: ${workspaceName}`,
           body: `${inviterName} added you to the workspace "${workspaceName}". Sign in with your existing Atrium account — no new password was sent.`,
-          meta: { organizationId, inviterUserId: inviterUserId ?? null },
+          meta: { organizationId, inviterUserId },
         })
         .catch((err) => console.error('Failed to create workspace join inbox message:', err));
     }
@@ -361,6 +401,7 @@ export async function invite(
       organizationId
     );
 
+    logAudit({ userId: actor.id, action: 'user.workspace.add', resourceType: 'user', resourceId: existingUserId, meta: { organizationId } });
     const doc = await User.findById(existingId).select('-password').populate('roleId', 'name').lean();
     return { inviteKind: 'workspace_join', status: 200, user: doc ?? existing };
   }
@@ -399,6 +440,8 @@ export async function invite(
     passwordResetExpires: resetExpires,
   });
 
+  logAudit({ userId: actor.id, action: 'user.invite', resourceType: 'user', resourceId: String(user._id), meta: { roleId: input.roleId, organizationId } });
+
   const appUrl = (process.env.FRONTEND_URL ?? '').replace(/\/$/, '');
   const resetLink = `${appUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
   await sendInviteEmail({
@@ -423,4 +466,13 @@ export async function invite(
 
   const doc = await User.findById(user._id).select('-password').populate('roleId', 'name').lean();
   return { inviteKind: 'new_user', status: 201, user: doc ?? user.toObject() };
+}
+
+/** Turn off someone's 2FA so they can sign in again. Weakening an admin's sign-in is reserved for admins. */
+export async function resetTwoFactor(id: string, actor: GrantActor): Promise<void> {
+  const target = await User.findById(id).select('role').lean();
+  if (!target) throw new ApiError(404, 'User not found');
+  assertCanManageAdmin(actor, target.role === 'admin', { targetUserId: id });
+  await adminResetTwoFactor(id);
+  logAudit({ userId: actor.id, action: 'user.two_factor.reset', resourceType: 'user', resourceId: id });
 }

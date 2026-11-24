@@ -15,6 +15,9 @@ interface TaskActivityCommentsProps {
   editingCommentId?: string | null;
   mentionUsers?: Array<{ _id: string; name: string; email: string }>;
   workLogs: WorkLog[];
+  /** Project permissions to see / add time logs. Without either, the Time tab is hidden. */
+  canViewTime: boolean;
+  canLogTime: boolean;
   currentUserId?: string;
   onAddWorkLog: (payload: { minutesSpent: number; date: string; description?: string }) => void;
   onDeleteWorkLog: (id: string) => void;
@@ -32,6 +35,8 @@ export default function TaskActivityComments({
   editingCommentId,
   mentionUsers,
   workLogs,
+  canViewTime,
+  canLogTime,
   currentUserId,
   onAddWorkLog,
   onDeleteWorkLog,
@@ -65,12 +70,14 @@ export default function TaskActivityComments({
           <button type="button" onClick={() => setActiveTab('history')} className={tabClass('history')}>
             History
           </button>
-          <button type="button" onClick={() => setActiveTab('time')} className={tabClass('time')}>
-            Time
-            {workLogs.length > 0 && (
-              <span className={badgeClass(activeTab === 'time')}>{workLogs.length}</span>
-            )}
-          </button>
+          {(canViewTime || canLogTime) && (
+            <button type="button" onClick={() => setActiveTab('time')} className={tabClass('time')}>
+              Time
+              {workLogs.length > 0 && (
+                <span className={badgeClass(activeTab === 'time')}>{workLogs.length}</span>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -106,14 +113,18 @@ export default function TaskActivityComments({
           <TaskHistoryStack issue={issue} />
         </div>
       )}
-      {activeTab === 'time' && (
+      {activeTab === 'time' && (canViewTime || canLogTime) && (
         <div className="px-4 py-4 space-y-4">
-          <WorkLogInput onAdd={onAddWorkLog} submitting={submittingWorkLog} />
-          <WorkLogList
-            logs={workLogs}
-            currentUserId={currentUserId}
-            onDelete={onDeleteWorkLog}
-          />
+          {canLogTime && <WorkLogInput onAdd={onAddWorkLog} submitting={submittingWorkLog} />}
+          {canViewTime || workLogs.length > 0 ? (
+            <WorkLogList
+              logs={workLogs}
+              currentUserId={currentUserId}
+              onDelete={onDeleteWorkLog}
+            />
+          ) : (
+            <p className="type-meta">You don’t have access to time already logged on this issue.</p>
+          )}
         </div>
       )}
     </section>

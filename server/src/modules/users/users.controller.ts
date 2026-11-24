@@ -6,6 +6,7 @@ import { usersValidation } from './users.validation';
 
 import * as usersService from './users.service';
 import { ApiError } from '../../utils/ApiError';
+import { grantActorOf } from '../auth/grantGuard';
 import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 
@@ -23,27 +24,28 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
 }
 
 export async function updateUser(req: Request, res: Response): Promise<void> {
-  const userId = req.user?.id;
-  if (!userId) throw new ApiError(401, 'Unauthorized');
-  const permissions = req.user?.permissions ?? [];
-  const hasEditPermission = userHasPermission(permissions, TASK_FLOW_PERMISSIONS.AUTH.USER.UPDATE);
-  const user = await usersService.update(req.params.id, req.body, userId, hasEditPermission);
+  const actor = grantActorOf(req);
+  const hasEditPermission = userHasPermission(actor.permissions, TASK_FLOW_PERMISSIONS.AUTH.USER.UPDATE);
+  const user = await usersService.update(req.params.id, req.body, actor, hasEditPermission);
   if (!user) throw new ApiError(404, 'User not found');
   res.status(200).json({ success: true, data: user });
 }
 
 export async function inviteUser(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
-  const inviterId = req.user?.id;
-  if (!inviterId) throw new ApiError(401, 'Unauthorized');
-  const result = await usersService.invite(req.body, req.activeOrganizationId, inviterId);
+  const result = await usersService.invite(req.body, req.activeOrganizationId, grantActorOf(req));
   res.status(result.status).json({ success: true, inviteKind: result.inviteKind, data: result.user });
 }
 
 export async function updatePermissionOverrides(req: Request, res: Response): Promise<void> {
   const { granted, revoked } = req.body as { granted: string[]; revoked: string[] };
-  const user = await usersService.updatePermissionOverrides(req.params.id, { granted, revoked });
+  const user = await usersService.updatePermissionOverrides(req.params.id, { granted, revoked }, grantActorOf(req));
   if (!user) throw new ApiError(404, 'User not found');
   res.status(200).json({ success: true, data: user });
+}
+
+export async function resetTwoFactor(req: Request, res: Response): Promise<void> {
+  await usersService.resetTwoFactor(req.params.id, grantActorOf(req));
+  res.json({ success: true, data: { reset: true } });
 }
 
 export const updatePermissionOverridesHandler = [

@@ -4743,5 +4743,5 @@ export interface Employee360LeaveItem {
 }
 
 export const employee360Api = {
-  get: (id: string, token: string) => api.get<Employee360>(`/employee-360/${encodeURIComponent(id)}`, token),
+  get: (id: string, token: string) => api.get<Employee360 | null>(`/employee-360/${encodeURIComponent(id)}`, token),
 };

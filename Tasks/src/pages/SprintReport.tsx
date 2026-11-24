@@ -10,8 +10,8 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer,
 } from 'recharts';
+import { ResponsiveContainer } from '../components/charts/ResponsiveContainer';
 import { useAuth } from '../contexts/AuthContext';
 import { sprintsApi, projectsApi, type Sprint, type Project } from '../lib/api';
 import { SprintRetroPanel } from '../components/ai/AiPanels';

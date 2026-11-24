@@ -1,4 +1,3 @@
-import { adminReset as adminResetTwoFactor } from '../auth/twoFactor.service';
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import { requirePermission } from '../../middleware/requirePermission';
@@ -9,6 +8,7 @@ import {
   updateUserHandler,
   updatePermissionOverridesHandler,
   inviteUserHandler,
+  resetTwoFactor,
   userIdParamHandler,
 } from './users.controller';
 import { asyncHandler } from '../../utils/asyncHandler';
@@ -26,10 +26,7 @@ router.patch('/:id', requirePermission(TASK_FLOW_PERMISSIONS.AUTH.USER.UPDATE), 
 router.post(
   '/:id/reset-two-factor',
   requirePermission(TASK_FLOW_PERMISSIONS.AUTH.USER.UPDATE),
-  asyncHandler(async (req, res) => {
-    await adminResetTwoFactor(req.params.id);
-    res.json({ success: true, data: { reset: true } });
-  })
+  asyncHandler(resetTwoFactor)
 );
 router.patch(
   '/:id/permissions',

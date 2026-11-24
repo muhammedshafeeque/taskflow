@@ -872,20 +872,59 @@ export async function remove(id: string): Promise<boolean> {
   return result != null;
 }
 
-export async function updateBacklogOrder(issueIds: string[], userId: string): Promise<{ updated: number; errors: string[] }> {
-  if (issueIds.length === 0) return { updated: 0, errors: [] };
+/**
+ * Turn issue ids and keys (any case) into ids, limited to the given projects. Keeps order, drops repeats.
+ * Anything malformed, unknown or in another project comes back in `unresolved`, so callers never cast a key to an id.
+ */
+async function resolveIssueRefs(
+  refs: string[],
+  projectIds: unknown[]
+): Promise<{ ids: string[]; unresolved: string[] }> {
+  const isId = (ref: string) => /^[a-f0-9]{24}$/i.test(ref);
+  const clean = refs.map((r) => r.trim());
+  const found = await Issue.find({
+    project: { $in: projectIds },
+    $or: [
+      { _id: { $in: clean.filter(isId) } },
+      { key: { $in: clean.filter((r) => !isId(r)).map((r) => r.toUpperCase()) } },
+    ],
+  })
+    .select('_id key')
+    .lean();
+  const idOf = new Map<string, string>();
+  for (const i of found) {
+    const id = String(i._id);
+    idOf.set(id, id);
+    if (i.key) idOf.set(i.key.toUpperCase(), id);
+  }
+  const ids = new Set<string>();
+  const unresolved: string[] = [];
+  for (const ref of clean) {
+    const id = isId(ref) ? idOf.get(ref.toLowerCase()) : idOf.get(ref.toUpperCase());
+    if (id) ids.add(id);
+    else unresolved.push(ref);
+  }
+  return { ids: [...ids], unresolved };
+}
+
+function unresolvedMessage(unresolved: string[]): string {
+  const shown = unresolved.slice(0, 10).join(', ');
+  const more = unresolved.length > 10 ? ` and ${unresolved.length - 10} more` : '';
+  return `Issue(s) not found or access denied: ${shown}${more}`;
+}
+
+export async function updateBacklogOrder(issueRefs: string[], userId: string): Promise<{ updated: number; errors: string[] }> {
+  if (issueRefs.length === 0) return { updated: 0, errors: [] };
   const userObjectId = new mongoose.Types.ObjectId(userId);
   const projectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
   if (projectIds.length === 0) return { updated: 0, errors: ['Access denied'] };
 
+  const { ids: issueIds, unresolved } = await resolveIssueRefs(issueRefs, projectIds);
+  if (unresolved.length > 0) return { updated: 0, errors: [unresolvedMessage(unresolved)] };
+
   const issues = await Issue.find({ _id: { $in: issueIds }, project: { $in: projectIds } })
     .select('_id project')
     .lean();
-  const accessibleIds = new Set(issues.map((i) => String(i._id)));
-  const inaccessible = issueIds.filter((id) => !accessibleIds.has(id));
-  if (inaccessible.length > 0) {
-    return { updated: 0, errors: [`Access denied to ${inaccessible.length} issue(s)`] };
-  }
 
   const bulkOps = issueIds.map((id, index) => ({
     updateOne: {
@@ -917,24 +956,22 @@ export interface BulkUpdateInput {
 }
 
 export async function bulkUpdate(
-  issueIds: string[],
+  issueRefs: string[],
   updates: BulkUpdateInput,
   userId: string
 ): Promise<{ updated: number; errors: string[] }> {
-  if (issueIds.length === 0) return { updated: 0, errors: [] };
+  if (issueRefs.length === 0) return { updated: 0, errors: [] };
   const userObjectId = new mongoose.Types.ObjectId(userId);
   const allowedProjectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
   if (allowedProjectIds.length === 0) return { updated: 0, errors: ['Access denied'] };
+
+  const { ids: issueIds, unresolved } = await resolveIssueRefs(issueRefs, allowedProjectIds);
+  if (unresolved.length > 0) return { updated: 0, errors: [unresolvedMessage(unresolved)] };
 
   const issuesBefore = await Issue.find({ _id: { $in: issueIds }, project: { $in: allowedProjectIds } })
     .select('_id key title type status assignee project')
     .populate('project', 'name key')
     .lean();
-  const accessibleIds = issuesBefore.map((i) => String(i._id));
-  const inaccessible = issueIds.filter((id) => !accessibleIds.includes(id));
-  if (inaccessible.length > 0) {
-    return { updated: 0, errors: [`Access denied to ${inaccessible.length} issue(s)`] };
-  }
 
   const updateData: Record<string, unknown> = {};
   const unset: Record<string, 1> = {};
@@ -995,7 +1032,7 @@ export async function bulkUpdate(
     ? { $set: updateData, $unset: unset }
     : { $set: updateData };
 
-  const result = await Issue.updateMany({ _id: { $in: accessibleIds } }, updateOp);
+  const result = await Issue.updateMany({ _id: { $in: issueIds } }, updateOp);
   const updated = result.modifiedCount;
 
   for (const before of issuesBefore) {
@@ -1100,20 +1137,18 @@ export async function bulkUpdate(
   return { updated, errors: [] };
 }
 
-export async function bulkDelete(issueIds: string[], userId: string): Promise<{ deleted: number; errors: string[] }> {
-  if (issueIds.length === 0) return { deleted: 0, errors: [] };
+export async function bulkDelete(issueRefs: string[], userId: string): Promise<{ deleted: number; errors: string[] }> {
+  if (issueRefs.length === 0) return { deleted: 0, errors: [] };
   const userObjectId = new mongoose.Types.ObjectId(userId);
   const allowedProjectIds = await ProjectMember.find({ user: userObjectId }).distinct('project');
   if (allowedProjectIds.length === 0) return { deleted: 0, errors: ['Access denied'] };
 
+  const { ids: issueIds, unresolved } = await resolveIssueRefs(issueRefs, allowedProjectIds);
+  if (unresolved.length > 0) return { deleted: 0, errors: [unresolvedMessage(unresolved)] };
+
   const issues = await Issue.find({ _id: { $in: issueIds }, project: { $in: allowedProjectIds } })
     .select('_id project')
     .lean();
-  const accessibleIds = issues.map((i) => String(i._id));
-  const inaccessible = issueIds.filter((id) => !accessibleIds.includes(id));
-  if (inaccessible.length > 0) {
-    return { deleted: 0, errors: [`Access denied to ${inaccessible.length} issue(s)`] };
-  }
 
   const result = await Issue.deleteMany({ _id: { $in: issueIds } });
   const affectedProjectIds = [...new Set(issues.map((i) => String(i.project)))];

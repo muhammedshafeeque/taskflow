@@ -3,6 +3,7 @@ import { asyncHandler } from '../../utils/asyncHandler';
 import { validate } from '../../middleware/validate';
 import { rolesValidation } from './roles.validation';
 import * as rolesService from './roles.service';
+import { grantActorOf } from '../auth/grantGuard';
 import { ApiError } from '../../utils/ApiError';
 import { ALL_PERMISSIONS } from '../../constants/permissions';
 
@@ -18,18 +19,18 @@ export async function getRoleById(req: Request, res: Response): Promise<void> {
 }
 
 export async function createRole(req: Request, res: Response): Promise<void> {
-  const data = await rolesService.create(req.body);
+  const data = await rolesService.create(req.body, grantActorOf(req));
   res.status(201).json({ success: true, data });
 }
 
 export async function updateRole(req: Request, res: Response): Promise<void> {
-  const role = await rolesService.update(req.params.id, req.body);
+  const role = await rolesService.update(req.params.id, req.body, grantActorOf(req));
   if (!role) throw new ApiError(404, 'Role not found');
   res.status(200).json({ success: true, data: role });
 }
 
 export async function deleteRole(req: Request, res: Response): Promise<void> {
-  const deleted = await rolesService.remove(req.params.id);
+  const deleted = await rolesService.remove(req.params.id, grantActorOf(req));
   if (!deleted) throw new ApiError(404, 'Role not found');
   res.status(200).json({ success: true, data: { deleted: true } });
 }

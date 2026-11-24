@@ -9,8 +9,8 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
 } from 'recharts';
+import { ResponsiveContainer } from '../components/charts/ResponsiveContainer';
 import { getChartColor } from '../lib/chartTheme';
 
 export default function Estimates() {

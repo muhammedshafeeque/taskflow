@@ -12,11 +12,13 @@ import { ModuleLoader } from '../components/loaders/ModuleLoader';
 
 export default function UserPermissions() {
   const { userId } = useParams<{ userId: string }>();
-  const { token, user: currentUser, refreshUser } = useAuth();
+  const { token, user: currentUser } = useAuth();
   const canEditUsers = userHasPermission(
     currentUser?.permissions ?? [],
     TASK_FLOW_PERMISSIONS.AUTH.USER.UPDATE
   );
+
+  const isSelf = !!userId && currentUser?.id === userId;
 
   const [user, setUser] = useState<User | null>(null);
   const [allPermissions, setAllPermissions] = useState<PermissionItem[]>([]);
@@ -153,7 +155,6 @@ export default function UserPermissions() {
       setUser(updated);
       setPermGranted(updated.permissionOverrides?.granted ?? []);
       setPermRevoked(updated.permissionOverrides?.revoked ?? []);
-      if (currentUser?.id === user._id) await refreshUser();
       setPermSaved(true);
     } else {
       setPermError((res as { message?: string }).message ?? 'Failed to save permissions');
@@ -213,7 +214,7 @@ export default function UserPermissions() {
           <button
             type="button"
             onClick={handleSave}
-            disabled={permSaving}
+            disabled={permSaving || isSelf}
             className="btn-primary px-4 py-2 rounded-lg text-sm disabled:opacity-50"
           >
             {permSaving ? 'Saving…' : 'Save permissions'}
@@ -229,6 +230,11 @@ export default function UserPermissions() {
         </div>
       </div>
 
+      {isSelf && (
+        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-600 text-sm">
+          You can’t change your own permissions. Ask another administrator.
+        </div>
+      )}
       {permError && (
         <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
           {permError}

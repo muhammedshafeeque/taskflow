@@ -667,9 +667,12 @@ export function registerTools(server: McpServer, ctx: McpContext) {
       inputSchema: { person: z.string().describe('"me", an employee id, or a name / employee code') },
       annotations: read,
     },
-    run(async ({ person }: { person: string }) =>
-      api.get(`/employee-360/${person.trim().toLowerCase() === 'me' ? 'me' : await resolveRecord(api, 'employee', person)}`)
-    )
+    run(async ({ person }: { person: string }) => {
+      const me = person.trim().toLowerCase() === 'me';
+      const data = await api.get(`/employee-360/${me ? 'me' : await resolveRecord(api, 'employee', person)}`);
+      if (!data) throw new Error('You have no employee record in this workspace');
+      return data;
+    })
   );
 
   // ── Whole API (every module), limited to what this user may call ────────────
@@ -903,7 +906,10 @@ export function registerTools(server: McpServer, ctx: McpContext) {
           sprint: a.sprint,
           storyPoints: a.storyPoints,
         });
-        return { created: issueSummary(created) };
+        // POST /issues answers with bare ids, so read it back for the assignee, sprint and project names.
+        // The issue already exists: a failed read must not look like a failed create.
+        const full = await api.get<RawIssue>(`/issues/${created._id}`).catch(() => created);
+        return { created: issueSummary(full) };
       }
     )
   );

@@ -26,6 +26,8 @@ export default function Employee360() {
       if (res.success && res.data) {
         setData(res.data);
         setError(null);
+      } else if (res.success) {
+        setError('No employee record is linked to your account yet. Ask HR to add you.');
       } else setError(res.message ?? 'Could not load this person');
     });
     return () => {

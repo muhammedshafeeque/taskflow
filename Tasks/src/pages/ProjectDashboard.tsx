@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, CartesianGrid, Line, Tooltip, XAxis, YAxis } from 'recharts';
+import { ResponsiveContainer } from '../components/charts/ResponsiveContainer';
 import {
   FiAlertTriangle,
   FiBarChart2,

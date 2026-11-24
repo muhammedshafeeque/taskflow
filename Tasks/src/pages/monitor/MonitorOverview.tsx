@@ -5,7 +5,8 @@ import { useMonitorWorkspace } from './MonitorWorkspace';
 import { ModuleHeader } from '../../components/moduleKit';
 import MetricCard from '../../components/MetricCard';
 import SectionCard from '../../components/SectionCard';
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts';
+import { ResponsiveContainer } from '../../components/charts/ResponsiveContainer';
 import { chartTooltipProps, getChartColor } from '../../lib/chartTheme';
 
 export default function MonitorOverview() {

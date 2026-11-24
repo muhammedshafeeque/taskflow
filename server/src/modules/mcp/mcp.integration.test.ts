@@ -90,8 +90,8 @@ beforeAll(async () => {
     { organization: org._id, user: boss._id, role: 'org_admin', status: 'active' },
   ]);
   const [app1, secret] = await Project.create([
-    { name: 'App', key: 'APP', lead: ana._id, taskflowOrganizationId: org._id },
-    { name: 'Secret', key: 'SEC', lead: ben._id, taskflowOrganizationId: org._id },
+    { name: 'App', key: 'APP', lead: ana._id, taskflowOrganizationId: org._id, nextIssueNumber: 1 },
+    { name: 'Secret', key: 'SEC', lead: ben._id, taskflowOrganizationId: org._id, nextIssueNumber: 1 },
   ]);
   await ProjectMember.create([
     { project: app1._id, user: ana._id, permissions: MEMBER_PERMS },
@@ -148,6 +148,21 @@ describe('MCP endpoint', () => {
     expect((searched.data as { issues: unknown[] }).issues).toEqual([]);
     const otherProject = await call(tokens.ana, 'get_project', { project: 'SEC' });
     expect(otherProject.isError).toBe(true);
+  });
+
+  it('create_issue sets and reports the assignee for "me" and for a user id (AUT-3)', async () => {
+    for (const assignee of ['me', ids.ana]) {
+      const res = await call(tokens.ana, 'create_issue', { project: 'APP', title: `Assigned via ${assignee}`, assignee });
+      expect(res.isError).toBe(false);
+      const created = (res.data as { created: { id: string; key: string; assignee: string | null } }).created;
+      const stored = await Issue.findById(created.id).lean();
+      expect(String(stored?.assignee)).toBe(ids.ana);
+      expect(created.assignee).toBe('Ana');
+      const read = await call(tokens.ana, 'get_issue', { issue: created.key });
+      expect(read.data).toMatchObject({ assignee: 'Ana', project: { key: 'APP' } });
+    }
+    const none = await call(tokens.ana, 'create_issue', { project: 'APP', title: 'Nobody' });
+    expect((none.data as { created: { assignee: string | null } }).created.assignee).toBeNull();
   });
 
   it('writes as the user when the token allows it', async () => {

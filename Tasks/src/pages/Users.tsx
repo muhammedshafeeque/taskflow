@@ -63,6 +63,7 @@ export default function Users() {
   const tfPerms = currentUser?.permissions ?? [];
   const canEditUsers = userHasPermission(tfPerms, TASK_FLOW_PERMISSIONS.AUTH.USER.UPDATE);
   const canInvite = userHasPermission(tfPerms, TASK_FLOW_PERMISSIONS.AUTH.USER.CREATE);
+  const canListRoles = userHasPermission(tfPerms, TASK_FLOW_PERMISSIONS.AUTH.ROLE.MANAGE_ALL);
   const atLicenseLimit = false; // license != null && license.maxUsers != null && license.userCount >= license.maxUsers;
 
   function loadUsers() {
@@ -88,11 +89,12 @@ export default function Users() {
   }, [token, workspaceKey]);
 
   useEffect(() => {
-    if (!token) return;
+    // GET /roles needs role management; without it the filter falls back to the roles seen on users.
+    if (!token || !canListRoles) return;
     rolesApi.list(token).then((rRes) => {
       if (rRes.success && rRes.data) setRoles(Array.isArray(rRes.data) ? rRes.data : []);
     });
-  }, [token, workspaceKey]);
+  }, [token, workspaceKey, canListRoles]);
 
   // useEffect(() => {
   //   if (!token || !(userHasPermission(tfPerms, TASK_FLOW_PERMISSIONS.TASKFLOW.LICENSE.VIEW) || currentUser?.role === 'admin')) return;
@@ -100,6 +102,16 @@ export default function Users() {
   //     if (res.success && res.data) setLicense(res.data);
   //   });
   // }, [token, currentUser?.permissions, currentUser?.role]);
+
+  const roleOptions = useMemo<Array<{ _id: string; name: string }>>(() => {
+    if (canListRoles) return roles;
+    const seen = new Map<string, string>();
+    for (const u of users) {
+      const id = getRoleId(u);
+      if (id) seen.set(id, getRoleName(u));
+    }
+    return [...seen].map(([_id, name]) => ({ _id, name }));
+  }, [canListRoles, roles, users]);
 
   const filteredUsers = useMemo(() => {
     let list = users;
@@ -249,7 +261,7 @@ export default function Users() {
           className="px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm text-[color:var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40 min-w-[140px]"
         >
           <option value="">All roles</option>
-          {roles.map((r) => (
+          {roleOptions.map((r) => (
             <option key={r._id} value={r.name}>
               {r.name}
             </option>
@@ -463,7 +475,7 @@ export default function Users() {
                     className="w-full px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
                   >
                     <option value="">— Select —</option>
-                    {roles.map((r) => (
+                    {roleOptions.map((r) => (
                       <option key={r._id} value={r._id}>
                         {r.name}
                       </option>
@@ -534,7 +546,7 @@ export default function Users() {
                     className="w-full px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
                   >
                     <option value="">— Select —</option>
-                    {roles.map((r) => (
+                    {roleOptions.map((r) => (
                       <option key={r._id} value={r._id}>{r.name}</option>
                     ))}
                   </select>

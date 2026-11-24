@@ -51,6 +51,8 @@ interface TaskDetailsSidebarProps {
   updatingField: string | null;
   newLabel: string;
   workLogs: WorkLog[];
+  canViewTime: boolean;
+  canLogTime: boolean;
   onUpdateField: (
     field:
       | 'status'
@@ -384,6 +386,8 @@ export default function TaskDetailsSidebar({
   updatingField,
   newLabel,
   workLogs,
+  canViewTime,
+  canLogTime,
   onUpdateField,
   onUpdateFixVersions,
   onUpdateAffectsVersions,
@@ -692,6 +696,7 @@ export default function TaskDetailsSidebar({
             </div>
 
             {/* Time logged */}
+            {(canViewTime || canLogTime) && (
             <div className="px-4 py-3 space-y-2">
               <label className="block type-label-caps">
                 Time logged
@@ -699,16 +704,19 @@ export default function TaskDetailsSidebar({
               <button
                 type="button"
                 onClick={onOpenTimeLog}
+                disabled={!canLogTime}
                 className="flex items-center justify-between w-full px-3 py-2 rounded-md bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] text-xs text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40 focus:ring-inset transition-colors"
               >
                 <span className="text-[color:var(--text-muted)]">Logged</span>
                 <span className="font-medium text-[color:var(--text-primary)]">
-                  {formatMinutes(totalMinutes)}
+                  {canViewTime || workLogs.length > 0 ? formatMinutes(totalMinutes) : '—'}
                 </span>
               </button>
-              <p className="type-meta">
-                Click to open the full log time dialog (Jira style).
-              </p>
+              {canLogTime && (
+                <p className="type-meta">
+                  Click to open the full log time dialog (Jira style).
+                </p>
+              )}
               {recentLogs.length > 0 && (
                 <div className="space-y-1 pt-1 border-t border-[color:var(--border-subtle)]/70">
                   {recentLogs.map((log) => (
@@ -727,12 +735,13 @@ export default function TaskDetailsSidebar({
                   ))}
                 </div>
               )}
-              {workLogs.length === 0 && (
+              {canViewTime && workLogs.length === 0 && (
                 <p className="type-meta">
-                  No work logged yet. Use this quick form or the Time tab in Activity.
+                  No work logged yet.{canLogTime ? ' Use this quick form or the Time tab in Activity.' : ''}
                 </p>
               )}
             </div>
+            )}
 
             {/* Sprint */}
             <div className="px-4 py-3 space-y-2">

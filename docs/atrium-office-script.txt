@@ -1,0 +1,1027 @@
+ATRIUM - HOW THE OFFICE WORKS, END TO END
+Full role-by-role script, with a gap list
+
+Every step says who does it, where in Atrium, what they do, and what should
+happen. [GAP n] points to the numbered list in Part 4. Where a gap blocks a
+step, a workaround is given. People, companies and numbers are invented samples.
+
+
+THE COMPANY - TEAMS AND LEVELS
+
+Adam (system admin) creates only the first HR person, Hana. HR hires everyone
+else. Names in brackets are the reporting manager.
+
+  Carl (CEO)
+   |-- Theo (CTO) ......... Development, DevOps/IT, Architecture standards
+   |-- Olga (COO)
+   |    |-- Dina (Delivery manager) ... PMs, BA, QA, Design
+   |    |-- Support
+   |    '-- Admin and Procurement
+   |-- Farah (CFO) ........ Accounts and Finance
+   |-- Victor (Sales head)  Sales, Marketing, Customer success
+   '-- Hana (HR manager) .. HR
+
+  EXECUTIVES
+    Carl     CEO                        (-)
+    Theo     CTO                        (Carl)
+    Olga     COO                        (Carl)
+    Farah    CFO                        (Carl)
+    Victor   Head of sales              (Carl)
+
+  HR TEAM
+    Hana     HR manager, team lead      (Carl)
+    Helen    Senior HR, recruiter       (Hana)
+    Harry    HR executive, payroll      (Hana)
+    Hugo     Junior HR, operations      (Helen)
+    Hiro     HR intern                  (Helen)
+
+  SALES TEAM
+    Lena     Sales lead                 (Victor)
+    Sara     Senior sales executive     (Lena)
+    Sam      Junior sales executive     (Sara)
+    Ivy      Sales intern               (Sara)
+
+  MARKETING TEAM
+    Mona     Marketing lead             (Victor)
+    Milo     Marketing executive        (Mona)
+
+  CUSTOMER SUCCESS / ACCOUNT MANAGEMENT
+    Cleo     Account management lead    (Victor)
+    Cody     Account manager            (Cleo)
+
+  DELIVERY AND PROJECT MANAGEMENT
+    Dina     Delivery manager           (Olga)
+    Priya    Senior project manager     (Dina)
+    Pete     Project manager            (Dina)
+    Paul     Project coordinator        (Priya)
+
+  BUSINESS ANALYSIS TEAM
+    Bela     BA lead                    (Dina)
+    Ben      Senior business analyst    (Bela)
+    Bina     Junior business analyst    (Ben)
+
+  DEVELOPMENT TEAM
+    Tara     Dev team lead              (Theo)
+    Dev      Senior developer           (Tara)
+    Jo       Junior developer           (Dev)
+    Nia      Developer intern           (Dev)
+
+  QA TEAM
+    Quinn    QA lead                    (Dina)
+    Qadir    Senior QA engineer         (Quinn)
+    Ravi     Junior QA engineer         (Qadir)
+    Rey      QA intern                  (Qadir)
+
+  DESIGN TEAM
+    Uma      UI/UX design lead          (Dina)
+    Uri      UI/UX designer             (Uma)
+
+  DEVOPS AND IT TEAM
+    Dora     DevOps / IT lead           (Theo)
+    Dan      DevOps engineer            (Dora)
+    Ian      IT support                 (Dora)
+    Adam     Atrium system admin        (Dora)
+
+  SUPPORT TEAM
+    Kim      Support engineers lead     (Olga)
+    Leo      Senior support engineer, L2 (Kim)
+    Lia      Junior support engineer, L1 (Leo)
+
+  ACCOUNTS AND FINANCE TEAM
+    Fiona    Accounts lead              (Farah)
+    Gita     Senior accountant          (Fiona)
+    Gus      Junior accountant          (Gita)
+
+  ADMIN AND PROCUREMENT TEAM
+    Alma     Admin / procurement lead   (Olga)
+    Abel     Procurement executive      (Alma)
+
+  CUSTOMER
+    Omar     Contact at "Northwind Traders" (customer portal)
+
+General level rule, for every team:
+
+  Intern   Learns: views, works only on assigned items, approves nothing.
+  Junior   Does: creates and updates own work. No delete, no approval.
+  Senior   Does and checks: wider view, reviews juniors, trains interns.
+  Lead     Runs the team: assigns, approves, sees team reports.
+  Manager  Runs the function: policies, budget, cross-team decisions.
+
+
+THE STORY IN ONE PARAGRAPH
+
+Adam sets up the company and the first HR person, Hana. Hana builds the HR team
+and the policies, then hires the executives and every team, each with a lead,
+seniors, juniors and interns. Adam gives each person the role for their team
+and level. IT and procurement equip them. Marketing brings leads, sales
+converts and closes one, and hands it to delivery. The BA team writes the
+requirements, design, development and QA build it, and DevOps releases it.
+Support and account management look after the customer, accounts bills it, HR
+runs payroll and careers, and the executives review the business.
+
+
+CONTENTS
+
+  Part 1   The script: 22 scenes and a normal day by role
+  Part 2   Roles, permissions, approvals and permission tests
+  Part 3   Acceptance checklist
+  Part 4   Gaps found (39)
+  Part 5   Suggested build order
+
+
+======================================================================
+PART 1 - THE SCRIPT
+======================================================================
+
+SCENE 1. SYSTEM ADMIN SETS UP THE COMPANY
+Who: Adam
+
+ 1.1 Sign in at /login. The home hub shows the module tiles.
+ 1.2 Core > Company: enter company name, logo and base currency.
+ 1.3 Core > Currencies and Exchange rates: add the currencies you trade in.
+ 1.4 Core > Modules: switch on Project Manager, Resources, CRM, Contracts,
+     Billing, Accounts, HRMS, Assets, Procurement, Service Desk, Customer
+     Portal, Documents, Calendar and Monitor.
+     Expect: a disabled module disappears for everyone.
+ 1.5 Roles: create every role in Part 2. The seed provides only Super Admin,
+     Project Manager, Developer, Viewer, Org Manager, Sales, Account Manager,
+     Support Agent and CRM Admin [GAP 1].
+     Each user has exactly ONE role, so each team and level pair is its own
+     role, for example "Sales - Junior" and "Sales - Lead" [GAP 29].
+
+
+SCENE 2. THE FIRST HR AND THE HR TEAM
+Who: Adam, then Hana
+
+ 2.1 Adam: Users > Add user: Hana, work email, role HR - Manager.
+     Expect: an invite email with a set-password link, valid for 24 hours.
+ 2.2 Adam: HRMS > Employees > + Add employee: Hana, SAME email, department
+     HR, designation "HR Manager", status Active, joining date, annual CTC.
+     This is separate from 2.1 because the two are not connected [GAP 4].
+ 2.3 Hana sets a password, signs in and opens Me (HR self-service).
+     Expect: the employee record links to the account by matching email.
+ 2.4 Hana adds Carl (CEO) as an employee; Adam adds Carl's account, role CEO.
+ 2.5 Hana hires Helen, Harry, Hugo and Hiro with the steps of Scene 5. Adam
+     adds their accounts: HR - Senior, HR - Payroll, HR - Junior, HR - Intern.
+ 2.6 Split the HR work:
+
+       Hana    Policies, offers, salaries, payroll check, final approvals
+       Helen   Recruitment, interviews, onboarding, appraisals, exits
+       Harry   Attendance, leave, payroll preparation
+       Hugo    Candidate entry, onboarding follow-up, attendance entry
+       Hiro    Candidate list and onboarding view, learns only
+
+ 2.7 Check: Hugo cannot open Payroll, Hiro cannot change anything, Helen
+     cannot change leave policy, Harry cannot open Recruitment.
+     Salary is still returned in the employee data to Hugo [GAP 30].
+
+
+SCENE 3. HR SETS THE POLICIES
+Who: Hana
+
+ 3.1 HRMS > HR settings: weekend days, leave-year start month, hours per day
+     (8), working days per year (260), weekly hours (40), timesheet reminder
+     day, recruitment stages, and the leave approvers (Hana and Harry).
+ 3.2 HRMS > Leave types: create
+
+       Casual   paid     12 days   monthly accrual   carry forward 0
+       Sick     paid     10 days   yearly            carry forward 0
+       Earned   paid     15 days   monthly accrual   carry forward 10
+       Unpaid   unpaid    0 days   reduces pay
+
+     Expect: allowances are pro-rated for people who join mid-year.
+ 3.3 HRMS > Holidays: add this year's holidays, using Location for branches.
+     Expect: leave day counts skip weekends and holidays.
+ 3.4 HRMS > Payroll: set the pay components. Default is Basic 50% of CTC,
+     HRA 40% of Basic, Special allowance 30% of CTC. Add deductions such as
+     tax or provident fund. Set working days per month (22).
+ 3.5 HRMS > On/offboarding: make three onboarding templates (intern, staff,
+     manager) and one offboarding template. Assign each task to HR, the
+     manager or the employee.
+ 3.6 HRMS > Appraisals: create a review cycle with questions and a rating
+     scale. Leave it as draft.
+ 3.7 Documents > Policies: handbook, leave, attendance, code of conduct,
+     information security and remote work.
+     Nobody is asked to read and accept them [GAP 5].
+
+
+SCENE 4. HIRING THE EXECUTIVES
+Who: Hana, Carl
+
+ 4.1 Carl asks Hana for a CTO, COO, CFO and Head of sales.
+ 4.2 Hana opens the positions and interviews with Carl.
+ 4.3 Hana hires Theo, Olga, Farah and Victor, all reporting to Carl. Use the
+     steps of Scene 5 from 5.6 onward.
+ 4.4 Each executive plans their own teams and headcount. There is no hiring
+     plan or hiring budget screen [GAP 15].
+
+
+SCENE 5. HR HIRES EVERY TEAM
+Who: HR team, executives, team leads
+
+Hire in this order: manager, lead, senior, junior, intern. Each lead then
+helps interview their own team.
+
+ 5.1 The department head asks HR for people. There is no hiring request or
+     approval screen, so agree it outside Atrium [GAP 15].
+ 5.2 Helen: HRMS > Recruitment > New opening, one per position:
+
+       Asked by   Team                Positions
+       Victor     Sales               Lead, Senior, Junior, Intern
+       Victor     Marketing           Lead, Executive
+       Victor     Account management  Lead, Account manager
+       Olga       Delivery            Delivery manager
+       Dina       Project management  Senior PM, PM, Coordinator
+       Dina       Business analysis   BA lead, Senior BA, Junior BA
+       Theo       Development         Dev lead, Senior, Junior, Intern
+       Dina       QA                  QA lead, Senior, Junior, Intern
+       Dina       Design              Design lead, Designer
+       Theo       DevOps and IT       Lead, DevOps engineer, IT support
+       Olga       Support             Support lead, Senior L2, Junior L1
+       Farah      Accounts            Accounts lead, Senior, Junior
+       Olga       Admin/Procurement   Lead, Executive
+
+     One opening each here; a real company sets its own numbers.
+ 5.3 Hugo adds the candidates. Helen screens them.
+ 5.4 Interviews (+ Interview), by level:
+
+       Intern    HR round
+       Junior    HR round + senior or lead round
+       Senior    HR round + lead round + manager round
+       Lead      HR round + department head
+       Manager   HR round + department head + CEO
+
+     Interviewers cannot view candidates unless their role has recruitment
+     read, which shows every team's candidates [GAP 31]. Otherwise HR types
+     in their feedback.
+ 5.5 Reject the others with a reason.
+ 5.6 Hana approves the salary and makes the offer outside Atrium [GAP 6].
+     Employment type: Intern for interns, Full time for the rest.
+ 5.7 Press Hire. EXPECTED TO FAIL, "Employee code is required" [GAP 7].
+     Workaround: Employees > + Add employee with department, designation
+     including level ("Junior Developer"), status Probation, date and CTC.
+ 5.8 Set the reporting manager from the company chart.
+     No screen allows it [GAP 8]. Until fixed, set it through the API;
+     otherwise approvals go to the fallback approvers.
+ 5.9 Helen starts the onboarding checklist for each person.
+     Expect: assignees with an account are notified.
+5.10 Helen sends Adam the list: name, email, team, level, role [GAP 4].
+
+
+SCENE 6. ACCOUNTS, TEAMS AND PERMISSIONS
+Who: Adam, then everyone
+
+ 6.1 Users > Add user for each joiner, with the role for team and level:
+
+       Lena   Sales - Lead         Tara   Dev - Lead
+       Sara   Sales - Senior       Dev    Dev - Senior
+       Sam    Sales - Junior       Jo     Dev - Junior
+       Ivy    Sales - Intern       Nia    Dev - Intern
+       Dina   Delivery Manager     Priya  Project Manager
+       Bela   BA - Lead            Quinn  QA - Lead
+       Kim    Support - Lead       Fiona  Accounts - Lead
+
+     Do the same for everyone else, using Part 2.
+ 6.2 One-person exception: Users > Manage permissions. Example: give Sara
+     campaign create. Expect: an inbox message. A later role change clears it.
+ 6.3 Each person sets a password, opens Me, marks attendance and ticks their
+     own onboarding tasks.
+ 6.4 Resources > Teams: create HR, Sales, Marketing, Account Management,
+     Delivery, Business Analysis, Development, QA, Design, DevOps and IT,
+     Support, Accounts, and Admin and Procurement. Set lead and members.
+     The team lead here is a label; it gives no permissions [GAP 29].
+ 6.5 Resources > Team: set skills, weekly capacity and seniority.
+     Seniority is free text and gives no permissions [GAP 29].
+ 6.6 Victor: CRM > Settings. Check the pipeline: Qualification 10%, Proposal
+     40%, Negotiation 70%, Won 100%, Lost 0%.
+ 6.7 Farah: CRM > Commissions. Plans: Senior 5%, Junior 3%, none for interns.
+ 6.8 Kim: Service > SLA and settings. Set targets and business hours.
+ 6.9 Run the permission tests at the end of Part 2, signed in as each person.
+
+
+SCENE 7. IT, ADMIN AND PROCUREMENT EQUIP THE TEAM
+Who: Ian, Dora, Abel, Alma, Farah
+
+ 7.1 Ian checks Assets for free laptops and licences.
+ 7.2 Short by five: Abel creates a purchase order in Procurement.
+ 7.3 Alma reviews. Farah approves if it is above Alma's limit.
+     Atrium enforces neither limits nor the order of steps [GAP 34].
+ 7.4 Alma marks it ordered, then received.
+     Expect: the received items can be tracked in Assets or Licences.
+ 7.5 Ian assigns each laptop and licence. Expect: it shows in Me > My assets.
+ 7.6 Dora sets up servers in Assets and applications in Monitor.
+ 7.7 Alma keeps vendors, licence renewals and warranties up to date.
+
+
+SCENE 8. MARKETING BRINGS LEADS
+Who: Mona, Milo, Lena
+
+ 8.1 Mona: CRM > Campaigns > "Autumn Web Campaign" with code.
+ 8.2 Milo runs it and keeps the campaign details current.
+ 8.3 Leads that come in carry the campaign. Mona hands them to Lena.
+     Automatic assignment to sales reps was not found [GAP 10].
+ 8.4 Mona reviews leads, conversions and results per campaign.
+
+
+SCENE 9. SALES WORKS THE LEADS
+Who: Lena, Sara, Sam, Ivy
+
+ 9.1 Create six leads. Ivy prepares the data outside CRM, Sam enters it, and
+     Lena assigns the owners.
+
+       Northwind Traders   referral   custom development  50,000   Sara
+       Blue Harbor         website    cloud               20,000   Sara
+       Kite Retail         event      support / AMC        8,000   Sara
+       Orchid Clinic       linkedin   product             30,000   Sam
+       Zed Logistics       cold       integration          5,000   Sam
+       Spam enquiry        website    -                        0   Sam
+
+     Expect: the score is worked out automatically. Email, budget, company
+     size, buying role, timeline and referral or RFP raise it.
+ 9.2 Lena enters Northwind a second time. The business expects a duplicate
+     warning. Today: it is accepted [GAP 9]. Lena deletes the copy.
+ 9.3 Owners set Next follow-up.
+     Expect: a follow-up activity is created and reminders are sent.
+ 9.4 Owners log calls and notes and move the leads:
+
+       Northwind      New > Contacted > Discovery > Qualified > Proposal requested
+       Blue Harbor    New > Contacted > Nurturing
+       Kite Retail    New > Contacted > Discovery
+       Orchid Clinic  New > Contacted > Qualified
+       Zed Logistics  New > Contacted
+       Spam           New > Unqualified, with a reason
+
+ 9.5 For Northwind, Ben (BA) joins the discovery call and Tara gives a rough
+     effort. Sara adds their findings to the lead as notes and documents.
+ 9.6 Level test. The business expects: Ivy views only, Sam edits only Sam's
+     leads, Sara sees Sam's and Ivy's, Lena sees the whole team.
+     Today: Ivy is view only, but everyone with lead access sees every lead,
+     and Sam can edit Sara's [GAP 10].
+ 9.7 Sam qualifies Orchid Clinic. Sara reviews it.
+     There is no review step; record it as a note [GAP 12].
+ 9.8 Lena reviews the dashboard, overdue follow-ups and conversion rate.
+
+
+SCENE 10. SALES CONVERTS THE LEAD
+Who: Sara
+
+10.1 Open Northwind > Convert to deal.
+10.2 Step 1: choose the pipeline, deal value 50,000 and expected close date.
+10.3 Step 2: create the portal organisation. Admin is Omar, with email.
+10.4 Step 3: CLEAR the "create project" box, so delivery does not start
+     before the deal is won. It is ticked by default [GAP 11].
+10.5 Convert. Expect:
+       - the lead is Converted and its status is locked
+       - an open deal is in the first stage, owned by Sara
+       - the Northwind customer organisation and Omar's account exist
+       - Omar is in Contacts
+       - documents attached to the lead move to the deal
+10.6 Try to convert the Spam lead. Expect: refused.
+10.7 Lena tries to delete Northwind. Expect: refused, it is converted.
+10.8 Sam tries to convert Orchid Clinic. The business expects seniors and
+     leads only. Today anyone who can edit a lead can convert it [GAP 11].
+
+
+SCENE 11. SALES CLOSES THE DEAL
+Who: Sara, Lena, Victor, Fiona, Farah
+
+11.1 Sara: Deal > Quotes. Create a quote with line items, tax, 8% discount,
+     issue date and valid-until date. Bela and Tara check the scope and
+     effort.
+     Discount rule: Junior 0%, Senior 10%, Lead 20%, Victor 30%, above that
+     Carl. Atrium accepts any discount without approval [GAP 12].
+11.2 Lena checks the quote. Sara emails it to Omar and moves the deal to
+     Proposal, then Negotiation.
+11.3 Sara revises the sent quote once. Expect: the version goes up.
+11.4 Omar agrees by email. Sara marks the quote Accepted. Omar has no accept
+     button [GAP 13].
+     Expect: a draft contract AND a starter project are created, and Sara is
+     notified. This step cannot skip the project [GAP 11].
+     No draft invoice is created for portal customers [GAP 14].
+11.5 Fiona checks the payment terms. Lena activates the contract. Bela sends
+     the SOW from Documents for e-signature.
+11.6 Sara moves the deal to Won. Accepting the quote does not do it [GAP 13].
+     Expect: Sara is notified. If Sara's value stays 50,000, a pending
+     commission of 2,500 appears.
+11.7 Farah approves the commission.
+11.8 Lena marks any dead deal Lost with a reason. Victor reviews the forecast.
+
+
+SCENE 12. HANDOVER FROM SALES TO DELIVERY
+Who: Sara, Cody, Dina, Priya, Bela
+
+12.1 Dina picks the project manager: Priya for Northwind, Pete for the next.
+12.2 Open the project created in 11.4. Its lead is Sara, because Atrium uses
+     whoever created the quote, and Sara is booked 50% on it [GAP 11].
+12.3 In project settings change the lead to Priya. In Resources >
+     Allocations Dina deletes Sara's booking.
+12.4 Hold the handover meeting (Calendar) using the deal, quote, SOW,
+     contract and notes. Cody becomes the customer's account manager.
+     There is no handover checklist or PM acceptance [GAP 15].
+12.5 Linked records should show lead > deal > quote > contract > project.
+
+
+SCENE 13. STAFFING THE PROJECT
+Who: Dina, Priya, Theo, team leads, HR
+
+13.1 Priya lists the people needed in Resources > Forecast: BA, dev lead,
+     senior, junior, intern, two QA, designer and DevOps.
+13.2 Check Bench, Engagement and Conflicts.
+13.3 Theo, Bela, Quinn, Uma and Dora propose people. Dina approves and books
+     them in Allocations. Atrium records the booking, not the approval.
+13.4 Anyone missing is hired by HR with Scenes 5 and 6. A shortage does not
+     open a job by itself [GAP 15].
+13.5 Mentors: Dev for Jo and Nia, Qadir for Ravi and Rey, Ben for Bina, Leo
+     for Lia. There is no mentor field [GAP 29].
+13.6 Priya creates the project designations from Part 2. A project starts
+     with only Project Lead and Project Member, and the rest must be set up
+     again on every project [GAP 32].
+13.7 Invite each person with their designation. They accept in Inbox.
+     Project rights come from the designation, not the company role.
+
+
+SCENE 14. REQUIREMENTS, DESIGN AND PLANNING
+Who: BA team, Design team, Priya, Paul, Tara, Theo, Dora, Omar
+
+14.1 Ben meets Omar and writes the requirements in the project's Docs space.
+     Bina drafts user stories and acceptance criteria. Bela reviews.
+14.2 Omar agrees to the scope. No requirement sign-off or change-request
+     approval was found; use the signed SOW [GAP 36].
+14.3 Ben creates epics and stories from the requirements.
+14.4 Uri makes the designs, Uma approves, and they are attached to stories.
+14.5 Tara proposes the technical approach, Theo approves. Dora plans
+     environments.
+14.6 Priya sets milestones and the risk register (Governance). Paul runs the
+     calendar and meeting notes.
+14.7 Dev, Jo and Qadir estimate. Tara and Quinn review the estimates.
+14.8 Priya creates the board and sprint and starts it. Tara assigns: complex
+     to Dev, small to Jo, learning tasks to Nia.
+
+
+SCENE 15. DEVELOPMENT AND QA
+Who: Dev team, QA team, Ben
+
+15.1 Developers move tasks, comment and log time every day.
+15.2 Nia or Jo finishes > Dev reviews. Dev finishes > Tara reviews.
+15.3 Quinn writes the test plan. Qadir writes the cases. Ravi runs the cycle;
+     Rey observes.
+15.4 Ravi logs a bug. Tara assigns it to Jo. Jo fixes it. Ravi retests and
+     closes it. Traceability shows each story with its test cases.
+15.5 Ben checks finished stories against the acceptance criteria.
+15.6 To enforce these steps configure project rules; otherwise they are team
+     discipline.
+
+
+SCENE 16. RELEASE AND PROJECT CONTROL
+Who: Priya, Quinn, Dan, Dora, Dina, Omar
+
+16.1 Quinn signs off. Priya approves. Dan deploys. Priya releases the version.
+16.2 Dora watches Monitor for errors and uptime. If it fails, Dan rolls back
+     and Dora writes the postmortem.
+16.3 Priya completes the sprint, reviews the sprint report and publishes a
+     status report for Omar.
+16.4 Omar accepts the delivery in the portal conversation.
+16.5 Everyone submits a weekly timesheet. With a reporting manager set it
+     goes to that manager: Nia and Jo to Dev, Dev to Tara, Tara to Theo,
+     Ravi to Qadir, Ben to Bela, Priya to Dina. Otherwise it goes to everyone
+     who can approve [GAP 8].
+     Expect: approved time is locked; nobody approves their own.
+16.6 Omar raises a change at /portal/login. It is approved in Requests, Ben
+     analyses it, Priya plans it, Cody tells Omar the cost.
+16.7 Dina reviews all projects weekly: Portfolio, Workload and Estimates.
+
+
+SCENE 17. SUPPORT AND ACCOUNT MANAGEMENT
+Who: Support team, Cody, Cleo, Dan, Tara's team, Omar
+
+17.1 Omar raises a ticket in the portal. Expect: the SLA starts.
+17.2 Lia (L1) answers from the knowledge base. If not solved, Leo (L2). If it
+     is a defect, Tara's team (L3). If a server problem, Dan.
+     L1/L2/L3 levels are not built in; reassign by hand [GAP 37].
+17.3 Kim watches SLA warnings, reassigns, and reviews breaches.
+17.4 The ticket is resolved. Expect: a satisfaction request. Leo adds a
+     knowledge base article.
+17.5 Cody checks Customer 360: deals, projects, tickets and invoices.
+17.6 Contracts > Renewals. Expect: a reminder within 30 days of the end date.
+     Cody plans the renewal with Cleo; new work returns to Scene 9.
+
+
+SCENE 18. ACCOUNTS AND FINANCE
+Who: Gus, Gita, Fiona, Farah
+
+18.1 Fiona: Billing > Tax & GST. Check the tax rules.
+18.2 Gus: Billing > Time to invoice. Review Northwind's billable time and
+     check the hourly rate. If neither contract nor quote has one, Atrium
+     silently uses 100 [GAP 16].
+18.3 Gus creates the invoice. It needs a CRM Account, so create one for
+     Northwind and link it if it is missing [GAP 14].
+18.4 Gita checks it, Fiona approves and emails it to Omar.
+     Atrium has no invoice approval step [GAP 39].
+18.5 Record a part payment, then the balance.
+     Expect: status Paid, and entries posted in Accounts.
+18.6 If unpaid after the due date. Expect: marked overdue, reminder sent.
+     Cody follows up with Omar.
+18.7 Dev submits an expense claim from Me. Gita checks, Fiona approves.
+     An expense editor can approve their own claim [GAP 35].
+18.8 Gus enters vendor bills, Gita reconciles the bank, Fiona closes the
+     month, Farah reviews the statements.
+
+
+SCENE 19. HR MONTHLY CYCLE
+Who: HR team, Farah, all employees
+
+19.1 Everyone marks attendance from Me each day. Hugo corrects errors.
+19.2 Leave follows the reporting line. Business rule:
+
+       Intern or junior   senior
+       Senior             lead
+       Lead               manager or department head
+       PM                 Dina
+       Department head    Carl
+       HR team            their HR senior or Hana; Hana's goes to Carl
+
+     Atrium notifies ONE level only and needs the manager set [GAP 8]. The
+     manager can decide only with the company-wide leave permission
+     [GAP 8, 23].
+19.3 Jo applies for 2 days Casual leave from Me. Expect: working days only,
+     balance checked, approver notified. Today Harry approves in HRMS >
+     Leave. Expect: balance falls and Resources shows Jo on leave.
+19.4 Sam applies for 1 day Unpaid leave. Harry approves.
+     Do NOT also mark Sam absent that day [GAP 17].
+19.5 Harry generates payroll. Check Sam's loss-of-pay day. Check anyone who
+     joined mid-month by hand [GAP 18].
+19.6 Harry adds Sara's commission as a manual payslip earning [GAP 19].
+19.7 Hana checks, Farah approves payment, Harry finalizes and marks it paid.
+     Atrium lets one person do all of it [GAP 26].
+     Expect: payroll posts to the ledger; each person sees only their own
+     payslip in Me.
+
+
+SCENE 20. GROWTH: APPRAISAL, PROMOTION, TRANSFER
+Who: HR team, leads, Adam
+
+20.1 Helen launches the appraisal cycle: self review, then reporting manager
+     review and rating. Without a manager, the launcher reviews everyone.
+20.2 Probation ends: Hana sets the status to Active. No reminder [GAP 26].
+20.3 Jo is promoted to Senior Developer. Hana changes designation and CTC,
+     Adam the role, Priya the project designation, and the resource manager
+     the seniority: four separate places [GAP 33].
+20.4 Nia's internship ends. Nia becomes Junior Developer, Full time (same
+     four places), or leaves through Scene 21.
+20.5 Uri moves to another team: change department, manager, team, role and
+     project membership.
+
+
+SCENE 21. SOMEONE LEAVES
+Who: Helen, Harry, Hana, Adam, Ian, Lena
+
+21.1 Sam resigns to Lena. Helen starts the offboarding checklist.
+21.2 Lena reassigns Sam's leads, deals and follow-ups one by one [GAP 20].
+21.3 Ian takes back Sam's laptop and licences.
+21.4 Harry runs final pay BEFORE the status changes. Terminated people are
+     left out of payroll [GAP 18].
+21.5 On the last day Hana sets the employee to Terminated.
+21.6 Adam must separately disable Sam's user account [GAP 20].
+21.7 Check: Sam cannot sign in. Sam's history remains.
+     Do not delete the employee record [GAP 21].
+
+
+SCENE 22. THE EXECUTIVE REVIEW
+Who: Executives, Hana, Adam
+
+       Carl    Executive dashboard, then every report below
+       Theo    Delivery quality, defects, Monitor, technical hiring
+       Olga    Portfolio, utilization, support SLA, procurement
+       Farah   Profitability, cash, unpaid invoices, payroll
+       Victor  Pipeline, forecast, campaigns, commissions
+       Hana    Headcount, attrition, leave, appraisals
+       Adam    Audit logs and access review
+
+22.1 Each presents; Carl decides budget, hiring and priorities.
+22.2 Decisions become tasks with owners and dates in a management project.
+
+
+----------------------------------------------------------------------
+A NORMAL DAY, BY ROLE
+----------------------------------------------------------------------
+
+  CEO                Executive dashboard, approvals, key customers
+  CTO                Monitor, defects, technical decisions
+  COO                Portfolio, SLA, purchases
+  CFO                Cash, overdue invoices, approvals
+  Head of sales      Pipeline, forecast, big deals
+  HR manager         Approvals, offers, issues
+  HR senior          Candidates, interviews, onboarding
+  HR payroll         Attendance, leave, payroll
+  HR junior/intern   Data entry / learning
+  Sales lead         Assign leads, check quotes, team follow-ups
+  Sales senior       Deals, quotes, meetings
+  Sales junior       Calls, new leads, follow-ups
+  Marketing          Campaigns and lead quality
+  Account manager    Customer health, renewals, complaints
+  Delivery manager   All projects, staffing, risks
+  Project manager    Sprint, risks, customer updates
+  Coordinator        Calendar, minutes, reminders
+  BA lead / BA       Review / write requirements and stories
+  Dev lead           Assign, review, unblock
+  Dev senior/junior  Build, review / build, log time
+  Dev intern         Learning tasks, log time
+  QA lead            Test plan, sign-off
+  QA senior/junior   Write cases / run tests, log bugs
+  Designer           Designs attached to stories
+  DevOps             Deployments, alerts, servers
+  IT support         Laptops, licences, access
+  Support lead       SLA, assignment, quality
+  Support L2 / L1    Hard tickets / first answers
+  Accounts lead      Approvals, month close
+  Accountant         Invoices, bills, bank, expenses
+  Procurement        Vendors, purchase orders, renewals
+  System admin       Accounts, roles, audit
+  Everyone           Me: attendance, leave, payslip; Inbox; timesheet
+
+
+======================================================================
+PART 2 - ROLES AND PERMISSIONS BY TEAM AND LEVEL
+======================================================================
+
+Everyone gets: inbox, own profile, leave, attendance, payslip, expense claim,
+assets and directory. Everyone who logs project time also gets timesheet
+submit. Create each role below in Roles. "View" means list and read.
+
+EXECUTIVES (view the business; no day-to-day editing)
+  CEO              Executive dashboard, profitability, and view of CRM,
+                   projects (all), Resources, HRMS, Billing, Accounts, Service
+  CTO              All projects view, Resources view, Monitor manage, server
+                   and licence view, recruitment view, timesheet approve
+  COO              All projects view, Resources view, Service view,
+                   Procurement and Assets view, executive dashboard
+  CFO              Billing, Accounts, Contracts all; Procurement manage;
+                   payroll view; profitability; commission manage
+  Head of sales    CRM all except commission manage; Contracts view
+
+SYSTEM
+  System Admin     Users, roles, modules, company settings, audit logs.
+                   No payroll or CRM needed for daily work, but the built-in
+                   admin type sees everything [GAP 38]
+
+HR
+  HR - Manager     All HRMS, Documents policies
+  HR - Senior      Employee view, create, update; recruitment, onboarding and
+                   appraisal manage; leave view
+  HR - Payroll     Employee view; attendance, leave and payroll manage
+  HR - Junior      Employee list; attendance, recruitment, onboarding manage
+  HR - Intern      Recruitment and onboarding view
+
+SALES
+  Sales - Lead     All CRM except commission manage
+  Sales - Senior   Leads, contacts, accounts, deals, quotes, activities: view,
+                   create, update. Contracts and CRM reports view
+  Sales - Junior   Leads, contacts, activities: view, create, update.
+                   Deals view. No quotes
+  Sales - Intern   Leads, contacts, activities: view only
+
+MARKETING
+  Marketing - Lead       Campaigns all; leads view, create; CRM reports view
+  Marketing - Executive  Campaigns view, create, update; leads view
+
+ACCOUNT MANAGEMENT
+  Account Mgmt - Lead    Accounts, contacts, deals, quotes, contracts: view,
+                         create, update; customer organisations view;
+                         tickets view; request approve
+  Account Manager        Same without contract create and request approve
+
+DELIVERY
+  Delivery Manager       All projects view, project create and update, all
+                         Resources, estimates and analytics, timesheet approve
+  Project Manager        Project view, create, update; user list; Resources
+                         view; allocation and forecast manage; timesheet
+                         approve
+  Coordinator            Project view, Resources view, Calendar
+
+BUSINESS ANALYSIS
+  BA - Lead        Project view, Docs space create, Documents SOW manage,
+                   leads and deals view, timesheet approve
+  BA - Senior      Project view, Docs space create, SOW view
+  BA - Junior      Project view
+
+DEVELOPMENT, QA, DESIGN (one set each)
+  Dev / QA / Design - Lead     Project view, Resources view, timesheet approve
+  Dev / QA - Senior, Designer  Project view, Resources engagement view
+  Dev / QA - Junior            Project view
+  Dev / QA - Intern            Project view
+
+DEVOPS AND IT
+  DevOps - Lead    Monitor all; Assets all; timesheet approve
+  DevOps Engineer  Monitor view and alerts manage; servers manage
+  IT Support       Asset inventory and licences manage; tickets view, update
+
+SUPPORT
+  Support - Lead   All Service Desk; customer organisations view
+  Support - Senior Tickets view, create, update; knowledge base create, update
+  Support - Junior Tickets view, create, update; knowledge base view
+
+ACCOUNTS
+  Accounts - Lead   All Billing and Accounts; Contracts view
+  Accounts - Senior Invoices, bills, expenses view, create, update; bank read;
+                    reports. Expense update also means approve
+  Accounts - Junior Invoices and expenses view, create
+
+ADMIN AND PROCUREMENT
+  Procurement - Lead       All Procurement; Assets inventory manage
+  Procurement - Executive  Vendors and purchase orders view; PO create
+
+PROJECT DESIGNATIONS (set inside each project)
+  Project Lead    Everything in the project
+  Delivery Mgr    Everything viewed; reports, milestones, members
+  Dev Lead        Issues, boards, sprints, versions; estimate approval
+  Senior Dev      Issues create and update, comments, time logs, board view
+  Junior Dev      Issues create and update, comments, time logs, board view
+  Intern          Issue view, comments, time logs
+  BA Lead / BA    Issues create and update, roadmap, milestones, comments
+  QA Lead         Test management all, issues create and update
+  QA              Test cases and runs, issues create and update
+  Designer        Issues create and update, attachments, comments
+  DevOps          Versions release, issue update, comments, time logs
+  Support         Issues create, comments
+  Coordinator     Issue view, comments, milestones, reports
+
+  Juniors should change only issues assigned to them. Issue update is a
+  project-wide permission; confirm in testing whether project rules limit it.
+
+CUSTOMER
+  Org Admin / Org Member in the portal, own organisation only
+
+WHO APPROVES WHAT (business rule; [ ] = Atrium does not enforce it)
+  Leave               reporting manager                [GAP 8]
+  Timesheet           reporting manager                works if manager set
+  Hiring              department head, then Hana       [GAP 15]
+  Salary and offer    Hana; above band Farah, Carl     [GAP 6]
+  Discount            Lead, Victor, Carl by limit      [GAP 12]
+  Estimate            Dev lead / QA lead               project setting
+  Scope change        BA lead, PM, customer            [GAP 36]
+  Release             QA lead, then PM                 project rules
+  Expense             Fiona                            [GAP 35]
+  Purchase            Alma, Farah by limit             [GAP 34]
+  Payroll             Hana, then Farah                 [GAP 26]
+  Commission          Farah                            permission only
+
+PERMISSION TESTS (sign in as each person)
+  [ ] Hiro   cannot change anything in HRMS
+  [ ] Hugo   cannot open Payroll
+  [ ] Helen  cannot change leave types or payroll
+  [ ] Harry  cannot open Recruitment
+  [ ] Ivy    can view leads, cannot create or edit
+  [ ] Sam    cannot create a quote or delete a lead
+  [ ] Sara   cannot change the pipeline or approve commission
+  [ ] Lena   cannot see HRMS employees or payroll
+  [ ] Nia    cannot edit issues, only view, comment and log time
+  [ ] Jo     cannot change project settings or sprints
+  [ ] Tara   cannot see CRM or Billing
+  [ ] Carl   can view the business modules, cannot edit a lead or an invoice
+  [ ] Theo   cannot see payroll or CRM
+  [ ] Dina   sees all projects, cannot see payroll
+  [ ] Pete   cannot see Northwind unless added to it
+  [ ] Bina   cannot change sprints or project settings
+  [ ] Ravi   can run tests, cannot change project settings
+  [ ] Dan    cannot open HRMS or Billing
+  [ ] Mona   can run campaigns, cannot edit deals
+  [ ] Lia    cannot change SLA or delete tickets
+  [ ] Abel   can create a purchase order, cannot approve it
+  [ ] Gita   cannot change the chart of accounts
+  [ ] Gus    cannot approve expenses
+  [ ] Omar   sees only Northwind
+  [ ] Nobody but Adam can open Roles or change another person's permissions
+
+
+======================================================================
+PART 3 - ACCEPTANCE CHECKLIST
+======================================================================
+
+SETUP AND PEOPLE
+ [ ] All 14 groups exist, each with a lead or head and the right levels
+ [ ] Every person has a reporting manager
+ [ ] Every team and level has its own role; all Part 2 tests pass
+ [ ] A candidate becomes an employee with a login and equipment
+ [ ] Leave policies work in a real request
+
+SALES
+ [ ] A campaign produces leads; six worked, one converted, one unqualified
+ [ ] Quote, contract and Won deal are complete; commission is approved
+ [ ] Lead > deal > quote > contract > project > invoice are linked
+
+DELIVERY
+ [ ] Priya leads the project; Sara is no longer on it
+ [ ] Requirements > stories > designs > code > tests are traceable
+ [ ] A bug goes from QA to developer and back to closed
+ [ ] QA signs off, DevOps deploys, the version is released
+ [ ] Timesheet is submitted, approved and locked
+
+SUPPORT, FINANCE AND ADMIN
+ [ ] A ticket goes L1 to L2 to developer and is resolved within SLA
+ [ ] A purchase is approved, received and assigned as an asset
+ [ ] Invoice is emailed, paid and posted; expense is approved
+ [ ] Payroll is correct for unpaid leave and commission
+
+CAREER AND CONTROL
+ [ ] A promotion changes role, salary and project rights
+ [ ] A leaver loses access and their work is reassigned
+ [ ] The CEO sees the whole business without editing it
+
+
+======================================================================
+PART 4 - GAPS FOUND
+======================================================================
+
+Type:  BUG = wrong result   LOGIC = business rule missing
+       FEATURE = not built  SECURITY = access risk
+
+--- FIX FIRST ---
+
+GAP 2   SECURITY  Any user with "update user" can make another user an
+        admin, or grant any permission to anyone, including themselves. The
+        server does not check that the giver holds those rights.
+        Fix: block granting above your own rights, and log every change.
+
+GAP 7   BUG  The Hire button always fails. The screen sends only a joining
+        date; the server requires an employee code.
+        Fix: generate the code, and ask for CTC, title and onboarding
+        template in a proper form.
+
+GAP 8   LOGIC  Reporting manager cannot be set on any screen, yet leave,
+        timesheet, appraisal and onboarding routing depend on it. Phone,
+        employee code and currency are missing from the form too.
+        Fix: add a manager picker and an org chart. Also, a manager is
+        notified of leave but can decide only with the company-wide leave
+        permission; allow it for direct reports.
+
+GAP 14  BUG  Accepting a quote creates a draft invoice only when the quote
+        has a CRM Account. Lead conversion creates a portal organisation
+        instead, so the normal sales path yields no invoice.
+        Fix: use one customer record, or create the Account on conversion.
+
+GAP 17  BUG  Loss of pay is counted twice when a day is both approved unpaid
+        leave and marked absent.
+        Fix: count each employee and date once; write approved leave into
+        attendance.
+
+GAP 18  BUG  Payroll pays a full month to people who join or leave mid-month.
+        Terminated people are excluded even when the exit date is in that
+        month. Currencies are added together in one total.
+        Fix: pro-rate by dates, include final settlement, total per currency.
+
+GAP 20  SECURITY  Setting an employee to Terminated does not disable the
+        login, and nothing reassigns their leads, deals, tasks or approvals.
+        Fix: an exit flow that does both on the last working day.
+
+--- TEAMS, LEVELS AND ACCESS ---
+
+GAP 29  LOGIC  No link between team, level and permissions. A user has one
+        role. Team lead, seniority and designation are labels only, so every
+        team and level pair needs its own role (over 40 here). Roles cannot
+        inherit from each other. There is no mentor field.
+        Fix: build permissions from team + level, with role inheritance.
+
+GAP 30  SECURITY  The employee list API returns the full record, salary
+        included, to anyone with employee list, read or HR dashboard access.
+        Fix: require a separate salary permission.
+
+GAP 31  LOGIC  HR access is company-wide. A lead cannot be limited to their
+        own team's employees, candidates, leave or attendance. Timesheet
+        approve also covers the whole workspace, not only the lead's team.
+        Fix: own / team / department / all scope on every permission.
+        This also solves GAP 10.
+
+GAP 32  FEATURE  Project designations start with only Lead and Member.
+        Fix: company-wide designation templates for Tech Lead, Senior,
+        Junior, Intern, QA and Designer, suggested from the employee's level.
+
+GAP 33  FEATURE  No promotion, transfer or intern-conversion flow. One change
+        must be made in four places, with no approval, effective date or
+        history.
+
+--- APPROVALS AND OTHER TEAMS ---
+
+GAP 34  LOGIC  Purchase order status can move from any state to any other,
+        so approval can be skipped, and there is no amount limit, second
+        approver, or check that the creator is not the approver.
+
+GAP 35  LOGIC  An expense editor can approve their own claim; no limit or
+        second approver. Expense update and approve are one permission.
+
+GAP 36  FEATURE  Not found: requirement sign-off and change-request approval
+        with cost and date impact, for the BA team.
+
+GAP 37  FEATURE  No L1/L2/L3 support levels or automatic escalation found in
+        the Service Desk code.
+
+GAP 38  SECURITY  The admin user type always receives every permission, so
+        an IT admin can see payroll and finance. There is no read-only
+        executive or limited-admin type.
+
+GAP 39  FEATURE  No shared approval engine. Each module approves in its own
+        way, so "lead, then head, then CEO by amount" cannot be set up, and
+        there is no delegate while an approver is on leave.
+
+--- SALES ---
+
+GAP 3   SECURITY  The seeded Sales role holds every CRM permission, including
+        pipeline settings, delete and commission approval. A salesperson can
+        approve their own commission.
+
+GAP 9   LOGIC  No duplicate check on leads (email, phone or company), and no
+        duplicate check on customer organisations at conversion.
+
+GAP 10  LOGIC  No record-level access. Everyone with lead access sees and
+        edits all leads and deals. Need own / team / all scopes. Automatic
+        assignment, territories and targets were not seen either.
+
+GAP 11  LOGIC  A project is created at lead conversion by default, before the
+        deal is won, and always at quote acceptance. The actor becomes
+        project lead and is booked at 50%. The convert action needs only
+        lead update, not project create.
+        Fix: create on Won, ask for a PM, check the project permission.
+        Also, conversion marks the lead converted BEFORE the customer and
+        project steps. If they fail, the lead is stuck and cannot be retried.
+
+GAP 12  LOGIC  No discount limit or quote approval.
+
+GAP 13  LOGIC  The customer cannot accept a quote online. Acceptance does
+        not move the deal to Won. Creating a project from an open deal sets
+        Won but skips commission, the stage change and the win alert.
+        Loss reason is not required on Lost, nor a reason on Unqualified, by
+        the server. Lead stages can be jumped in any order.
+
+GAP 19  LOGIC  Approved commission does not flow into payroll.
+
+--- HR ---
+
+GAP 1   FEATURE  The seed has no CEO, CTO, executive, HR, Delivery manager,
+        BA, QA, Support engineer lead or Accounts role, and no seeded role
+        except Super Admin includes self-service.
+
+GAP 4   FEATURE  User and employee are created separately and matched by
+        email. Hiring raises no account request, and an account creates no
+        employee. Adding a user who already exists elsewhere ignores the role
+        chosen in the invite.
+
+GAP 5   FEATURE  Policies have no read-and-accept tracking or re-acceptance
+        on a new version.
+
+GAP 6   FEATURE  No offer letter, salary approval, offer acceptance or
+        candidate careers page. No
+        thing stops hiring more than the openings.
+
+GAP 21  LOGIC  Deleting an employee is a hard delete that leaves attendance,
+        leave and payroll records behind. Archive instead.
+
+GAP 22  LOGIC  HR's own leave form uses fixed types (annual, sick, casual)
+        and ignores the configured Leave types, so it deducts from a
+        different balance than self-service. The approval list shows only
+        "annual" or "unpaid" for configured types.
+
+GAP 23  LOGIC  Leave: overlapping requests are allowed; a user with leave
+        permission can approve their own; a decided request can be decided
+        again; leave across two leave years is charged to the first; no
+        multi-level approval; no comp-off accrual.
+
+GAP 24  BUG  The hourly cost entered when ADDING an employee is not saved.
+        Editing the employee afterwards does save it.
+
+GAP 25  LOGIC  Automatic employee codes use headcount + 1, so deleting an
+        employee can make the next code clash.
+
+GAP 26  FEATURE  Not found: shifts, overtime, clock in/out or biometric
+        import, statutory payroll rules, bank payment file, probation
+        confirmation, salary revision history, employee documents, training,
+        warnings and grievances, and salary change audit.
+        Payroll has no separate approver: one person can generate, finalize
+        and mark it paid.
+
+GAP 27  LOGIC  Attendance: HR entries use server-local midnight while
+        self-service uses UTC midnight, so one day can be stored twice if the
+        server is not on UTC. HR has no bulk marking.
+
+--- DELIVERY AND FINANCE ---
+
+GAP 15  FEATURE  No sales-to-delivery handover checklist or PM acceptance.
+        Resource demand does not create a job opening in Recruitment.
+
+GAP 16  LOGIC  Time to invoice falls back to an hourly rate of 100 with no
+        warning when no contract or quote rate exists.
+
+GAP 28  LOGIC  Quote acceptance hides errors. If the contract or project
+        fails, the quote still shows Accepted and no one is told.
+
+
+======================================================================
+PART 5 - SUGGESTED BUILD ORDER
+======================================================================
+
+ 1. Security       GAP 2, 3, 20, 30, 38
+ 2. Broken flow    GAP 7, 8, 14, 22, 24
+ 3. Pay accuracy   GAP 17, 18, 19, 27
+ 4. Team access    GAP 29, 31, 32, 33
+ 5. Approvals      GAP 34, 35, 39
+ 6. Sales rules    GAP 9, 10, 11, 12, 13, 28
+ 7. HR process     GAP 1, 4, 5, 6, 21, 23, 25
+ 8. New features   GAP 15, 16, 26, 36, 37

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, Tooltip, XAxis, YAxis,
 } from 'recharts';
+import { ResponsiveContainer } from '../../components/charts/ResponsiveContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { serviceApi } from '../../lib/api';
 import MetricCard from '../../components/MetricCard';

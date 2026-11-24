@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { issuesApi, type IssueRollup } from '../../lib/api';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { ResponsiveContainer } from '../charts/ResponsiveContainer';
 import { getChartColor } from '../../lib/chartTheme';
 
 interface EpicRollupPanelProps {

@@ -8,8 +8,8 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
 } from 'recharts';
+import { ResponsiveContainer } from '../components/charts/ResponsiveContainer';
 
 export default function Workload() {
   const { token, user } = useAuth();

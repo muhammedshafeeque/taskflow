@@ -12,11 +12,11 @@ import {
   LineChart,
   Pie,
   PieChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
+import { ResponsiveContainer } from '../../components/charts/ResponsiveContainer';
 import {
   FiActivity,
   FiAlertTriangle,

@@ -36,6 +36,8 @@ import DevLinksPanel from '../components/issue/DevLinksPanel';
 import IssueDocsPanel from '../components/docs/IssueDocsPanel';
 import type { TaskSecondaryTabsHandle } from '../components/issue/TaskSecondaryTabs';
 import RecordLinksPanel from '../components/RecordLinksPanel';
+import { PROJECT_PERMISSIONS } from '@shared/constants/permissions';
+import { userHasPermission } from '../utils/permissions';
 
 const DEFAULT_STATUSES = ['Backlog', 'Todo', 'In Progress', 'Done'];
 const DEFAULT_TYPES = ['Task', 'Bug', 'Story', 'Epic'];
@@ -54,6 +56,8 @@ export default function IssueDetail() {
   const [comments, setComments] = useState<Comment[]>([]);
   // Why comments can't be shown or saved (e.g. no comment permission in this project) instead of an empty list.
   const [commentsError, setCommentsError] = useState('');
+  const canViewTime = userHasPermission(projectPermissions, PROJECT_PERMISSIONS.WORK_LOG.WORK_LOG.READ);
+  const canLogTime = userHasPermission(projectPermissions, PROJECT_PERMISSIONS.WORK_LOG.WORK_LOG.CREATE);
   const [workLogs, setWorkLogs] = useState<import('../lib/api').WorkLog[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [subtasks, setSubtasks] = useState<Issue[]>([]);
@@ -242,11 +246,11 @@ export default function IssueDetail() {
   }, [token, issue?._id]);
 
   useEffect(() => {
-    if (!token || !issue?._id) return;
+    if (!token || !issue?._id || !canViewTime) return;
     workLogsApi.list(issue._id, 1, 100, token).then((res) => {
       if (res.success && res.data) setWorkLogs(res.data.data);
     });
-  }, [token, issue?._id]);
+  }, [token, issue?._id, canViewTime]);
 
   const refreshAttachments = () => {
     if (!token || !issue?._id) return;
@@ -654,6 +658,8 @@ export default function IssueDetail() {
                 editingCommentId={editingCommentId}
                 mentionUsers={users}
                 workLogs={workLogs}
+                canViewTime={canViewTime}
+                canLogTime={canLogTime}
                 currentUserId={user?.id}
                 onAddWorkLog={addWorkLog}
                 onDeleteWorkLog={deleteWorkLog}
@@ -668,6 +674,8 @@ export default function IssueDetail() {
               project={project}
               projectId={projectId}
               workLogs={workLogs}
+              canViewTime={canViewTime}
+              canLogTime={canLogTime}
               users={
                 issue.assignee && typeof issue.assignee === 'object' && !users.some((u) => u._id === issue.assignee!._id)
                   ? [...users, { _id: issue.assignee._id, name: issue.assignee.name ?? 'Unknown', email: issue.assignee.email ?? '' }]
@@ -700,7 +708,7 @@ export default function IssueDetail() {
         </div>
       </div>
 
-      {timeLogOpen && (
+      {timeLogOpen && canLogTime && (
         <div className="fixed inset-0 z-40 flex items-center justify-center">
           <div
             className="absolute inset-0 bg-black/70"

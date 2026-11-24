@@ -4,11 +4,11 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
+import { ResponsiveContainer } from '../components/charts/ResponsiveContainer';
 import { useAuth } from '../contexts/AuthContext';
 import { formatMinutes } from '../components/issue/WorkLogInput';
 import {
