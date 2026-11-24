@@ -43,6 +43,13 @@ export function hasProjectFullAccess(userPerms: string[]): boolean {
   return false;
 }
 
+const VIEW_PROJECT_PERMISSIONS: string[] = ALL_PROJECT_PERMISSIONS.filter((p) => /\.(read|list|view)$/.test(p));
+
+/** "See all projects": reads any project of the workspace without being a member. Never edits. */
+export function seesAllProjects(userPerms: string[]): boolean {
+  return hasProjectFullAccess(userPerms) || userHasPermission(userPerms, TASK_FLOW_PERMISSIONS.TASKFLOW.PROJECT.LIST_ALL);
+}
+
 function normalizePermission(p: string): string {
   return LEGACY_COLON_TO_DOT[p] ?? LEGACY_CUSTOMER_COLON_TO_DOT[p] ?? p;
 }
@@ -106,6 +113,11 @@ export function requireProjectPermission(
       return;
     }
 
+    if (seesAllProjects(userPerms) && VIEW_PROJECT_PERMISSIONS.includes(required)) {
+      next();
+      return;
+    }
+
     const userObjectId = mongoose.Types.ObjectId.isValid(authUser.id)
       ? new mongoose.Types.ObjectId(authUser.id)
       : authUser.id;
@@ -157,7 +169,8 @@ export async function getProjectPermissionsForUser(
 
   const userObjectId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
   const member = await ProjectMember.findOne({ project: projectId, user: userObjectId }).lean();
-  if (!member) return [];
+  const viewAll = userPermissions && seesAllProjects(userPermissions) ? VIEW_PROJECT_PERMISSIONS : [];
+  if (!member) return [...viewAll];
 
 
 
@@ -168,7 +181,7 @@ export async function getProjectPermissionsForUser(
   } else {
     permissions = mapLegacyProjectOrGlobalPermissions(permissions);
   }
-  return permissions;
+  return [...new Set([...permissions, ...viewAll])];
 }
 
 /**

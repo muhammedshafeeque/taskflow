@@ -20,7 +20,7 @@ import {
   exportIssuesQuerySchema,
 } from './issue.validation';
 import * as issuesService from './issues.service';
-import { hasProjectFullAccess } from '../../middleware/requireProjectPermission';
+import { seesAllProjects } from '../../middleware/requireProjectPermission';
 import * as issueLinksService from './issueLinks.service';
 import * as issueHistoryService from './issueHistory.service';
 import * as watchersService from '../watchers/watchers.service';
@@ -53,7 +53,7 @@ export async function createIssue(req: Request & { user?: AuthPayload }, res: Re
 function listScope(req: Request): issuesService.IssueListScope {
   return {
     organizationId: req.activeOrganizationId,
-    fullProjectAccess: hasProjectFullAccess(req.user?.permissions ?? []),
+    fullProjectAccess: seesAllProjects(req.user?.permissions ?? []),
   };
 }
 

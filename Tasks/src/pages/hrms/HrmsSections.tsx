@@ -7,9 +7,12 @@ import {
 } from '../../components/moduleKit';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 import { PersonSelect, toPeople } from '../../components/people';
+import HandoverModal from './HandoverModal';
 import RecordLinksDrawer from '../../components/RecordLinksDrawer';
 import { useRecordLinksParam } from '../../hooks/useRecordLinksParam';
 import { Link } from 'react-router-dom';
+import { canAny } from '../../utils/moduleAccess';
+import { payAccessOf } from '@shared/constants/payAccess';
 
 const statusTone: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = {
   active: 'green', probation: 'blue', on_leave: 'amber', terminated: 'red',
@@ -28,10 +31,12 @@ function tableWrap(children: React.ReactNode) {
 // ── Employees ────────────────────────────────────────────────────────────────
 export function HrmsEmployees() {
   const [linksId, setLinksId] = useRecordLinksParam('employee');
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const pay = payAccessOf((p) => canAny(user, p));
   const [rows, setRows] = useState<HrmsEmployee[]>([]);
   const [editing, setEditing] = useState<Partial<HrmsEmployee> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [handover, setHandover] = useState<HrmsEmployee | null>(null);
 
   const load = useCallback(() => {
     if (!token) return;
@@ -44,11 +49,19 @@ export function HrmsEmployees() {
 
   const save = async () => {
     if (!token || !editing) return;
-    const payload = { ...editing };
+    const payload: Record<string, unknown> = { ...editing };
+    // The server refuses these from people who may not set them, changed or not.
+    if (!pay.set) {
+      delete payload.annualCtc;
+      delete payload.notes;
+    }
+    if (!pay.setRate) delete payload.hourlyCostRate;
     const res = editing._id ? await hrmsApi.updateEmployee(editing._id, payload, token) : await hrmsApi.createEmployee(payload, token);
     if (res.success) {
+      const leaving = editing.status === 'terminated' && rows.find((r) => r._id === editing._id)?.status !== 'terminated';
       setEditing(null);
       load();
+      if (leaving && res.data?._id) setHandover(res.data);
     } else alert(res.message);
   };
   const remove = async (id: string) => {
@@ -104,6 +117,7 @@ export function HrmsEmployees() {
                     <Link to={`/employees/${e._id}`} className="text-[color:var(--accent)] hover:underline text-xs mr-3">360</Link>
                     <button onClick={() => setLinksId(e._id)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Links</button>
                     <button onClick={() => setEditing(e)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Edit</button>
+                    <button onClick={() => setHandover(e)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Hand over</button>
                     <button onClick={() => remove(e._id)} className="text-rose-500 hover:underline text-xs">Delete</button>
                   </td>
                 </tr>
@@ -138,13 +152,20 @@ export function HrmsEmployees() {
               </Select>
             </Field>
             <Field label="Joined date"><TextInput type="date" value={(editing.joinedDate ?? '').slice(0, 10)} onChange={(e) => setEditing({ ...editing, joinedDate: e.target.value })} /></Field>
-            <Field label="Annual CTC"><TextInput type="number" value={editing.annualCtc ?? 0} onChange={(e) => setEditing({ ...editing, annualCtc: Number(e.target.value) })} /></Field>
-            <Field label="Hourly cost (blank = from CTC)"><TextInput type="number" step="any" value={editing.hourlyCostRate ?? ''} onChange={(e) => setEditing({ ...editing, hourlyCostRate: e.target.value === '' ? null : Number(e.target.value) })} /></Field>
+            <Field label="Exit date (last working day)"><TextInput type="date" value={(editing.exitDate ?? '').slice(0, 10)} onChange={(e) => setEditing({ ...editing, exitDate: e.target.value })} /></Field>
+            {pay.see && <Field label="Annual CTC"><TextInput disabled={!pay.set} type="number" value={editing.annualCtc ?? 0} onChange={(e) => setEditing({ ...editing, annualCtc: Number(e.target.value) })} /></Field>}
+            {pay.seeRate && <Field label="Hourly cost (blank = from CTC)"><TextInput disabled={!pay.setRate} type="number" step="any" value={editing.hourlyCostRate ?? ''} onChange={(e) => setEditing({ ...editing, hourlyCostRate: e.target.value === '' ? null : Number(e.target.value) })} /></Field>}
             <Field label="Leave balance (days)"><TextInput type="number" value={editing.leaveBalanceDays ?? 20} onChange={(e) => setEditing({ ...editing, leaveBalanceDays: Number(e.target.value) })} /></Field>
             <Field label="Location"><TextInput value={editing.location ?? ''} onChange={(e) => setEditing({ ...editing, location: e.target.value })} /></Field>
           </div>
+          {editing.status === 'terminated' && (
+            <p className="mt-3 text-xs text-[color:var(--text-muted)]">
+              Their sign-in closes when you save, or on the exit date if it is later. Run final pay first: terminated people are left out of payroll.
+            </p>
+          )}
         </Modal>
       )}
+      {handover && <HandoverModal employee={handover} employees={rows} onClose={() => setHandover(null)} />}
       {linksId && (
         <RecordLinksDrawer type="employee" id={linksId} title={rows.find((r) => r._id === linksId)?.name} onClose={() => setLinksId(null)} />
       )}

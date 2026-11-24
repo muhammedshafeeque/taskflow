@@ -17,6 +17,8 @@ export interface IHrmsEmployee extends Document {
   status: EmploymentStatus;
   joinedDate: Date;
   exitDate?: Date;
+  /** When the leaver's sign-in was closed; unset while they work here. */
+  accessClosedAt?: Date | null;
   location?: string;
   annualCtc?: number;
   /** Optional explicit cost per hour; otherwise derived from CTC. */
@@ -46,6 +48,7 @@ const hrmsEmployeeSchema = new Schema<IHrmsEmployee>(
     status: { type: String, enum: ['active', 'on_leave', 'terminated', 'probation'], default: 'active', index: true },
     joinedDate: { type: Date, required: true },
     exitDate: { type: Date },
+    accessClosedAt: { type: Date, default: null },
     location: { type: String },
     annualCtc: { type: Number, default: 0 },
     hourlyCostRate: { type: Number },

@@ -69,7 +69,10 @@ export function initWebSocket(server: HttpServer): void {
       assertAccessTokenClaims(decoded);
       if (decoded.userType === 'customer') return next(new Error('Staff access required'));
       (socket as Socket & { userId: string }).userId = decoded.sub!;
-      next();
+      // The token outlives a closed account; don't let it reconnect.
+      User.exists({ _id: decoded.sub, enabled: { $ne: false } })
+        .then((ok) => next(ok ? undefined : new Error('Account is disabled')))
+        .catch(() => next(new Error('Authentication failed')));
     } catch (err) {
       if (err instanceof ApiError) return next(new Error(err.message));
       next(new Error('Invalid token'));
@@ -103,6 +106,11 @@ export function initWebSocket(server: HttpServer): void {
       });
     });
   });
+}
+
+/** Drop a person's live connections (their access was closed). */
+export function disconnectUser(userId: string): void {
+  if (io) io.in(userId).disconnectSockets(true);
 }
 
 /** Notify all clients subscribed to a project to refresh (e.g. dashboard, kanban). */

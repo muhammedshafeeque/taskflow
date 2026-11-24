@@ -5,6 +5,7 @@ import { rolesValidation } from './roles.validation';
 import * as rolesService from './roles.service';
 import { grantActorOf } from '../auth/grantGuard';
 import { ApiError } from '../../utils/ApiError';
+import { ACCESS_ROLE_TEMPLATES } from '../../shared/constants/accessRoleTemplates';
 import { ALL_PERMISSIONS } from '../../constants/permissions';
 
 export async function getRoles(_req: Request, res: Response): Promise<void> {
@@ -39,6 +40,9 @@ export async function getPermissions(_req: Request, res: Response): Promise<void
   res.status(200).json({ success: true, data: ALL_PERMISSIONS });
 }
 
+export const getRoleTemplatesHandler = asyncHandler(async (_req: Request, res: Response) => {
+  res.status(200).json({ success: true, data: ACCESS_ROLE_TEMPLATES });
+});
 export const getRolesHandler = asyncHandler(getRoles);
 export const getRoleByIdHandler = asyncHandler(getRoleById);
 export const createRoleHandler = [

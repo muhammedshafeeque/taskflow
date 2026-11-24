@@ -13,8 +13,9 @@ import { EmptyChart, LoadingCard, ModuleHeader, StatusPill, money } from '../../
 
 type Dash = {
   counts: { headcount: number; active: number; onLeave: number; pendingLeave: number; approvedLeaveThisMonth: number; departments: number };
-  monthlyPayroll: number;
-  annualPayroll: number;
+  /** null without salary or payroll access */
+  monthlyPayroll: number | null;
+  annualPayroll: number | null;
   byDepartment: { name: string; count: number }[];
   byType: { name: string; value: number }[];
   byStatus: { name: string; value: number }[];
@@ -58,7 +59,9 @@ export default function HrmsDashboard() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard title="Headcount" value={data.counts.headcount} helperText={`${data.counts.active} active · ${data.counts.departments} departments`} />
-        <MetricCard title="Monthly payroll" value={money(data.monthlyPayroll)} helperText={`ARR ${money(data.annualPayroll)}`} />
+        {data.monthlyPayroll != null && data.annualPayroll != null && (
+          <MetricCard title="Monthly payroll" value={money(data.monthlyPayroll)} helperText={`ARR ${money(data.annualPayroll)}`} />
+        )}
         <MetricCard title="On leave" value={data.counts.onLeave} helperText={`${data.counts.approvedLeaveThisMonth} approved this month`} />
         <MetricCard title="Pending leave" value={data.counts.pendingLeave} helperText="Awaiting approval" />
       </div>

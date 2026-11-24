@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError';
 import { Role } from '../roles/role.model';
 import { mergeTaskflowPermissionFloor } from '../auth/permissionMerge';
+import { assertCanAssignRole, type GrantActor } from '../auth/grantGuard';
+import { logAudit } from '../auditLogs/logAudit';
 import { PlatformSettings } from './platformSettings.model';
 
 let cache: { at: number; value: Awaited<ReturnType<typeof load>> } | null = null;
@@ -23,20 +25,23 @@ export async function getPlatformSettings() {
 
 export async function updatePlatformSettings(
   input: { defaultRoleId?: string | null; requireTwoFactor?: boolean },
-  userId?: string
+  actor: GrantActor
 ) {
+  const userId = actor.id;
   const $set: Record<string, unknown> = {};
   if (input.defaultRoleId !== undefined) {
     if (input.defaultRoleId) {
-      if (!mongoose.Types.ObjectId.isValid(input.defaultRoleId) || !(await Role.exists({ _id: input.defaultRoleId }))) {
-        throw new ApiError(400, 'Role not found');
-      }
+      const role = mongoose.Types.ObjectId.isValid(input.defaultRoleId) ? await Role.findById(input.defaultRoleId).select('name permissions').lean() : null;
+      if (!role) throw new ApiError(400, 'Role not found');
+      // Everyone who signs up gets it, so it counts as giving it out.
+      if (String(input.defaultRoleId) !== (await load()).defaultRoleId) assertCanAssignRole(actor, role, { defaultRole: true });
       $set.defaultRoleId = new mongoose.Types.ObjectId(input.defaultRoleId);
     } else $set.defaultRoleId = null;
   }
   if (typeof input.requireTwoFactor === 'boolean') $set.requireTwoFactor = input.requireTwoFactor;
   if (userId && mongoose.Types.ObjectId.isValid(userId)) $set.updatedBy = new mongoose.Types.ObjectId(userId);
   await PlatformSettings.updateOne({ key: 'default' }, { $set, $setOnInsert: { key: 'default' } }, { upsert: true });
+  logAudit({ userId, action: 'platform.settings.update', resourceType: 'platform', meta: { ...input } });
   cache = null;
   return getPlatformSettings();
 }

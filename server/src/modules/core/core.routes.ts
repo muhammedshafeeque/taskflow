@@ -5,6 +5,7 @@ import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as ctrl from './core.controller';
 import { OrganizationMember } from '../organizations/organizationMember.model';
+import { grantActorOf } from '../auth/grantGuard';
 import { getPlatformSettings, updatePlatformSettings } from '../platformSettings/platformSettings.service';
 
 const C = TASK_FLOW_PERMISSIONS.TASKFLOW.CORE;
@@ -28,8 +29,7 @@ router.patch(
   '/preferences',
   requireAnyPermission([TASK_FLOW_PERMISSIONS.TASKFLOW.PLATFORM.SETTINGS.MANAGE]),
   asyncHandler(async (req, res) => {
-    const userId = (req as typeof req & { user?: { id: string } }).user?.id;
-    res.json({ success: true, data: await updatePlatformSettings(req.body ?? {}, userId) });
+    res.json({ success: true, data: await updatePlatformSettings(req.body ?? {}, grantActorOf(req)) });
   })
 );
 /** Lightweight people picker for forms: active members of the current workspace. */

@@ -13,6 +13,8 @@ export const TASK_FLOW_PERMISSIONS = {
       LIST: 'auth.role.list',
       /** Legacy single guard for admin role CRUD UI */
       MANAGE_ALL: 'auth.role.manage_all',
+      /** Give people existing roles with more rights than you hold (administrators are told each time) */
+      ASSIGN_ANY: 'auth.role.assign_any',
     },
     USER: {
       CREATE: 'auth.user.create',
@@ -163,6 +165,11 @@ export const TASK_FLOW_PERMISSIONS = {
       PAYROLL: {
         READ: 'taskflow.hr.payroll.read',
         MANAGE: 'taskflow.hr.payroll.manage',
+      },
+      /** Salary (CTC) and HR notes on employee records; payroll rights include them */
+      SALARY: {
+        READ: 'taskflow.hr.salary.read',
+        MANAGE: 'taskflow.hr.salary.manage',
       },
       /** Leave types, accrual rules and holiday calendars */
       POLICY: { MANAGE: 'taskflow.hr.policy.manage' },

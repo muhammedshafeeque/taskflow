@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import type { AuthPayload } from '../../types/express';
 import { ApiError } from '../../utils/ApiError';
 import * as hrms from './hrms.service';
+import * as exit from './exit.service';
+import { grantActorOf } from '../auth/grantGuard';
 
 function ws(req: Request & { activeOrganizationId?: string }) {
   return req.activeOrganizationId;
@@ -14,21 +16,28 @@ function uid(req: Request & { user?: AuthPayload }) {
 
 export async function getDashboard(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  res.json({ success: true, data: await hrms.getHrmsDashboard(ws(req)) });
+  res.json({ success: true, data: await hrms.getHrmsDashboard(ws(req), req.user?.permissions ?? []) });
 }
 
 export async function listEmployees(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  res.json({ success: true, data: await hrms.listEmployees(ws(req), req.query as Record<string, string>) });
+  res.json({ success: true, data: await hrms.listEmployees(ws(req), req.query as Record<string, string>, req.user?.permissions ?? []) });
 }
 export async function createEmployee(req: Request & { user?: AuthPayload }, res: Response) {
-  res.status(201).json({ success: true, data: await hrms.createEmployee(ws(req), req.body) });
+  res.status(201).json({ success: true, data: await hrms.createEmployee(ws(req), req.body ?? {}, req.user?.permissions ?? []) });
 }
 export async function updateEmployee(req: Request & { user?: AuthPayload }, res: Response) {
-  res.json({ success: true, data: await hrms.updateEmployee(req.params.id, ws(req), req.body) });
+  res.json({ success: true, data: await hrms.updateEmployee(req.params.id, ws(req), req.body ?? {}, grantActorOf(req)) });
 }
 export async function deleteEmployee(req: Request & { user?: AuthPayload }, res: Response) {
   res.json({ success: true, data: await hrms.deleteEmployee(req.params.id, ws(req)) });
+}
+
+export async function getOpenWork(req: Request, res: Response) {
+  res.json({ success: true, data: await exit.getOpenWork(ws(req), req.params.id) });
+}
+export async function reassignWork(req: Request, res: Response) {
+  res.json({ success: true, data: await exit.reassignWork(ws(req), req.params.id, req.body ?? {}, grantActorOf(req)) });
 }
 
 export async function listLeave(req: Request & { user?: AuthPayload }, res: Response) {

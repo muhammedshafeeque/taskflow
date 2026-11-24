@@ -3,6 +3,8 @@
  * TaskFlow system roles, and default customer-org roles.
  * Run: npm run seed
  */
+import { ALL_CRM_PERMISSIONS, SALES_CRM_PERMISSIONS } from './salesRoleTemplate';
+import { ACCESS_ROLE_TEMPLATES } from '../shared/constants/accessRoleTemplates';
 import fs from 'fs';
 import path from 'path';
 import ExcelJS from 'exceljs';
@@ -288,7 +290,7 @@ async function seedTaskflowRoles() {
     TASK_FLOW_PERMISSIONS.TASKFLOW.CORE.EXCHANGE_RATE.READ,
   ];
   const salesPerms = [
-    ...flattenPermissions(TASK_FLOW_PERMISSIONS.TASKFLOW.CRM as unknown as Record<string, unknown>),
+    ...SALES_CRM_PERMISSIONS,
     ...coreReadPerms,
   ];
   const supportAgentPerms = [
@@ -301,10 +303,10 @@ async function seedTaskflowRoles() {
     TASK_FLOW_PERMISSIONS.TASKFLOW.MAIL.MESSAGE.READ,
   ];
   const crmAdminPerms = [
-    ...salesPerms,
+    ...ALL_CRM_PERMISSIONS,
+    ...coreReadPerms,
     ...flattenPermissions(TASK_FLOW_PERMISSIONS.TASKFLOW.SERVICE as unknown as Record<string, unknown>),
     ...flattenPermissions(TASK_FLOW_PERMISSIONS.TASKFLOW.MAIL as unknown as Record<string, unknown>),
-    TASK_FLOW_PERMISSIONS.TASKFLOW.CRM.SETTINGS.MANAGE,
   ];
 
   const seeds: Array<{ code: string; name: string; permissions: string[]; isSystem: boolean }> = [
@@ -317,6 +319,7 @@ async function seedTaskflowRoles() {
     { code: 'account_manager', name: 'Account Manager', permissions: salesPerms, isSystem: true },
     { code: 'support_agent', name: 'Support Agent', permissions: supportAgentPerms, isSystem: true },
     { code: 'crm_admin', name: 'CRM Admin', permissions: crmAdminPerms, isSystem: true },
+    ...ACCESS_ROLE_TEMPLATES.map(({ code, name, permissions }) => ({ code, name, permissions, isSystem: true })),
   ];
 
   for (const s of seeds) {

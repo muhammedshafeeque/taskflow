@@ -11,6 +11,7 @@ import {
   HrmsReview,
   HrmsReviewCycle,
 } from './models/hrmsPeople.model';
+import { assertCanSetPay, payAccessFor, withoutPay } from './payAccess';
 import { getHrSettings } from './policy.service';
 
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
@@ -237,8 +238,11 @@ export async function hireCandidate(
   ws: string | null | undefined,
   candidateId: string,
   input: { employeeCode?: string; joinedDate?: string; annualCtc?: number; currency?: string; designation?: string; onboardingTemplateId?: string },
-  actorId: string
+  actorId: string,
+  permissions: string[]
 ) {
+  const access = payAccessFor(permissions);
+  assertCanSetPay({ annualCtc: input.annualCtc }, access);
   const orgOid = toOrgOid(requireWorkspaceId(ws));
   const c = await HrmsCandidate.findOne({ _id: candidateId, taskflowOrganizationId: orgOid });
   if (!c) throw new ApiError(404, 'Candidate not found');
@@ -270,7 +274,7 @@ export async function hireCandidate(
   if (input.onboardingTemplateId) {
     checklist = await startChecklist(String(orgOid), { employeeId: String(employee._id), templateId: input.onboardingTemplateId }, actorId);
   }
-  return { employee: employee.toObject(), checklist };
+  return { employee: withoutPay(employee.toObject(), access), checklist };
 }
 
 // ── Appraisals ───────────────────────────────────────────────────────────

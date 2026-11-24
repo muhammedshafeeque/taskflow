@@ -26,6 +26,7 @@ export default function RolePermissions() {
   const [saved, setSaved] = useState(false);
   const [initialSelected, setInitialSelected] = useState<string[]>([]);
   const [initialName, setInitialName] = useState('');
+  const [templates, setTemplates] = useState<Array<{ code: string; name: string; description: string; permissions: string[] }>>([]);
 
   useEffect(() => {
     if (!token || !roleId) return;
@@ -43,6 +44,9 @@ export default function RolePermissions() {
       }
 
       if (isNew) {
+        void rolesApi.templates(token).then((r) => {
+          if (!cancelled && r.success && r.data) setTemplates(r.data);
+        });
         setName('');
         setSelected([]);
         setInitialName('');
@@ -233,6 +237,26 @@ export default function RolePermissions() {
       {saved && !error && (
         <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
           {isNew ? 'Role created.' : 'Permissions saved.'}
+        </div>
+      )}
+
+      {isNew && templates.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-[color:var(--text-muted)]">Start from:</span>
+          {templates.map((t) => (
+            <button
+              key={t.code}
+              type="button"
+              title={t.description}
+              onClick={() => {
+                setSelected(t.permissions);
+                setName((n) => n || t.name);
+              }}
+              className="px-3 py-1.5 rounded-lg border border-[color:var(--border-subtle)] text-xs hover:bg-[color:var(--bg-page)]"
+            >
+              {t.name}
+            </button>
+          ))}
         </div>
       )}
 

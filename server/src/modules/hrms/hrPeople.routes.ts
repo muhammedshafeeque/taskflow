@@ -79,7 +79,7 @@ r.post('/candidates/:id/interviews', requireAnyPermission([H.RECRUITMENT.MANAGE]
 r.post(
   '/candidates/:id/hire',
   requireAnyPermission([H.RECRUITMENT.MANAGE]),
-  asyncHandler(async (req: R, res) => ok(res, await people.hireCandidate(ws(req), req.params.id, req.body ?? {}, req.user!.id)))
+  asyncHandler(async (req: R, res) => ok(res, await people.hireCandidate(ws(req), req.params.id, req.body ?? {}, req.user!.id, req.user!.permissions ?? [])))
 );
 
 // Appraisals

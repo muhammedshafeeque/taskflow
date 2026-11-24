@@ -1,3 +1,4 @@
+import { closeDueExits } from '../hrms/exit.service';
 import { syncAllMailAccounts } from '../mail/mailSync.service';
 import { HrmsSettings } from '../hrms/models/hrmsPolicy.model';
 import { HrmsEmployee } from '../hrms/models/hrmsEmployee.model';
@@ -432,6 +433,7 @@ export const REMINDER_JOBS = {
   subscriptionInvoices: generateDueSubscriptionInvoices,
   overdueInvoices: markOverdueInvoices,
   mailSync: syncAllMailAccounts,
+  employeeExits: () => closeDueExits(),
 } as const;
 
 export type ReminderJobName = keyof typeof REMINDER_JOBS;

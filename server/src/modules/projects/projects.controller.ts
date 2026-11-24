@@ -7,7 +7,7 @@ import * as projectsService from './projects.service';
 import * as workLogsService from '../workLogs/workLogs.service';
 import * as projectInvitationsService from './projectInvitations.service';
 import * as sprintReportsService from '../sprints/sprintReports.service';
-import { getProjectPermissionsForUser } from '../../middleware/requireProjectPermission';
+import { getProjectPermissionsForUser, seesAllProjects } from '../../middleware/requireProjectPermission';
 import { ApiError } from '../../utils/ApiError';
 import { logAudit } from '../auditLogs/logAudit';
 import * as analyticsService from '../analytics/analytics.service';
@@ -51,7 +51,7 @@ export async function getProjects(req: Request & { user?: AuthPayload }, res: Re
   if (!activeOrg) throw new ApiError(400, 'Active workspace is required');
   // The PA acting as itself (owner context, no signed-in human) works across the whole workspace.
   const serviceActor = req.paContext?.actor === 'owner' && !req.paContext.onBehalfOf;
-  const result = await projectsService.findAllForUser(userId, permissions, activeOrg, { page, limit }, serviceActor);
+  const result = await projectsService.findAllForUser(userId, permissions, activeOrg, { page, limit }, serviceActor || seesAllProjects(permissions));
   res.status(200).json({ success: true, data: result });
 }
 

@@ -6,6 +6,7 @@ import { migrateFixVersionToArrayIfNeeded } from '../migrations/migrateFixVersio
 import { migrateOrganizationTenancyIfNeeded } from '../migrations/migrateOrganizationTenancy';
 import { migrateUserOAuthIndexesIfNeeded } from '../migrations/migrateUserOAuthIndexes';
 import { migrateProjectMemberCommentPermissionsIfNeeded } from '../migrations/migrateProjectMemberCommentPermissions';
+import { migrateSalesRolePermissionsIfNeeded } from '../migrations/migrateSalesRolePermissions';
 import '../modules/projects/projectDesignation.model';
 import '../modules/organizations/organization.model';
 import '../modules/organizations/organizationMember.model';
@@ -26,6 +27,7 @@ export async function connectDb(): Promise<void> {
   await migrateProjectMemberCommentPermissionsIfNeeded().catch((e) =>
     console.error('[migrate] project member comment permissions failed:', e)
   );
+  await migrateSalesRolePermissionsIfNeeded().catch((e) => console.error('[migrate] sales role permissions failed:', e));
 }
 
 export async function disconnectDb(): Promise<void> {

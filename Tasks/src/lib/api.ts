@@ -1598,6 +1598,8 @@ export interface UpdateUserBody {
   name?: string;
   roleId?: string | null;
   enabled?: boolean;
+  /** Account type; administrators only. */
+  role?: 'user' | 'admin';
 }
 
 export const usersApi = {
@@ -1634,6 +1636,8 @@ export const permissionsApi = {
 };
 
 export const rolesApi = {
+  templates: (token: string) =>
+    api.get<Array<{ code: string; name: string; description: string; permissions: string[] }>>('/roles/templates', token),
   list: (token: string) => api.get<Role[]>('/roles', token),
   get: (id: string, token: string) => api.get<Role>(`/roles/${id}`, token),
   create: (body: { name: string; permissions: string[] }, token: string) =>
@@ -3329,6 +3333,9 @@ export interface HrmsEmployee {
   status: string;
   joinedDate: string;
   exitDate?: string;
+  /** When the leaver's sign-in was closed. */
+  accessClosedAt?: string | null;
+  userId?: string;
   location?: string;
   annualCtc?: number;
   /** Optional explicit cost per hour; otherwise derived from CTC and HR settings. */
@@ -3337,6 +3344,11 @@ export interface HrmsEmployee {
   leaveBalanceDays: number;
   notes?: string;
 }
+
+export type HrmsOpenWork = Record<
+  'leads' | 'deals' | 'followUps' | 'tasks' | 'tickets' | 'timesheets' | 'reviews' | 'checklists' | 'reports' | 'leaveApprover' | 'projectsLed',
+  number
+>;
 
 export interface HrmsLeaveRequest {
   _id: string;
@@ -3366,6 +3378,9 @@ export const hrmsApi = {
   },
   createEmployee: (data: Record<string, unknown>, token: string) => api.post<HrmsEmployee>('/hrms/employees', data, token),
   updateEmployee: (id: string, data: Record<string, unknown>, token: string) => api.patch<HrmsEmployee>(`/hrms/employees/${id}`, data, token),
+  openWork: (id: string, token: string) => api.get<HrmsOpenWork>(`/hrms/employees/${id}/open-work`, token),
+  reassignWork: (id: string, body: { toUserId: string; kinds: string[] }, token: string) =>
+    api.post<{ moved: Partial<HrmsOpenWork>; remaining: HrmsOpenWork }>(`/hrms/employees/${id}/reassign`, body, token),
   deleteEmployee: (id: string, token: string) => api.delete(`/hrms/employees/${id}`, token),
   listLeave: (token: string, params?: { status?: string; employeeId?: string }) => {
     const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';

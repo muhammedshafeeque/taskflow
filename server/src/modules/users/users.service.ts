@@ -18,7 +18,7 @@ import * as inboxService from '../inbox/inbox.service';
 import { Project } from '../projects/project.model';
 import * as projectInvitationsService from '../projects/projectInvitations.service';
 import { hasProjectFullAccess } from '../../middleware/requireProjectPermission';
-import { assertCanGrant, assertCanManageAdmin, assertNotSelf, type GrantActor } from '../auth/grantGuard';
+import { assertCanAssignRole, assertCanGrant, assertCanManageAdmin, assertNotSelf, type GrantActor } from '../auth/grantGuard';
 import { adminReset as adminResetTwoFactor } from '../auth/twoFactor.service';
 import { logAudit } from '../auditLogs/logAudit';
 
@@ -170,7 +170,7 @@ export async function update(
   // Admin update: name, roleId, enabled
   const newRole = roleChanged && input.roleId ? await Role.findById(input.roleId).lean() : null;
   if (roleChanged && input.roleId && !newRole) throw new ApiError(400, 'Invalid role');
-  if (newRole) assertCanGrant(actor, newRole.permissions ?? [], { targetUserId: id, roleId: input.roleId });
+  if (newRole) assertCanAssignRole(actor, newRole, { targetUserId: id, roleId: input.roleId });
 
   const updateData: Record<string, unknown> = {};
   if (input.name !== undefined) updateData.name = input.name;
@@ -194,6 +194,13 @@ export async function update(
     .select('-password')
     .populate('roleId', 'name')
     .lean();
+
+  // Nobody can change their own account type, so an administrator always remains — unless two demote each other at once.
+  const losesOwner = target.role === 'admin' && (input.role === 'user' || input.enabled === false);
+  if (losesOwner && !(await User.exists({ role: 'admin', enabled: { $ne: false }, isServiceAccount: { $ne: true } }))) {
+    await User.updateOne({ _id: id }, { $set: { role: target.role, enabled: target.enabled, roleId: target.roleId ?? null } });
+    throw new ApiError(409, 'At least one administrator must remain');
+  }
 
   if (user) {
     const changes: Record<string, { from: unknown; to: unknown }> = {};
@@ -339,7 +346,7 @@ export async function invite(
   const inviterUserId = actor.id;
   const role = await Role.findById(input.roleId).lean();
   if (!role) throw new ApiError(400, 'Invalid role');
-  assertCanGrant(actor, role.permissions ?? [], { email: input.email, roleId: input.roleId });
+  assertCanAssignRole(actor, role, { email: input.email, roleId: input.roleId });
 
   const normalizedEmail = input.email.toLowerCase().trim();
   const existing = await User.findOne({ email: normalizedEmail }).lean();

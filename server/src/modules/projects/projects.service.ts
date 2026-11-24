@@ -167,7 +167,7 @@ export async function findAllForUser(
   ]);
 
   // Per-project permissions so the UI can show/hide Edit and Delete.
-  const memberships = await ProjectMember.find({ user: userObjectId, project: { $in: projectIds } })
+  const memberships = await ProjectMember.find({ user: userObjectId, project: { $in: data.map((p) => p._id) } })
     .populate('role', 'permissions')
     .lean();
   const permissionsByProject = new Map<string, string[]>();

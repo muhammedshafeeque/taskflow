@@ -7,6 +7,9 @@ import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { HrmsEmployee } from './models/hrmsEmployee.model';
 import { HrmsLeaveRequest } from './models/hrmsLeaveRequest.model';
 import { HrmsAttendance } from './models/hrmsAttendance.model';
+import { assertCanSetPay, payAccessFor, withoutPay } from './payAccess';
+import type { GrantActor } from '../auth/grantGuard';
+import { accessIsDue, assertCanTerminate, closeAccess } from './exit.service';
 import { upsertContactByEmail } from '../crm/contacts/contacts.service';
 
 function asDate(value: unknown): Date | undefined {
@@ -24,17 +27,21 @@ function daysBetween(start: Date, end: Date): number {
 
 export async function listEmployees(
   workspaceId: string | null | undefined,
-  query: { status?: string; department?: string; search?: string } = {}
+  query: { status?: string; department?: string; search?: string },
+  permissions: string[]
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
   if (query.status) filter.status = query.status;
   if (query.department) filter.department = query.department;
   if (query.search) filter.name = new RegExp(escapeRegex(query.search), 'i');
-  return HrmsEmployee.find(filter).sort({ name: 1 }).lean();
+  const access = payAccessFor(permissions);
+  return (await HrmsEmployee.find(filter).sort({ name: 1 }).lean()).map((e) => withoutPay(e, access));
 }
 
-export async function createEmployee(workspaceId: string | null | undefined, input: Record<string, unknown>) {
+export async function createEmployee(workspaceId: string | null | undefined, input: Record<string, unknown>, permissions: string[]) {
+  const access = payAccessFor(permissions);
+  assertCanSetPay(input, access);
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
   if (!input.name || !String(input.name).trim()) throw new ApiError(400, 'Name is required');
@@ -73,17 +80,21 @@ export async function createEmployee(workspaceId: string | null | undefined, inp
         userId: doc.userId ? String(doc.userId) : undefined,
       }).catch(() => undefined);
     }
-    return doc.toObject();
+    return withoutPay(doc.toObject(), access);
   } catch (err) {
     if ((err as { code?: number }).code === 11000) throw new ApiError(409, 'Employee code already exists');
     throw err;
   }
 }
 
-export async function updateEmployee(id: string, workspaceId: string | null | undefined, input: Record<string, unknown>) {
+export async function updateEmployee(id: string, workspaceId: string | null | undefined, input: Record<string, unknown>, actor: GrantActor) {
+  const access = payAccessFor(actor.permissions);
+  assertCanSetPay(input, access);
   const orgId = requireWorkspaceId(workspaceId);
   const existing = await HrmsEmployee.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
   if (!existing) throw new ApiError(404, 'Employee not found');
+  const previousStatus = existing.status;
+  const before = existing.toObject();
   const fields = [
     'name', 'email', 'phone', 'whatsappPhone', 'department', 'designation', 'managerId', 'employmentType',
     'status', 'location', 'annualCtc', 'hourlyCostRate', 'currency', 'leaveBalanceDays', 'notes', 'userId',
@@ -99,7 +110,21 @@ export async function updateEmployee(id: string, workspaceId: string | null | un
   }
   if ('joinedDate' in input) existing.joinedDate = asDate(input.joinedDate) ?? existing.joinedDate;
   if ('exitDate' in input) existing.exitDate = asDate(input.exitDate);
+  if (existing.status === 'terminated' && previousStatus !== 'terminated') {
+    if (!existing.exitDate) existing.exitDate = new Date();
+  } else if (existing.status !== 'terminated' && previousStatus === 'terminated') {
+    // Rehired. The account stays closed until an administrator turns it back on.
+    if (!input.exitDate || String(input.exitDate).slice(0, 10) === before.exitDate?.toISOString().slice(0, 10)) existing.exitDate = undefined;
+    existing.accessClosedAt = null;
+  }
+  // Checked against the account before and after, so relinking in the same request can't dodge or redirect it.
+  const exiting = existing.status === 'terminated' || ('exitDate' in input && Boolean(existing.exitDate));
+  if (exiting) {
+    await assertCanTerminate(before as never, actor);
+    await assertCanTerminate(existing, actor);
+  }
   await existing.save();
+  if (accessIsDue(existing) && !existing.accessClosedAt) await closeAccess(existing, actor);
   if (existing.email) {
     await upsertContactByEmail(orgId, {
       email: String(existing.email),
@@ -111,7 +136,7 @@ export async function updateEmployee(id: string, workspaceId: string | null | un
       userId: existing.userId ? String(existing.userId) : undefined,
     }).catch(() => undefined);
   }
-  return existing.toObject();
+  return withoutPay((await HrmsEmployee.findById(existing._id).lean()) ?? existing.toObject(), access);
 }
 
 export async function deleteEmployee(id: string, workspaceId: string | null | undefined) {
@@ -257,7 +282,8 @@ export async function markAttendance(workspaceId: string | null | undefined, inp
 
 // ── Dashboard / payroll ─────────────────────────────────────────────────────
 
-export async function getHrmsDashboard(workspaceId: string | null | undefined) {
+export async function getHrmsDashboard(workspaceId: string | null | undefined, permissions: string[]) {
+  const seePay = payAccessFor(permissions).see;
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
   const now = new Date();
@@ -331,8 +357,8 @@ export async function getHrmsDashboard(workspaceId: string | null | undefined) {
       approvedLeaveThisMonth: approvedThisMonth,
       departments: byDepartment.length,
     },
-    monthlyPayroll,
-    annualPayroll: Math.round(active.reduce((s, e) => s + (e.annualCtc ?? 0), 0) * 100) / 100,
+    monthlyPayroll: seePay ? monthlyPayroll : null,
+    annualPayroll: !seePay ? null : Math.round(active.reduce((s, e) => s + (e.annualCtc ?? 0), 0) * 100) / 100,
     byDepartment,
     byType,
     byStatus,

@@ -4,6 +4,7 @@ import { requirePermission } from '../../middleware/requirePermission';
 import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import {
   getRolesHandler,
+  getRoleTemplatesHandler,
   getRoleByIdHandler,
   createRoleHandler,
   updateRoleHandler,
@@ -22,6 +23,7 @@ router.use(requireTaskflowUser);
 router.use(requirePermission(TASK_FLOW_PERMISSIONS.AUTH.ROLE.MANAGE_ALL));
 
 router.get('/', getRolesHandler);
+router.get('/templates', getRoleTemplatesHandler);
 router.post('/', createRoleHandler);
 router.get('/:id', ...getRoleByIdParamHandler, getRoleByIdHandler);
 router.patch('/:id', ...updateRoleHandler);

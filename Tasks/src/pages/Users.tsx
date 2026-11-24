@@ -51,10 +51,11 @@ export default function Users() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('');
   const [editUser, setEditUser] = useState<User | null>(null);
-  const [editForm, setEditForm] = useState<{ name: string; roleId: string; enabled: boolean }>({
+  const [editForm, setEditForm] = useState<{ name: string; roleId: string; enabled: boolean; role: 'user' | 'admin' }>({
     name: '',
     roleId: '',
     enabled: true,
+    role: 'user',
   });
   const [editError, setEditError] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
@@ -64,6 +65,7 @@ export default function Users() {
   const canEditUsers = userHasPermission(tfPerms, TASK_FLOW_PERMISSIONS.AUTH.USER.UPDATE);
   const canInvite = userHasPermission(tfPerms, TASK_FLOW_PERMISSIONS.AUTH.USER.CREATE);
   const canListRoles = userHasPermission(tfPerms, TASK_FLOW_PERMISSIONS.AUTH.ROLE.MANAGE_ALL);
+  const canSetAccountType = currentUser?.role === 'admin' && editUser?._id !== currentUser?.id;
   const atLicenseLimit = false; // license != null && license.maxUsers != null && license.userCount >= license.maxUsers;
 
   function loadUsers() {
@@ -170,6 +172,7 @@ export default function Users() {
       name: u.name,
       roleId: getRoleId(u) ?? '',
       enabled: u.enabled !== false,
+      role: u.role === 'admin' ? 'admin' : 'user',
     });
     setEditError('');
   }
@@ -188,6 +191,7 @@ export default function Users() {
       roleId: editForm.roleId || null,
       enabled: editForm.enabled,
     };
+    if (canSetAccountType && editForm.role !== (editUser.role === 'admin' ? 'admin' : 'user')) body.role = editForm.role;
     const res = await usersApi.update(editUser._id, body, token);
     setEditSubmitting(false);
     if (res.success) {
@@ -551,6 +555,22 @@ export default function Users() {
                     ))}
                   </select>
                 </div>
+                {canSetAccountType && (
+                  <div>
+                    <label htmlFor="edit-account-type" className="block text-sm font-medium text-[color:var(--text-primary)] mb-1.5">
+                      Account type
+                    </label>
+                    <select
+                      id="edit-account-type"
+                      value={editForm.role}
+                      onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value as 'user' | 'admin' }))}
+                      className="w-full px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
+                    >
+                      <option value="user">Standard: only what their role allows</option>
+                      <option value="admin">Administrator: full access to everything, including payroll</option>
+                    </select>
+                  </div>
+                )}
                 {editUser._id !== currentUser?.id && (
                   <div className="flex items-center gap-3">
                     <input
