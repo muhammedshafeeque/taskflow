@@ -5,7 +5,7 @@ import { DEFAULT_PROJECT_MEMBER_PERMISSION_CODES } from '../../constants/permiss
 import { ALL_PROJECT_PERMISSIONS, PROJECT_PERMISSIONS } from '../../shared/constants/permissions';
 import { mapLegacyProjectOrGlobalPermissions } from '../../shared/constants/legacyPermissionMap';
 
-const DEFAULT_PERMS = [
+export const DEFAULT_PERMS = [
   ...mapLegacyProjectOrGlobalPermissions([...DEFAULT_PROJECT_MEMBER_PERMISSION_CODES]),
   PROJECT_PERMISSIONS.ISSUE.ESTIMATE.SUBMIT,
   PROJECT_PERMISSIONS.ISSUE.ESTIMATE.VIEW,

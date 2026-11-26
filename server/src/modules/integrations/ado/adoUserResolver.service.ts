@@ -1,3 +1,4 @@
+import { roleTreePermissions } from '../../auth/accessProfile';
 import { defaultRoleAssignment } from '../../platformSettings/platformSettings.service';
 import mongoose from 'mongoose';
 import { User } from '../../auth/user.model';
@@ -42,7 +43,7 @@ export async function resolveOrCreateAssigneeFromAdo(
   const displayName = parseIdentityDisplayName(assignedToField);
   const name = displayName || nameFromEmail(email);
   const roleId = await defaultRoleId();
-  const rolePerms = roleId ? ((await Role.findById(roleId).select('permissions').lean())?.permissions ?? []) : [];
+  const rolePerms = roleId ? await roleTreePermissions([roleId]) : [];
   const permissions = mergeTaskflowPermissionFloor(
     resolveEffectiveGlobalPermissions({
       rolePermissions: Array.isArray(rolePerms) ? rolePerms : [],

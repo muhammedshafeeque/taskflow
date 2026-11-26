@@ -4,7 +4,8 @@ import { ApiError } from '../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { HrmsEmployee } from './models/hrmsEmployee.model';
 import { HrmsAttendance } from './models/hrmsAttendance.model';
-import { unpaidLeaveDays } from './policy.service';
+import { CommissionEntry } from '../crm/commissions/commissions';
+import { calendarDay, loadWorkCalendar, lossOfPayForMonth, workingDaysBetween } from './lossOfPay';
 import { DEFAULT_COMPONENTS, HrmsPayrollRun, HrmsPayrollSettings, type PayComponent } from './models/hrmsPayroll.model';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -97,29 +98,58 @@ export async function updatePayrollSettings(
   return HrmsPayrollSettings.findOneAndUpdate({ taskflowOrganizationId: orgOid }, { $set }, { upsert: true, new: true }).lean();
 }
 
-/** Loss-of-pay days per employee: approved unpaid leave + absences (half days count 0.5). */
+/** Loss-of-pay days per employee: absences and approved unpaid leave, each date counted once (half days ½). */
 async function lopDaysByEmployee(orgOid: mongoose.Types.ObjectId, period: string): Promise<Map<string, number>> {
   const { start, end } = periodRange(period);
-  const [attendance, leave] = await Promise.all([
-    HrmsAttendance.find({ taskflowOrganizationId: orgOid, date: { $gte: start, $lt: end }, status: { $in: ['absent', 'half_day'] } })
-      .select('employeeId status')
-      .lean(),
-    unpaidLeaveDays(orgOid, start, end),
-  ]);
-  const out = new Map<string, number>();
-  const add = (id: unknown, n: number) => out.set(String(id), (out.get(String(id)) ?? 0) + n);
-  for (const a of attendance) add(a.employeeId, a.status === 'half_day' ? 0.5 : 1);
-  for (const [employeeId, days] of leave) add(employeeId, days);
-  return out;
+  return lossOfPayForMonth(orgOid, start, end);
 }
 
-function summarize(payslips: Array<{ gross?: number | null; totalDeductions?: number | null; net?: number | null }>) {
+type SlipTotals = { currency?: string | null; gross?: number | null; totalDeductions?: number | null; net?: number | null };
+
+/** Totals for each currency, most-paid-in first. Amounts in different currencies are never added together. */
+export function totalsByCurrency(payslips: SlipTotals[]) {
+  const by = new Map<string, { currency: string; gross: number; deductions: number; net: number; employees: number }>();
+  for (const p of payslips) {
+    const currency = p.currency || 'USD';
+    const t = by.get(currency) ?? { currency, gross: 0, deductions: 0, net: 0, employees: 0 };
+    t.gross = round2(t.gross + (p.gross ?? 0));
+    t.deductions = round2(t.deductions + (p.totalDeductions ?? 0));
+    t.net = round2(t.net + (p.net ?? 0));
+    t.employees += 1;
+    by.set(currency, t);
+  }
+  return [...by.values()].sort((a, b) => b.employees - a.employees || a.currency.localeCompare(b.currency));
+}
+
+/**
+ * `totals` holds the main currency (most people paid in it) plus the overall head count, so single-currency
+ * companies see what they always saw; `totalsByCurrency` has every currency.
+ */
+function summarize(payslips: SlipTotals[]) {
+  const byCurrency = totalsByCurrency(payslips);
+  const main = byCurrency[0];
   return {
-    gross: round2(payslips.reduce((s, p) => s + (p.gross ?? 0), 0)),
-    deductions: round2(payslips.reduce((s, p) => s + (p.totalDeductions ?? 0), 0)),
-    net: round2(payslips.reduce((s, p) => s + (p.net ?? 0), 0)),
-    employees: payslips.length,
+    totals: { currency: main?.currency, gross: main?.gross ?? 0, deductions: main?.deductions ?? 0, net: main?.net ?? 0, employees: payslips.length },
+    totalsByCurrency: byCurrency,
   };
+}
+
+/**
+ * Of a month's working days, how many fall outside someone's employment (before joining, after the last day),
+ * scaled to the payroll's working-days basis so the payslip maths stays the same.
+ */
+export function daysNotEmployed(
+  e: { joinedDate: Date; exitDate?: Date | null },
+  month: { from: string; last: string },
+  calendar: { weekendDays: number[]; holidays: Set<string> },
+  workingDaysBasis: number
+): number {
+  const first = calendarDay(e.joinedDate) > month.from ? calendarDay(e.joinedDate) : month.from;
+  const last = e.exitDate && calendarDay(e.exitDate) < month.last ? calendarDay(e.exitDate) : month.last;
+  const inMonth = workingDaysBetween(month.from, month.last, calendar.weekendDays, calendar.holidays);
+  if (inMonth === 0) return 0;
+  const employed = first > last ? 0 : workingDaysBetween(first, last, calendar.weekendDays, calendar.holidays);
+  return round2(workingDaysBasis * (1 - employed / inMonth));
 }
 
 export async function listPayrollRuns(workspaceId: string | null | undefined) {
@@ -143,29 +173,47 @@ export async function generatePayrollRun(workspaceId: string | null | undefined,
 
   const settings = await getPayrollSettings(String(orgOid));
   const { start, end } = periodRange(period);
-  const [employees, lop] = await Promise.all([
+  const HALF_DAY = 12 * 3_600_000;
+  const [found, lop, calendar] = await Promise.all([
+    // Leavers are paid up to their last day, so they are in the run of the month they leave.
     HrmsEmployee.find({
       taskflowOrganizationId: orgOid,
-      joinedDate: { $lt: end },
-      $or: [{ exitDate: null }, { exitDate: { $gte: start } }],
-      status: { $ne: 'terminated' },
+      joinedDate: { $lt: new Date(end.getTime() + HALF_DAY) },
+      $or: [{ exitDate: null }, { exitDate: { $gte: new Date(start.getTime() - HALF_DAY) } }],
     })
       .sort({ department: 1, name: 1 })
       .lean(),
     lopDaysByEmployee(orgOid, period),
+    loadWorkCalendar(orgOid, start, end),
   ]);
+  const month = { from: start.toISOString().slice(0, 10), last: new Date(end.getTime() - 86_400_000).toISOString().slice(0, 10) };
+  const employees = found.filter(
+    (e) =>
+      calendarDay(e.joinedDate) <= month.last &&
+      (!e.exitDate || calendarDay(e.exitDate) >= month.from) &&
+      // Terminated without a last day: nothing to pay.
+      (e.status !== 'terminated' || Boolean(e.exitDate))
+  );
+
+  // Approved sales commission, paid once: entries already held by this draft, or held by no run.
+  const run =
+    existing ?? (await HrmsPayrollRun.findOneAndUpdate({ taskflowOrganizationId: orgOid, period }, { $setOnInsert: { status: 'draft' } }, { upsert: true, new: true }));
+  if (!run) throw new ApiError(500, 'Could not start the payroll run');
+  const commissionsByUser = await claimCommissions(orgOid, run._id as mongoose.Types.ObjectId, employees);
 
   // Keep manual adjustments when recalculating a draft.
   const previous = new Map((existing?.payslips ?? []).map((p) => [String(p.employeeId), p.adjustments ?? []]));
   const payslips = employees.map((e) => {
     const monthlyCtc = round2((e.annualCtc ?? 0) / 12);
     const adjustments = (previous.get(String(e._id)) ?? []) as Array<{ name: string; amount: number; kind: 'earning' | 'deduction' }>;
+    const commissions = commissionsByUser.get(String(e.userId ?? '')) ?? [];
+    const notEmployed = daysNotEmployed(e, month, { weekendDays: calendar.weekendDays, holidays: calendar.holidaysAt(e.location) }, settings.workingDaysPerMonth);
     const calc = computePayslip({
       monthlyCtc,
       components: settings.components as PayComponent[],
       workingDays: settings.workingDaysPerMonth,
-      lopDays: lop.get(String(e._id)) ?? 0,
-      adjustments,
+      lopDays: (lop.get(String(e._id)) ?? 0) + notEmployed,
+      adjustments: [...adjustments, ...commissions.filter((c) => c.currency === e.currency).map((c) => ({ name: c.label, amount: c.amount, kind: 'earning' as const }))],
     });
     return {
       employeeId: e._id,
@@ -177,15 +225,52 @@ export async function generatePayrollRun(workspaceId: string | null | undefined,
       monthlyCtc,
       workingDays: settings.workingDaysPerMonth,
       adjustments,
+      commissions: commissions.map((c) => ({ entryId: c.entryId, name: c.label, amount: c.amount, currency: c.currency, paid: c.currency === e.currency })),
       ...calc,
+      // Loss of pay above, split so the payslip can show both.
+      daysNotEmployed: Math.min(notEmployed, settings.workingDaysPerMonth),
+      lopDays: round2(Math.max(0, calc.lopDays - notEmployed)),
     };
   });
 
   return HrmsPayrollRun.findOneAndUpdate(
-    { taskflowOrganizationId: orgOid, period },
-    { $set: { payslips, totals: summarize(payslips), status: 'draft' } },
+    { _id: run._id },
+    { $set: { payslips, ...summarize(payslips), status: 'draft' } },
     { upsert: true, new: true }
   ).lean();
+}
+
+type ClaimedCommission = { entryId: mongoose.Types.ObjectId; amount: number; currency: string; label: string };
+
+/**
+ * Hold the approved, unpaid commission of the people in this run for this run, and let go of anything it held
+ * that no longer applies. Another draft's entries are left alone, so two months can't both pay one entry.
+ */
+async function claimCommissions(
+  orgOid: mongoose.Types.ObjectId,
+  runId: mongoose.Types.ObjectId,
+  employees: Array<{ userId?: unknown; currency?: string | null }>
+): Promise<Map<string, ClaimedCommission[]>> {
+  const userIds = employees.map((e) => e.userId).filter(Boolean) as mongoose.Types.ObjectId[];
+  await CommissionEntry.updateMany(
+    { taskflowOrganizationId: orgOid, payrollRunId: runId, $or: [{ status: { $ne: 'approved' } }, { userId: { $nin: userIds } }] },
+    { $set: { payrollRunId: null } }
+  );
+  await CommissionEntry.updateMany(
+    { taskflowOrganizationId: orgOid, status: 'approved', userId: { $in: userIds }, payrollRunId: null },
+    { $set: { payrollRunId: runId } }
+  );
+  const held = await CommissionEntry.find({ taskflowOrganizationId: orgOid, payrollRunId: runId, status: 'approved' })
+    .populate<{ dealId: { title?: string } | null }>('dealId', 'title')
+    .sort({ createdAt: 1 })
+    .lean();
+  const by = new Map<string, ClaimedCommission[]>();
+  for (const c of held) {
+    const list = by.get(String(c.userId)) ?? [];
+    list.push({ entryId: c._id as mongoose.Types.ObjectId, amount: round2(c.amount), currency: c.currency || 'USD', label: `Commission: ${c.dealId?.title ?? 'deal'}` });
+    by.set(String(c.userId), list);
+  }
+  return by;
 }
 
 export async function setPayslipAdjustments(
@@ -220,6 +305,16 @@ export async function setPayrollRunStatus(
 ) {
   const run = await getPayrollRunById(workspaceId, runId);
   if (status === 'finalized' && run.status !== 'draft') throw new ApiError(409, 'Only a draft can be finalized');
+  if (status === 'finalized') {
+    // What the payslips pay must still be what the commission screen says: approved, same amount, held by this run.
+    const lines = run.payslips.flatMap((p) => (p.commissions ?? []).filter((c) => c.paid));
+    const current = await CommissionEntry.find({ _id: { $in: lines.map((c) => c.entryId) }, payrollRunId: run._id, status: 'approved' }).select('amount').lean();
+    const amountOf = new Map(current.map((c) => [String(c._id), round2(c.amount)]));
+    const changed = lines.some((c) => amountOf.get(String(c.entryId)) !== c.amount);
+    const listed = run.payslips.flatMap((p) => (p.commissions ?? []).map((c) => c.entryId));
+    const added = await CommissionEntry.exists({ payrollRunId: run._id, status: 'approved', _id: { $nin: listed } });
+    if (changed || added) throw new ApiError(409, 'Commission changed since this draft was calculated. Recalculate the draft, then finalize.');
+  }
   if (status === 'paid' && run.status !== 'finalized') throw new ApiError(409, 'Finalize the run before marking it paid');
   const $set: Record<string, unknown> =
     status === 'finalized'
@@ -227,8 +322,16 @@ export async function setPayrollRunStatus(
       : { status, paidAt: new Date() };
   const updated = await HrmsPayrollRun.findByIdAndUpdate(run._id, { $set }, { new: true }).lean();
   if (status === 'paid' && updated) {
-    const totals = { gross: updated.totals?.gross ?? 0, deductions: updated.totals?.deductions ?? 0, net: updated.totals?.net ?? 0 };
-    autoPost(() => postPayroll(String(run.taskflowOrganizationId), { _id: updated._id, period: updated.period, totals }, updated.payslips[0]?.currency ?? 'USD'), `payroll ${run.period}`);
+    const paidIds = updated.payslips.flatMap((p) => (p.commissions ?? []).filter((c) => c.paid).map((c) => c.entryId));
+    await CommissionEntry.updateMany({ _id: { $in: paidIds }, payrollRunId: updated._id }, { $set: { status: 'paid', paidAt: new Date() } });
+    // Entries in another currency than the payslip stay approved, for another run or by hand.
+    await CommissionEntry.updateMany({ payrollRunId: updated._id, status: 'approved' }, { $set: { payrollRunId: null } });
+    // One journal per currency; a single-currency run keeps its run id as the source, as before.
+    const byCurrency = totalsByCurrency(updated.payslips);
+    for (const t of byCurrency) {
+      const sourceId = byCurrency.length === 1 ? String(updated._id) : `${updated._id}:${t.currency}`;
+      autoPost(() => postPayroll(String(run.taskflowOrganizationId), { _id: sourceId, period: updated.period, totals: t }, t.currency), `payroll ${run.period} ${t.currency}`);
+    }
   }
   return updated;
 }
@@ -256,7 +359,7 @@ export async function renderPayslipHtml(workspaceId: string | null | undefined, 
 <button onclick="window.print()" style="float:right">Print / Save PDF</button>
 <h1>${esc(companyName)}</h1><p class="muted">Payslip for ${esc(month)}${run.status === 'draft' ? ' — DRAFT' : ''}</p>
 <table><tr><td><b>${esc(p.name)}</b><br><span class="muted">${esc(p.employeeCode)} · ${esc(p.designation ?? '')} · ${esc(p.department ?? '')}</span></td>
-<td class="r">Working days: ${p.workingDays}<br>Loss of pay days: ${p.lopDays ?? 0}</td></tr></table>
+<td class="r">Working days: ${p.workingDays}<br>Loss of pay days: ${p.lopDays ?? 0}${p.daysNotEmployed ? `<br>Days not employed: ${p.daysNotEmployed}` : ''}</td></tr></table>
 <div class="grid"><div><b>Earnings</b><table>${rows(p.earnings)}<tr><th>Gross</th><th class="r">${fmt(p.gross)}</th></tr></table></div>
 <div><b>Deductions</b><table>${rows(p.deductions) || '<tr><td class="muted">None</td><td></td></tr>'}<tr><th>Total</th><th class="r">${fmt(p.totalDeductions)}</th></tr></table></div></div>
 <div class="net"><b>Net pay</b><b>${fmt(p.net)}</b></div>

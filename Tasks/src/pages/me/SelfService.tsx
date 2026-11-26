@@ -228,11 +228,12 @@ function AttendanceTab() {
   if (list.error && !list.data) return <NoEmployee error={list.error} />;
   const mark = async (status: string) => {
     if (!token) return;
-    const r = await api.post('/me/hr/attendance', { status }, token);
+    const r = await api.post('/me/hr/attendance', { status, date: today }, token);
     if (!r.success) alert(r.message);
     list.reload();
   };
-  const today = new Date().toISOString().slice(0, 10);
+  // Your own date, not the server's: someone in India marking at 2 am is on today, not yesterday.
+  const today = new Date().toLocaleDateString('en-CA');
   const todays = (list.data ?? []).find((a) => String(a.date).slice(0, 10) === today);
   return (
     <div className="space-y-4">
@@ -412,9 +413,72 @@ function DirectoryTab() {
   );
 }
 
+type Team = { people: Row[]; leave: Row[] };
+
+/** Leave of the people who report to me. */
+function TeamTab({ team, reload }: { team: Team; reload: () => void }) {
+  const { token } = useAuth();
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+  const decide = async (id: string, status: 'approved' | 'rejected') => {
+    if (!token) return;
+    setBusy(id);
+    const r = await api.patch(`/me/hr/team/leave/${id}/decision`, { status }, token);
+    setBusy('');
+    setError(r.success ? '' : (r.message ?? 'Could not save the decision'));
+    reload();
+  };
+  const name = (v: unknown) => String((v as Row | null)?.name ?? '—');
+  return (
+    <div className="space-y-4">
+      <Card title="Leave requests">
+        {error && (
+          <p role="alert" className="text-xs text-rose-500">
+            {error}
+          </p>
+        )}
+        {team.leave.length === 0 && <p className="text-sm text-[color:var(--text-muted)]">No leave requests.</p>}
+        {team.leave.length > 0 && (
+          <Table
+            head={['Name', 'Type', 'Dates', 'Days', 'Reason', 'Status', '']}
+            rows={team.leave.map((l) => [
+              name(l.employeeId),
+              l.leaveTypeId ? name(l.leaveTypeId) : String(l.type ?? '').replace('_', ' '),
+              `${fmtDate(l.startDate)} – ${fmtDate(l.endDate)}`,
+              String(l.days),
+              String(l.reason ?? ''),
+              <StatusPill key="s" label={String(l.status)} tone={tone(String(l.status))} />,
+              l.status === 'pending' ? (
+                <span key="a" className="whitespace-nowrap">
+                  <button disabled={busy === l._id} onClick={() => decide(String(l._id), 'approved')} className="text-emerald-600 hover:underline text-xs mr-3">
+                    Approve
+                  </button>
+                  <button disabled={busy === l._id} onClick={() => decide(String(l._id), 'rejected')} className="text-rose-500 hover:underline text-xs">
+                    Reject
+                  </button>
+                </span>
+              ) : (
+                ''
+              ),
+            ])}
+          />
+        )}
+      </Card>
+      <Card title="People who report to me">
+        <Table
+          head={['Name', 'Designation', 'Department', 'Email', 'Phone']}
+          rows={team.people.map((p) => [String(p.name), String(p.designation ?? '—'), String(p.department ?? '—'), String(p.email ?? '—'), String(p.phone ?? '—')])}
+        />
+      </Card>
+    </div>
+  );
+}
+
 export default function SelfService() {
   const { user } = useAuth();
-  const tabs = TABS.filter((t) => canAny(user, t.perm));
+  const team = useGet<Team>('/me/hr/team');
+  const manages = (team.data?.people.length ?? 0) > 0;
+  const tabs: Array<{ id: string; label: string }> = [...TABS.filter((t) => canAny(user, t.perm)), ...(manages ? [{ id: 'team', label: 'My team' }] : [])];
   const [tab, setTab] = useState<string>(() => new URLSearchParams(window.location.search).get('tab') ?? tabs[0]?.id ?? 'profile');
   const active = tabs.find((t) => t.id === tab) ?? tabs[0];
   return (
@@ -443,6 +507,7 @@ export default function SelfService() {
           {active?.id === 'expenses' && <ExpensesTab />}
           {active?.id === 'assets' && <AssetsTab />}
           {active?.id === 'directory' && <DirectoryTab />}
+          {active?.id === 'team' && team.data && <TeamTab team={team.data} reload={team.reload} />}
         </>
       )}
     </SectionPage>

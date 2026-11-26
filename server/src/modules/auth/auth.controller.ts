@@ -1,3 +1,4 @@
+import { roleTreePermissions } from './accessProfile';
 import * as twoFactor from './twoFactor.service';
 import { getPlatformSettings } from '../platformSettings/platformSettings.service';
 import { Request, Response } from 'express';
@@ -74,10 +75,10 @@ export async function me(req: import('express').Request, res: Response): Promise
     res.status(200).json({ success: true, data: { user: { ...data, userType: 'customer' } } });
     return;
   }
-  const user = await authService.me(userId);
   const authHeader = req.headers.authorization;
   const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '';
   const session = await authService.attachTaskflowOrganizations(userId, accessToken);
+  const user = await authService.me(userId, req.activeOrganizationId ?? session.activeOrganizationId);
   res.status(200).json({
     success: true,
     data: { user: { ...user, userType: 'taskflow', ...session } },
@@ -100,8 +101,8 @@ export async function debugPermissions(req: import('express').Request, res: Resp
   let rolePermissions: string[] | null = null;
   let roleName: string | undefined;
   if (target.roleId) {
-    const role = await Role.findById(target.roleId).select('permissions name').lean();
-    rolePermissions = Array.isArray(role?.permissions) ? role.permissions : [];
+    const role = await Role.findById(target.roleId).select('name').lean();
+    rolePermissions = await roleTreePermissions([target.roleId]);
     roleName = role?.name;
   }
 

@@ -18,6 +18,7 @@ import * as inboxService from '../inbox/inbox.service';
 import { Project } from '../projects/project.model';
 import * as projectInvitationsService from '../projects/projectInvitations.service';
 import { hasProjectFullAccess } from '../../middleware/requireProjectPermission';
+import { roleTreePermissions } from '../auth/accessProfile';
 import { assertCanAssignRole, assertCanGrant, assertCanManageAdmin, assertNotSelf, type GrantActor } from '../auth/grantGuard';
 import { adminReset as adminResetTwoFactor } from '../auth/twoFactor.service';
 import { logAudit } from '../auditLogs/logAudit';
@@ -29,13 +30,7 @@ async function ensureGlobalProjectMembership(user: any) {
   if (!user) return;
   let perms = user.permissions;
   if (!perms || perms.length === 0) {
-    let rolePerms = [];
-    if (user.roleId && user.roleId.permissions) {
-      rolePerms = user.roleId.permissions;
-    } else if (user.roleId) {
-      const role = await Role.findById(user.roleId).lean();
-      rolePerms = role?.permissions || [];
-    }
+    const rolePerms = await roleTreePermissions([user.roleId?._id ?? user.roleId]);
     perms = mergeTaskflowPermissionFloor(
       resolveEffectiveGlobalPermissions({
         rolePermissions: rolePerms,
@@ -170,14 +165,15 @@ export async function update(
   // Admin update: name, roleId, enabled
   const newRole = roleChanged && input.roleId ? await Role.findById(input.roleId).lean() : null;
   if (roleChanged && input.roleId && !newRole) throw new ApiError(400, 'Invalid role');
-  if (newRole) assertCanAssignRole(actor, newRole, { targetUserId: id, roleId: input.roleId });
+  const newRolePerms = newRole ? await roleTreePermissions([newRole._id]) : [];
+  if (newRole) assertCanAssignRole(actor, { name: newRole.name, permissions: newRolePerms }, { targetUserId: id, roleId: input.roleId });
 
   const updateData: Record<string, unknown> = {};
   if (input.name !== undefined) updateData.name = input.name;
   if (input.role !== undefined) updateData.role = input.role;
   if (roleChanged) {
     updateData.roleId = input.roleId || null;
-    const rolePerms = Array.isArray(newRole?.permissions) ? (newRole.permissions as string[]) : [];
+    const rolePerms = newRolePerms;
     updateData.permissions = mergeTaskflowPermissionFloor(
       resolveEffectiveGlobalPermissions({
         rolePermissions: rolePerms,
@@ -226,7 +222,7 @@ export async function updatePermissionOverrides(
   const existingGranted = existingUser.permissionOverrides?.granted ?? [];
 
   const role = existingUser.roleId as any;
-  const rolePerms: string[] = Array.isArray(role?.permissions) ? role.permissions : [];
+  const rolePerms: string[] = await roleTreePermissions([role?._id]);
   const existingRevoked = existingUser.permissionOverrides?.revoked ?? [];
 
   assertNotSelf(actor, id);
@@ -346,7 +342,8 @@ export async function invite(
   const inviterUserId = actor.id;
   const role = await Role.findById(input.roleId).lean();
   if (!role) throw new ApiError(400, 'Invalid role');
-  assertCanAssignRole(actor, role, { email: input.email, roleId: input.roleId });
+  const rolePermsAll = await roleTreePermissions([role._id]);
+  assertCanAssignRole(actor, { name: role.name, permissions: rolePermsAll }, { email: input.email, roleId: input.roleId });
 
   const normalizedEmail = input.email.toLowerCase().trim();
   const existing = await User.findOne({ email: normalizedEmail }).lean();
@@ -426,7 +423,7 @@ export async function invite(
   const resetHash = crypto.createHash('sha256').update(resetToken).digest('hex');
   const resetExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-  const rolePerms = Array.isArray(role.permissions) ? role.permissions : [];
+  const rolePerms = rolePermsAll;
   const initialPerms = mergeTaskflowPermissionFloor(
     resolveEffectiveGlobalPermissions({
       rolePermissions: rolePerms,

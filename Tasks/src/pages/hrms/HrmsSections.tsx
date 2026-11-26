@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { hrmsApi } from '../../lib/api';
+import { api, hrmsApi } from '../../lib/api';
 import type { HrmsEmployee, HrmsLeaveRequest, HrmsAttendance } from '../../lib/api';
 import {
   ExportButton, Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, nameOf,
 } from '../../components/moduleKit';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
-import { PersonSelect, toPeople } from '../../components/people';
+import { PersonMultiSelect, PersonSelect, toPeople } from '../../components/people';
 import HandoverModal from './HandoverModal';
 import RecordLinksDrawer from '../../components/RecordLinksDrawer';
 import { useRecordLinksParam } from '../../hooks/useRecordLinksParam';
@@ -37,6 +37,11 @@ export function HrmsEmployees() {
   const [editing, setEditing] = useState<Partial<HrmsEmployee> | null>(null);
   const [loading, setLoading] = useState(true);
   const [handover, setHandover] = useState<HrmsEmployee | null>(null);
+  const [levels, setLevels] = useState<string[]>(['Intern', 'Junior', 'Senior', 'Lead', 'Manager']);
+  useEffect(() => {
+    if (!token) return;
+    void api.get<{ levels?: string[] }>('/hrms/settings', token).then((r) => r.success && r.data?.levels?.length && setLevels(r.data.levels));
+  }, [token]);
 
   const load = useCallback(() => {
     if (!token) return;
@@ -136,9 +141,39 @@ export function HrmsEmployees() {
         >
           <div className="grid grid-cols-2 gap-3">
             <Field label="Name"><TextInput value={editing.name ?? ''} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></Field>
+            <Field label="Employee code"><TextInput value={editing.employeeCode ?? ''} placeholder={editing._id ? undefined : 'Automatic'} onChange={(e) => setEditing({ ...editing, employeeCode: e.target.value })} /></Field>
             <Field label="Email"><TextInput value={editing.email ?? ''} onChange={(e) => setEditing({ ...editing, email: e.target.value })} /></Field>
+            <Field label="Phone"><TextInput type="tel" value={editing.phone ?? ''} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></Field>
             <Field label="Department"><TextInput value={editing.department ?? ''} onChange={(e) => setEditing({ ...editing, department: e.target.value })} /></Field>
             <Field label="Designation"><TextInput value={editing.designation ?? ''} onChange={(e) => setEditing({ ...editing, designation: e.target.value })} /></Field>
+            <Field label="Reports to">
+              <PersonSelect
+                value={editing.managerId ?? ''}
+                onChange={(v) => setEditing({ ...editing, managerId: v })}
+                people={toPeople(rows.filter((r) => r._id !== editing._id && (r.status !== 'terminated' || r._id === editing.managerId)))}
+                specialOptions={[{ value: '', label: 'No manager' }]}
+                clearValue=""
+                placeholder="Search employee…"
+                aria-label="Reports to"
+              />
+            </Field>
+            <Field label="Level">
+              <Select value={editing.level ?? ''} onChange={(e) => setEditing({ ...editing, level: e.target.value })}>
+                <option value="">—</option>
+                {levels.map((l) => <option key={l} value={l}>{l}</option>)}
+              </Select>
+            </Field>
+            <Field label="Mentor">
+              <PersonSelect
+                value={editing.mentorId ?? ''}
+                onChange={(v) => setEditing({ ...editing, mentorId: v })}
+                people={toPeople(rows.filter((r) => r._id !== editing._id && (r.status !== 'terminated' || r._id === editing.mentorId)))}
+                specialOptions={[{ value: '', label: 'No mentor' }]}
+                clearValue=""
+                placeholder="Search employee…"
+                aria-label="Mentor"
+              />
+            </Field>
             <Field label="Employment type">
               <Select value={editing.employmentType ?? 'full_time'} onChange={(e) => setEditing({ ...editing, employmentType: e.target.value })}>
                 <option value="full_time">Full time</option><option value="part_time">Part time</option>
@@ -153,6 +188,7 @@ export function HrmsEmployees() {
             </Field>
             <Field label="Joined date"><TextInput type="date" value={(editing.joinedDate ?? '').slice(0, 10)} onChange={(e) => setEditing({ ...editing, joinedDate: e.target.value })} /></Field>
             <Field label="Exit date (last working day)"><TextInput type="date" value={(editing.exitDate ?? '').slice(0, 10)} onChange={(e) => setEditing({ ...editing, exitDate: e.target.value })} /></Field>
+            <Field label="Currency"><TextInput value={editing.currency ?? ''} maxLength={3} onChange={(e) => setEditing({ ...editing, currency: e.target.value.toUpperCase() })} /></Field>
             {pay.see && <Field label="Annual CTC"><TextInput disabled={!pay.set} type="number" value={editing.annualCtc ?? 0} onChange={(e) => setEditing({ ...editing, annualCtc: Number(e.target.value) })} /></Field>}
             {pay.seeRate && <Field label="Hourly cost (blank = from CTC)"><TextInput disabled={!pay.setRate} type="number" step="any" value={editing.hourlyCostRate ?? ''} onChange={(e) => setEditing({ ...editing, hourlyCostRate: e.target.value === '' ? null : Number(e.target.value) })} /></Field>}
             <Field label="Leave balance (days)"><TextInput type="number" value={editing.leaveBalanceDays ?? 20} onChange={(e) => setEditing({ ...editing, leaveBalanceDays: Number(e.target.value) })} /></Field>
@@ -174,51 +210,66 @@ export function HrmsEmployees() {
 }
 
 // ── Attendance ─────────────────────────────────────────────────────────────
+/** Attendance days are stored as that calendar day at UTC midnight. */
+const dayLabel = (d: string) => new Date(d).toLocaleDateString(undefined, { timeZone: 'UTC' });
+
 export function HrmsAttendance() {
   const { token } = useAuth();
   const [rows, setRows] = useState<HrmsAttendance[]>([]);
   const [employees, setEmployees] = useState<HrmsEmployee[]>([]);
-  const [form, setForm] = useState<{ employeeId: string; status: string; hoursWorked: number; date: string }>({
-    employeeId: '', status: 'present', hoursWorked: 8, date: new Date().toISOString().slice(0, 10),
+  const [form, setForm] = useState<{ employeeIds: string[]; status: string; date: string }>({
+    employeeIds: [], status: 'present', date: new Date().toLocaleDateString('en-CA'),
   });
-
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const current = employees.filter((e) => e.status !== 'terminated');
   const load = useCallback(() => {
     if (!token) return;
     hrmsApi.listAttendance(token).then((r) => r.success && r.data && setRows(r.data));
     hrmsApi.listEmployees(token).then((r) => r.success && r.data && setEmployees(r.data));
   }, [token]);
   useEffect(load, [load]);
-
   const mark = async () => {
-    if (!token || !form.employeeId) return alert('Choose an employee');
-    const res = await hrmsApi.markAttendance(form, token);
-    if (res.success) load();
-    else alert(res.message);
+    if (!token) return;
+    if (form.employeeIds.length === 0) return setMessage({ ok: false, text: 'Choose at least one employee' });
+    setBusy(true);
+    const res = await hrmsApi.markAttendanceBulk(form, token);
+    setBusy(false);
+    if (!res.success || !res.data) return setMessage({ ok: false, text: res.message ?? 'Could not mark attendance' });
+    setMessage({ ok: true, text: `Marked ${res.data.marked} ${res.data.marked === 1 ? 'person' : 'people'} ${form.status.replace('_', ' ')} on ${dayLabel(`${form.date}T00:00:00Z`)}.` });
+    setForm({ ...form, employeeIds: [] });
+    load();
   };
-
   return (
-    <SectionPage title="Attendance" subtitle="Log daily attendance and remote days.">
-      <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-4 grid gap-3 sm:grid-cols-5 items-end">
-        <Field label="Employee">
-          <PersonSelect
-            value={form.employeeId}
-            onChange={(v) => setForm({ ...form, employeeId: v })}
-            people={toPeople(employees)}
-            placeholder="Search employee…"
-            aria-label="Employee"
-          />
-        </Field>
-        <Field label="Date"><TextInput type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-        <Field label="Status">
-          <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-            <option value="present">Present</option><option value="remote">Remote</option>
-            <option value="half_day">Half day</option><option value="absent">Absent</option><option value="holiday">Holiday</option>
-          </Select>
-        </Field>
-        <Field label="Hours"><TextInput type="number" value={form.hoursWorked} onChange={(e) => setForm({ ...form, hoursWorked: Number(e.target.value) })} /></Field>
-        <PrimaryButton onClick={mark}>Mark</PrimaryButton>
+    <SectionPage title="Attendance" subtitle="Mark one person or many for a day. Marking again for the same day replaces the earlier entry.">
+      <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-4 space-y-3">
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto_auto] items-end">
+          <Field label="Employees">
+            <PersonMultiSelect
+              values={form.employeeIds}
+              onChange={(v) => setForm({ ...form, employeeIds: v })}
+              people={toPeople(current)}
+              placeholder="Search employees…"
+              aria-label="Employees"
+            />
+          </Field>
+          <Field label="Date"><TextInput type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+          <Field label="Status">
+            <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+              <option value="present">Present</option><option value="remote">Remote</option>
+              <option value="half_day">Half day</option><option value="absent">Absent</option><option value="holiday">Holiday</option>
+            </Select>
+          </Field>
+          <PrimaryButton onClick={mark} disabled={busy}>{busy ? 'Marking…' : 'Mark'}</PrimaryButton>
+        </div>
+        <div className="flex items-center gap-3 text-xs">
+          <button type="button" className="text-[color:var(--accent)] hover:underline" onClick={() => setForm({ ...form, employeeIds: current.map((e) => e._id) })}>
+            Select everyone ({current.length})
+          </button>
+          {form.employeeIds.length > 0 && <span className="text-[color:var(--text-muted)]">{form.employeeIds.length} selected</span>}
+          {message && <span role="status" className={message.ok ? 'text-emerald-600' : 'text-rose-500'}>{message.text}</span>}
+        </div>
       </div>
-
       {rows.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)]">No attendance recorded yet.</p>
       ) : (
@@ -231,7 +282,7 @@ export function HrmsAttendance() {
               {rows.map((a) => (
                 <tr key={a._id} className="border-t border-[color:var(--border-subtle)]">
                   <td className="px-4 py-2.5">{nameOf(a.employeeId, 'Employee')}</td>
-                  <td className="px-4 py-2.5 text-[color:var(--text-muted)]">{new Date(a.date).toLocaleDateString()}</td>
+                  <td className="px-4 py-2.5 text-[color:var(--text-muted)]">{dayLabel(a.date)}</td>
                   <td className="px-4 py-2.5"><StatusPill label={a.status} tone={statusTone[a.status]} /></td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{a.hoursWorked}h</td>
                 </tr>
@@ -245,37 +296,77 @@ export function HrmsAttendance() {
 }
 
 // ── Leave ────────────────────────────────────────────────────────────────────
+type LeaveTypeOption = { _id: string; name: string; paid: boolean };
+type Balance = { leaveTypeId: string; available: number | null };
+const LEGACY_TYPES = ['annual', 'sick', 'casual', 'unpaid', 'comp_off'];
+const today = () => new Date().toISOString().slice(0, 10);
+
+/** Configured leave type of a request, else the old fixed type. */
+const leaveTypeName = (l: HrmsLeaveRequest) =>
+  l.leaveTypeId && typeof l.leaveTypeId === 'object' ? l.leaveTypeId.name : l.type.replace('_', ' ');
+
 export function HrmsLeave() {
   const { token } = useAuth();
   const [rows, setRows] = useState<HrmsLeaveRequest[]>([]);
   const [employees, setEmployees] = useState<HrmsEmployee[]>([]);
-  const [creating, setCreating] = useState<{ employeeId: string; type: string; startDate: string; endDate: string; reason: string } | null>(null);
+  const [types, setTypes] = useState<LeaveTypeOption[] | null>(null);
+  const [balances, setBalances] = useState<Balance[] | null>(null);
+  const [creating, setCreating] = useState<{ employeeId: string; leaveType: string; startDate: string; endDate: string; halfDay: boolean; reason: string } | null>(null);
+  const [error, setError] = useState('');
 
   const load = useCallback(() => {
     if (!token) return;
     hrmsApi.listLeave(token).then((r) => r.success && r.data && setRows(r.data));
     hrmsApi.listEmployees(token).then((r) => r.success && r.data && setEmployees(r.data));
+    api.get<LeaveTypeOption[]>('/hrms/leave-types?active=1', token).then((r) => setTypes(r.success && Array.isArray(r.data) ? r.data : []));
   }, [token]);
   useEffect(load, [load]);
 
+  const employeeId = creating?.employeeId;
+  useEffect(() => {
+    if (!token || !employeeId) return;
+    let live = true;
+    void api.get<Balance[]>(`/hrms/employees/${employeeId}/balances`, token).then((r) => {
+      if (live) setBalances(r.success && Array.isArray(r.data) ? r.data : null);
+    });
+    return () => {
+      live = false;
+    };
+  }, [token, employeeId]);
+
+  const configured = (types?.length ?? 0) > 0;
+  const balance = configured && creating && employeeId ? balances?.find((b) => b.leaveTypeId === creating.leaveType) : undefined;
+
   const decide = async (id: string, status: string) => {
     if (!token) return;
-    await hrmsApi.decideLeave(id, status, token);
+    const r = await hrmsApi.decideLeave(id, status, token);
+    setError(r.success ? '' : (r.message ?? 'Could not save the decision'));
     load();
   };
   const create = async () => {
     if (!token || !creating) return;
-    if (!creating.employeeId) return alert('Choose an employee');
-    const res = await hrmsApi.createLeave(creating, token);
-    if (res.success) { setCreating(null); load(); } else alert(res.message);
+    if (!creating.employeeId) return setError('Choose an employee');
+    const { leaveType, ...rest } = creating;
+    const res = await hrmsApi.createLeave(configured ? { ...rest, leaveTypeId: leaveType } : { ...rest, type: leaveType }, token);
+    if (res.success) {
+      setCreating(null);
+      setError('');
+      load();
+    } else setError(res.message ?? 'Could not save the request');
+  };
+  const open = () => {
+    setBalances(null);
+    setError('');
+    setCreating({ employeeId: '', leaveType: configured ? types![0]._id : 'annual', startDate: today(), endDate: today(), halfDay: false, reason: '' });
   };
 
   return (
     <SectionPage
       title="Leave"
-      subtitle="Requests, balances, and approvals. Approving paid leave deducts from the employee's balance."
-      toolbar={<PrimaryButton onClick={() => setCreating({ employeeId: '', type: 'annual', startDate: new Date().toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10), reason: '' })}>+ Request leave</PrimaryButton>}
+      subtitle="Requests, balances, and approvals. Approving paid leave deducts from the employee's balance for that leave type."
+      toolbar={<PrimaryButton onClick={open} disabled={types === null}>+ Request leave</PrimaryButton>}
     >
+      {error && !creating && <p role="alert" className="text-xs text-rose-500">{error}</p>}
       {rows.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)]">No leave requests.</p>
       ) : (
@@ -288,7 +379,7 @@ export function HrmsLeave() {
               {rows.map((l) => (
                 <tr key={l._id} className="border-t border-[color:var(--border-subtle)]">
                   <td className="px-4 py-2.5">{nameOf(l.employeeId, 'Employee')}</td>
-                  <td className="px-4 py-2.5 capitalize">{l.type.replace('_', ' ')}</td>
+                  <td className="px-4 py-2.5 capitalize">{leaveTypeName(l)}</td>
                   <td className="px-4 py-2.5 text-[color:var(--text-muted)]">{new Date(l.startDate).toLocaleDateString()} – {new Date(l.endDate).toLocaleDateString()}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{l.days}</td>
                   <td className="px-4 py-2.5"><StatusPill label={l.status} tone={statusTone[l.status]} /></td>
@@ -309,25 +400,39 @@ export function HrmsLeave() {
 
       {creating && (
         <Modal title="Request leave" onClose={() => setCreating(null)} footer={<><GhostButton onClick={() => setCreating(null)}>Cancel</GhostButton><PrimaryButton onClick={create}>Submit</PrimaryButton></>}>
+          {error && <p role="alert" className="text-xs text-rose-500">{error}</p>}
           <Field label="Employee">
             <PersonSelect
               value={creating.employeeId}
-              onChange={(v) => setCreating({ ...creating, employeeId: v })}
-              people={toPeople(employees)}
+              onChange={(v) => {
+                setBalances(null);
+                setCreating({ ...creating, employeeId: v });
+              }}
+              people={toPeople(employees.filter((e) => e.status !== 'terminated'))}
               placeholder="Search employee…"
               aria-label="Employee"
             />
           </Field>
           <Field label="Type">
-            <Select value={creating.type} onChange={(e) => setCreating({ ...creating, type: e.target.value })}>
-              <option value="annual">Annual</option><option value="sick">Sick</option><option value="casual">Casual</option>
-              <option value="unpaid">Unpaid</option><option value="comp_off">Comp off</option>
+            <Select aria-label="Leave type" value={creating.leaveType} onChange={(e) => setCreating({ ...creating, leaveType: e.target.value })}>
+              {configured
+                ? types!.map((t) => <option key={t._id} value={t._id}>{t.name}{t.paid ? '' : ' (unpaid)'}</option>)
+                : LEGACY_TYPES.map((t) => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
             </Select>
+            {balance && (
+              <p className="mt-1 text-xs text-[color:var(--text-muted)]" data-testid="leave-balance">
+                {balance.available === null ? 'Unpaid: no balance' : `${balance.available} day(s) available`}
+              </p>
+            )}
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="From"><TextInput type="date" value={creating.startDate} onChange={(e) => setCreating({ ...creating, startDate: e.target.value })} /></Field>
             <Field label="To"><TextInput type="date" value={creating.endDate} onChange={(e) => setCreating({ ...creating, endDate: e.target.value })} /></Field>
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={creating.halfDay} onChange={(e) => setCreating({ ...creating, halfDay: e.target.checked })} />
+            Half day (one-day requests)
+          </label>
           <Field label="Reason"><TextArea rows={2} value={creating.reason} onChange={(e) => setCreating({ ...creating, reason: e.target.value })} /></Field>
         </Modal>
       )}

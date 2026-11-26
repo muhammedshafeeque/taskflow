@@ -11,17 +11,42 @@ import {
   HrmsReview,
   HrmsReviewCycle,
 } from './models/hrmsPeople.model';
+import { assertValidManager, managerUserIdOf } from './managers';
+import { createWithCode } from './employeeCode';
 import { assertCanSetPay, payAccessFor, withoutPay } from './payAccess';
 import { getHrSettings } from './policy.service';
+import { type Reach, assertReaches, assertReachesEveryone, employeeFilter, reaches } from './dataScope';
+
+/** Who is looking at recruitment: their HR reach, and whether they hold a recruitment permission at all. */
+export type RecruitmentView = { userId: string; reach: Reach; canRead: boolean };
+
+/** Jobs a limited reach covers: hired for by someone in reach, or for the viewer's own department. */
+function jobFilter(reach: Reach): Record<string, unknown> {
+  if (reach === null) return {};
+  return {
+    $or: [
+      { hiringManagerId: { $in: [...reach.userIds].map(oid) } },
+      ...(reach.departments.length ? [{ department: { $in: reach.departments } }] : []),
+    ],
+  };
+}
+
+function jobInReach(reach: Reach, job: { hiringManagerId?: unknown; department?: string | null } | null): boolean {
+  if (!job) return false;
+  if (reach === null) return true;
+  if (job.hiringManagerId && reach.userIds.has(String(job.hiringManagerId))) return true;
+  return Boolean(job.department && reach.departments.includes(job.department));
+}
+
+async function assertCandidateJobInReach(reach: Reach, jobId: unknown) {
+  if (reach === null) return;
+  const job = await HrmsJobOpening.findById(jobId).select('hiringManagerId department').lean();
+  if (!jobInReach(reach, job)) throw new ApiError(404, 'Candidate not found');
+}
+
 
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
 const isId = (v: unknown) => typeof v === 'string' && mongoose.Types.ObjectId.isValid(v);
-
-async function managerUserId(employee: { managerId?: unknown }): Promise<string | undefined> {
-  if (!employee.managerId) return undefined;
-  const mgr = await HrmsEmployee.findById(employee.managerId).select('userId').lean();
-  return mgr?.userId ? String(mgr.userId) : undefined;
-}
 
 // ── Checklists ───────────────────────────────────────────────────────────
 
@@ -59,8 +84,10 @@ export async function saveTemplate(ws: string | null | undefined, input: Record<
 export async function startChecklist(
   ws: string | null | undefined,
   input: { employeeId?: string; templateId?: string; startDate?: string },
-  actorId: string
+  actorId: string,
+  reach: Reach = null
 ) {
+  assertReaches(reach, input.employeeId);
   const orgOid = toOrgOid(requireWorkspaceId(ws));
   const [employee, template] = await Promise.all([
     HrmsEmployee.findOne({ _id: input.employeeId, taskflowOrganizationId: orgOid }).lean(),
@@ -69,7 +96,7 @@ export async function startChecklist(
   if (!employee) throw new ApiError(404, 'Employee not found');
   if (!template) throw new ApiError(404, 'Template not found');
   const start = input.startDate ? new Date(input.startDate) : template.kind === 'offboarding' && employee.exitDate ? new Date(employee.exitDate) : new Date(employee.joinedDate);
-  const manager = await managerUserId(employee);
+  const manager = await managerUserIdOf(employee);
   const tasks = template.tasks.map((t) => {
     const assignee =
       t.assignTo === 'employee' ? employee.userId : t.assignTo === 'manager' ? manager : t.assignTo === 'hr' ? actorId : isId(t.assignTo) ? t.assignTo : actorId;
@@ -105,9 +132,11 @@ export async function startChecklist(
   return doc.toObject();
 }
 
-export async function listChecklists(ws: string | null | undefined, query: { status?: string; employeeId?: string; mine?: string }, userId: string) {
+export async function listChecklists(ws: string | null | undefined, query: { status?: string; employeeId?: string; mine?: string }, userId: string, reach: Reach = null) {
   const orgOid = toOrgOid(requireWorkspaceId(ws));
   const filter: Record<string, unknown> = { taskflowOrganizationId: orgOid };
+  // Checklists of people in reach, plus any with a task for the viewer.
+  if (reach !== null && query.mine !== '1') filter.$or = [employeeFilter(reach, 'employeeId'), { 'tasks.assigneeId': oid(userId) }];
   if (query.status) filter.status = query.status;
   if (query.employeeId) filter.employeeId = query.employeeId;
   if (query.mine === '1') filter['tasks.assigneeId'] = oid(userId);
@@ -120,14 +149,15 @@ export async function setTaskDone(
   checklistId: string,
   taskId: string,
   done: boolean,
-  user: { id: string; canManage: boolean }
+  user: { id: string; canManage: boolean },
+  reach: Reach = null
 ) {
   const orgOid = toOrgOid(requireWorkspaceId(ws));
   const cl = await HrmsChecklist.findOne({ _id: checklistId, taskflowOrganizationId: orgOid });
   if (!cl) throw new ApiError(404, 'Checklist not found');
   const task = cl.tasks.id(taskId);
   if (!task) throw new ApiError(404, 'Task not found');
-  if (!user.canManage && String(task.assigneeId) !== user.id) throw new ApiError(403, 'This task is assigned to someone else');
+  if (!(user.canManage && reaches(reach, cl.employeeId)) && String(task.assigneeId) !== user.id) throw new ApiError(403, 'This task is assigned to someone else');
   task.done = done;
   task.doneAt = done ? new Date() : undefined;
   task.doneBy = done ? oid(user.id) : undefined;
@@ -138,9 +168,17 @@ export async function setTaskDone(
 
 // ── Recruitment ──────────────────────────────────────────────────────────
 
-export async function listJobs(ws: string | null | undefined, status?: string) {
+export async function listJobs(ws: string | null | undefined, status?: string, view?: RecruitmentView) {
   const orgOid = toOrgOid(requireWorkspaceId(ws));
-  const jobs = await HrmsJobOpening.find({ taskflowOrganizationId: orgOid, ...(status ? { status } : {}) })
+  const scope: Record<string, unknown> = {};
+  if (view && !(view.canRead && view.reach === null)) {
+    // Interviewers see the jobs of candidates they interview.
+    const interviewing = await HrmsCandidate.find({ taskflowOrganizationId: orgOid, 'interviews.interviewerIds': oid(view.userId) }).distinct('jobId');
+    const or: Record<string, unknown>[] = [{ _id: { $in: interviewing } }];
+    if (view.canRead) or.push(jobFilter(view.reach));
+    scope.$or = or;
+  }
+  const jobs = await HrmsJobOpening.find({ taskflowOrganizationId: orgOid, ...scope, ...(status ? { status } : {}) })
     .populate('hiringManagerId', 'name')
     .sort({ createdAt: -1 })
     .lean();
@@ -151,8 +189,17 @@ export async function listJobs(ws: string | null | undefined, status?: string) {
   return jobs.map((j) => ({ ...j, candidates: counts.find((c) => String(c._id) === String(j._id)) ?? { active: 0, hired: 0 } }));
 }
 
-export async function saveJob(ws: string | null | undefined, input: Record<string, unknown>, id?: string) {
+export async function saveJob(ws: string | null | undefined, input: Record<string, unknown>, id?: string, reach: Reach = null) {
   const orgOid = toOrgOid(requireWorkspaceId(ws));
+  if (reach !== null) {
+    if (id && !jobInReach(reach, await HrmsJobOpening.findOne({ _id: id, taskflowOrganizationId: orgOid }).select('hiringManagerId department').lean())) {
+      throw new ApiError(404, 'Job not found');
+    }
+    const next = { hiringManagerId: input.hiringManagerId, department: typeof input.department === 'string' ? input.department.trim() : undefined };
+    if ((!id || 'hiringManagerId' in input || 'department' in input) && !jobInReach(reach, next)) {
+      throw new ApiError(403, 'Set a hiring manager within your team, or your own department');
+    }
+  }
   const data: Record<string, unknown> = {};
   for (const k of ['title', 'department', 'location', 'employmentType', 'description', 'currency'] as const) {
     if (typeof input[k] === 'string') data[k] = (input[k] as string).trim().slice(0, k === 'description' ? 10_000 : 120);
@@ -171,12 +218,23 @@ export async function saveJob(ws: string | null | undefined, input: Record<strin
   return (await HrmsJobOpening.create({ ...data, taskflowOrganizationId: orgOid })).toObject();
 }
 
-export async function listCandidates(ws: string | null | undefined, jobId: string) {
+export async function listCandidates(ws: string | null | undefined, jobId: string, view?: RecruitmentView) {
   const orgOid = toOrgOid(requireWorkspaceId(ws));
-  return HrmsCandidate.find({ taskflowOrganizationId: orgOid, jobId }).populate('interviews.interviewerIds', 'name').sort({ updatedAt: -1 }).lean();
+  const filter: Record<string, unknown> = { taskflowOrganizationId: orgOid, jobId };
+  let interviewerOnly = false;
+  if (view && !(view.canRead && view.reach === null)) {
+    const job = isId(jobId) ? await HrmsJobOpening.findOne({ _id: jobId, taskflowOrganizationId: orgOid }).select('hiringManagerId department').lean() : null;
+    if (!(view.canRead && jobInReach(view.reach, job))) {
+      // Only the candidates they interview, without pay expectations.
+      filter['interviews.interviewerIds'] = oid(view.userId);
+      interviewerOnly = true;
+    }
+  }
+  const rows = await HrmsCandidate.find(filter).populate('interviews.interviewerIds', 'name').sort({ updatedAt: -1 }).lean();
+  return interviewerOnly ? rows.map(({ expectedSalary: _pay, ...c }) => c) : rows;
 }
 
-export async function saveCandidate(ws: string | null | undefined, input: Record<string, unknown>, id?: string) {
+export async function saveCandidate(ws: string | null | undefined, input: Record<string, unknown>, id?: string, reach: Reach = null) {
   const orgOid = toOrgOid(requireWorkspaceId(ws));
   const data: Record<string, unknown> = {};
   for (const k of ['name', 'email', 'phone', 'source', 'resumeUrl', 'notes', 'rejectionReason'] as const) {
@@ -187,6 +245,7 @@ export async function saveCandidate(ws: string | null | undefined, input: Record
   if (id) {
     const existing = await HrmsCandidate.findOne({ _id: id, taskflowOrganizationId: orgOid });
     if (!existing) throw new ApiError(404, 'Candidate not found');
+    await assertCandidateJobInReach(reach, existing.jobId);
     if (typeof input.stage === 'string') {
       const job = await HrmsJobOpening.findById(existing.jobId).select('stages').lean();
       if (!job?.stages.includes(input.stage)) throw new ApiError(400, 'Unknown stage for this job');
@@ -197,15 +256,16 @@ export async function saveCandidate(ws: string | null | undefined, input: Record
     return existing.toObject();
   }
   const job = await HrmsJobOpening.findOne({ _id: input.jobId, taskflowOrganizationId: orgOid }).lean();
-  if (!job) throw new ApiError(404, 'Job not found');
+  if (!job || !jobInReach(reach, job)) throw new ApiError(404, 'Job not found');
   if (!data.name) throw new ApiError(400, 'Name is required');
   return (await HrmsCandidate.create({ ...data, taskflowOrganizationId: orgOid, jobId: job._id, stage: job.stages[0] ?? 'Applied' })).toObject();
 }
 
-export async function addInterview(ws: string | null | undefined, candidateId: string, input: Record<string, unknown>, actorId: string) {
+export async function addInterview(ws: string | null | undefined, candidateId: string, input: Record<string, unknown>, actorId: string, reach: Reach = null) {
   const orgOid = toOrgOid(requireWorkspaceId(ws));
   const c = await HrmsCandidate.findOne({ _id: candidateId, taskflowOrganizationId: orgOid });
   if (!c) throw new ApiError(404, 'Candidate not found');
+  await assertCandidateJobInReach(reach, c.jobId);
   const at = new Date(String(input.at ?? ''));
   if (Number.isNaN(at.getTime())) throw new ApiError(400, 'Interview time required');
   const interviewerIds = (Array.isArray(input.interviewerIds) ? input.interviewerIds : []).filter(isId).map((x) => oid(String(x)));
@@ -237,43 +297,71 @@ export async function addInterview(ws: string | null | undefined, candidateId: s
 export async function hireCandidate(
   ws: string | null | undefined,
   candidateId: string,
-  input: { employeeCode?: string; joinedDate?: string; annualCtc?: number; currency?: string; designation?: string; onboardingTemplateId?: string },
+  input: { employeeCode?: string; joinedDate?: string; annualCtc?: number; currency?: string; designation?: string; managerId?: string; onboardingTemplateId?: string },
   actorId: string,
-  permissions: string[]
+  permissions: string[],
+  reach: Reach = null
 ) {
   const access = payAccessFor(permissions);
   assertCanSetPay({ annualCtc: input.annualCtc }, access);
   const orgOid = toOrgOid(requireWorkspaceId(ws));
-  const c = await HrmsCandidate.findOne({ _id: candidateId, taskflowOrganizationId: orgOid });
+  const c = await HrmsCandidate.findOne({ _id: candidateId, taskflowOrganizationId: orgOid }).lean();
   if (!c) throw new ApiError(404, 'Candidate not found');
+  await assertCandidateJobInReach(reach, c.jobId);
+  if (reach !== null && !reaches(reach, input.managerId)) throw new ApiError(403, 'Choose a manager within your team for the new hire');
   if (c.status === 'hired') throw new ApiError(409, 'Already hired');
-  const job = await HrmsJobOpening.findById(c.jobId).lean();
-  const code = String(input.employeeCode ?? '').trim();
-  if (!code) throw new ApiError(400, 'Employee code is required');
-  const employee = await HrmsEmployee.create({
-    taskflowOrganizationId: orgOid,
-    employeeCode: code,
-    name: c.name,
-    email: c.email,
-    phone: c.phone,
-    department: job?.department,
-    designation: input.designation ?? job?.title,
-    employmentType: job?.employmentType === 'contract' || job?.employmentType === 'intern' || job?.employmentType === 'part_time' ? job.employmentType : 'full_time',
-    status: 'probation',
-    joinedDate: input.joinedDate ? new Date(input.joinedDate) : new Date(),
-    location: job?.location,
-    annualCtc: input.annualCtc ?? c.expectedSalary ?? 0,
-    currency: input.currency ?? job?.currency ?? 'USD',
-  });
-  c.status = 'hired';
-  c.hiredEmployeeId = employee._id;
-  const stages = job?.stages ?? [];
-  if (stages.length) c.stage = stages[stages.length - 1];
-  await c.save();
-  let checklist = null;
+  if (c.status !== 'active') throw new ApiError(409, `This candidate is ${c.status}; make them active before hiring`);
+
+  // Check everything first: a hire that fails halfway leaves an employee without a checklist.
+  const joinedDate = input.joinedDate ? new Date(input.joinedDate) : new Date();
+  if (Number.isNaN(joinedDate.getTime())) throw new ApiError(400, 'Joining date is not valid');
+  const annualCtc = input.annualCtc === undefined ? (c.expectedSalary ?? 0) : Number(input.annualCtc);
+  if (!Number.isFinite(annualCtc) || annualCtc < 0) throw new ApiError(400, 'CTC must be zero or more');
+  await assertValidManager(orgOid, input.managerId);
   if (input.onboardingTemplateId) {
-    checklist = await startChecklist(String(orgOid), { employeeId: String(employee._id), templateId: input.onboardingTemplateId }, actorId);
+    const template = isId(input.onboardingTemplateId)
+      ? await HrmsChecklistTemplate.findOne({ _id: input.onboardingTemplateId, taskflowOrganizationId: orgOid }).select('kind active').lean()
+      : null;
+    if (!template || template.kind !== 'onboarding' || template.active === false) throw new ApiError(400, 'Choose an active onboarding template');
   }
+
+  const job = await HrmsJobOpening.findById(c.jobId).lean();
+  const stages = job?.stages ?? [];
+  // Claim the candidate, so a double click or two people hiring at once create one employee.
+  const claimed = await HrmsCandidate.updateOne(
+    { _id: c._id, status: 'active' },
+    { $set: { status: 'hired', ...(stages.length ? { stage: stages[stages.length - 1] } : {}) } }
+  );
+  if (!claimed.modifiedCount) throw new ApiError(409, 'Already hired');
+
+  let employee;
+  try {
+    employee = await createWithCode(orgOid, input.employeeCode, (code) =>
+      HrmsEmployee.create({
+        taskflowOrganizationId: orgOid,
+        employeeCode: code,
+        name: c.name,
+        email: c.email,
+        phone: c.phone,
+        department: job?.department,
+        designation: input.designation?.trim() || job?.title,
+        managerId: input.managerId || undefined,
+        employmentType: job?.employmentType === 'contract' || job?.employmentType === 'intern' || job?.employmentType === 'part_time' ? job.employmentType : 'full_time',
+        status: 'probation',
+        joinedDate,
+        location: job?.location,
+        annualCtc,
+        currency: input.currency || job?.currency || 'USD',
+      })
+    );
+  } catch (err) {
+    await HrmsCandidate.updateOne({ _id: c._id }, { $set: { status: 'active', stage: c.stage } });
+    throw err;
+  }
+  await HrmsCandidate.updateOne({ _id: c._id }, { $set: { hiredEmployeeId: employee._id } });
+  const checklist = input.onboardingTemplateId
+    ? await startChecklist(String(orgOid), { employeeId: String(employee._id), templateId: input.onboardingTemplateId }, actorId)
+    : null;
   return { employee: withoutPay(employee.toObject(), access), checklist };
 }
 
@@ -284,7 +372,8 @@ export async function listCycles(ws: string | null | undefined) {
   return HrmsReviewCycle.find({ taskflowOrganizationId: orgOid }).sort({ periodStart: -1 }).lean();
 }
 
-export async function saveCycle(ws: string | null | undefined, input: Record<string, unknown>, id?: string) {
+export async function saveCycle(ws: string | null | undefined, input: Record<string, unknown>, id?: string, reach: Reach = null) {
+  assertReachesEveryone(reach, 'A review cycle');
   const orgOid = toOrgOid(requireWorkspaceId(ws));
   const data: Record<string, unknown> = {};
   if (typeof input.name === 'string') data.name = input.name.trim().slice(0, 80);
@@ -303,14 +392,15 @@ export async function saveCycle(ws: string | null | undefined, input: Record<str
 }
 
 /** Create a review for each active employee (reviewer = their manager, or the person launching). */
-export async function launchCycle(ws: string | null | undefined, cycleId: string, actorId: string) {
+export async function launchCycle(ws: string | null | undefined, cycleId: string, actorId: string, reach: Reach = null) {
+  assertReachesEveryone(reach, 'A review cycle');
   const orgOid = toOrgOid(requireWorkspaceId(ws));
   const cycle = await HrmsReviewCycle.findOne({ _id: cycleId, taskflowOrganizationId: orgOid });
   if (!cycle) throw new ApiError(404, 'Cycle not found');
   const employees = await HrmsEmployee.find({ taskflowOrganizationId: orgOid, status: { $in: ['active', 'probation'] } }).lean();
   let created = 0;
   for (const e of employees) {
-    const reviewer = (await managerUserId(e)) ?? actorId;
+    const reviewer = (await managerUserIdOf(e)) ?? actorId;
     const res = await HrmsReview.updateOne(
       { cycleId: cycle._id, employeeId: e._id },
       {
@@ -334,19 +424,22 @@ export async function launchCycle(ws: string | null | undefined, cycleId: string
   return { created };
 }
 
-export async function listReviews(ws: string | null | undefined, query: { cycleId?: string; mine?: string }, userId: string, canManage: boolean) {
+export async function listReviews(ws: string | null | undefined, query: { cycleId?: string; mine?: string }, userId: string, canManage: boolean, reach: Reach = null) {
   const orgOid = toOrgOid(requireWorkspaceId(ws));
   const filter: Record<string, unknown> = { taskflowOrganizationId: orgOid };
   if (query.cycleId) filter.cycleId = query.cycleId;
-  if (query.mine === '1' || !canManage) filter.$or = [{ employeeUserId: oid(userId) }, { reviewerId: oid(userId) }];
+  const mine = [{ employeeUserId: oid(userId) }, { reviewerId: oid(userId) }];
+  if (query.mine === '1' || !canManage) filter.$or = mine;
+  else if (reach !== null) filter.$or = [...mine, employeeFilter(reach, 'employeeId')];
   return HrmsReview.find(filter).populate('employeeId', 'name designation').populate('reviewerId', 'name').populate('cycleId', 'name ratingScale questions').lean();
 }
 
 /** Employee fills self part; reviewer fills manager part and final rating. */
-export async function submitReview(ws: string | null | undefined, reviewId: string, input: Record<string, unknown>, userId: string, canManage: boolean) {
+export async function submitReview(ws: string | null | undefined, reviewId: string, input: Record<string, unknown>, userId: string, canManageAll: boolean, reach: Reach = null) {
   const orgOid = toOrgOid(requireWorkspaceId(ws));
   const r = await HrmsReview.findOne({ _id: reviewId, taskflowOrganizationId: orgOid });
   if (!r) throw new ApiError(404, 'Review not found');
+  const canManage = canManageAll && reaches(reach, r.employeeId);
   const isEmployee = String(r.employeeUserId) === userId;
   const isReviewer = String(r.reviewerId) === userId || canManage;
   if (Array.isArray(input.goals) && (isReviewer || r.status === 'pending_self')) {

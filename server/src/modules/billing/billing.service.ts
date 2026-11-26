@@ -108,7 +108,7 @@ function monthlyAmount(amount: number, cycle: string): number {
   return amount;
 }
 
-async function nextInvoiceNumber(orgOid: mongoose.Types.ObjectId): Promise<string> {
+export async function nextInvoiceNumber(orgOid: mongoose.Types.ObjectId): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `INV-${year}-`;
   const last = await BillingInvoice.find({ taskflowOrganizationId: orgOid, number: new RegExp(`^${prefix}`) })

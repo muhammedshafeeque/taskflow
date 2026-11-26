@@ -1,4 +1,9 @@
 import { Router } from 'express';
+import * as designationTemplates from './designationTemplates.service';
+import { Project } from './project.model';
+import { ProjectDesignation } from './projectDesignation.model';
+import { User } from '../auth/user.model';
+import { ApiError } from '../../utils/ApiError';
 import { governanceRouter } from './projectGovernance';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import { requirePermission } from '../../middleware/requirePermission';
@@ -75,6 +80,26 @@ router.patch('/:projectId/members/:memberId', requireProjectPermission(PROJECT_P
 router.delete('/:projectId/members/:memberId', requireProjectPermission(PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.UPDATE), asyncHandler(removeMember));
 
 router.get('/:projectId/designations', requireProjectPermission(PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.READ), ...projectDesignationController.listDesignationsHandler);
+// Company designation templates for this project: what is offered, copying some in, and a suggestion for an invite.
+router.get('/:projectId/designations/templates', requireProjectPermission(PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.UPDATE), asyncHandler(async (req, res) => {
+  const project = await Project.findById(req.params.projectId).select('taskflowOrganizationId').lean();
+  const have = await ProjectDesignation.find({ projectId: req.params.projectId }).select('code templateId').lean();
+  const templates = await designationTemplates.listTemplates(project?.taskflowOrganizationId ? String(project.taskflowOrganizationId) : null, true);
+  res.json({ success: true, data: templates.map((t) => ({ ...t, inProject: have.some((d) => d.code === t.code || String(d.templateId) === String(t._id)) })) });
+}));
+router.post('/:projectId/designations/from-templates', requireProjectPermission(PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.UPDATE), asyncHandler(async (req, res) => {
+  const ids = Array.isArray(req.body?.templateIds) ? req.body.templateIds.map(String) : [];
+  if (!ids.length) throw new ApiError(400, 'Choose at least one template');
+  res.json({ success: true, data: await designationTemplates.addTemplatesToProject(req.params.projectId, ids) });
+}));
+router.get('/:projectId/designations/suggest', requireProjectPermission(PROJECT_PERMISSIONS.MEMBER.INVITATIONS_MANAGE), asyncHandler(async (req, res) => {
+  let userId = String(req.query.userId ?? '');
+  if (!userId && req.query.email) {
+    const u = await User.findOne({ email: String(req.query.email).toLowerCase().trim() }).select('_id').lean();
+    userId = u ? String(u._id) : '';
+  }
+  res.json({ success: true, data: userId ? await designationTemplates.suggestDesignation(req.params.projectId, userId) : null });
+}));
 router.post('/:projectId/designations', requireProjectPermission(PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.UPDATE), ...projectDesignationController.createDesignationHandler);
 router.patch('/:projectId/designations/:id', requireProjectPermission(PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.UPDATE), ...projectDesignationController.updateDesignationHandler);
 router.delete('/:projectId/designations/:id', requireProjectPermission(PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.UPDATE), ...projectDesignationController.deleteDesignationHandler);

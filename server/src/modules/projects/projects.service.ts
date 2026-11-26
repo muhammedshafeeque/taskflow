@@ -15,6 +15,7 @@ import * as projectTemplatesService from '../projectTemplates/projectTemplates.s
 import * as projectInvitationsService from './projectInvitations.service';
 import * as projectDesignationService from './projectDesignation.service';
 import type { CreateProjectBody, UpdateProjectBody } from './projects.validation';
+import { addTemplatesToProject, assertTemplatesExist } from './designationTemplates.service';
 import { resolveFieldsForIssueType, resolveIssueTypeId } from './fieldScheme.service';
 import type { IProjectCustomField, IFieldScheme } from './project.model';
 import { userHasPermission, mapLegacyProjectOrGlobalPermissions } from '../../shared/constants/legacyPermissionMap';
@@ -56,6 +57,7 @@ export async function create(
     throw new ApiError(400, 'Lead user not found');
   }
 
+  await assertTemplatesExist(taskflowOrganizationId, input.designationTemplateIds);
   const config = input.templateId
     ? await projectTemplatesService.getById(input.templateId, taskflowOrganizationId)
     : null;
@@ -99,6 +101,8 @@ export async function create(
 
   // Create default designations
   await projectDesignationService.createDefaultDesignations(projectId);
+  // Company designations: the ones chosen on the form, else those marked for new projects.
+  await addTemplatesToProject(projectId, input.designationTemplateIds);
 
   // Selected lead gets every project permission (including settings:manage, project:delete, etc.)
   await projectInvitationsService.ensureUserHasFullProjectAccess(projectId, leadUserId);

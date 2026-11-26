@@ -1,3 +1,4 @@
+import { roleTreePermissions } from '../../auth/accessProfile';
 import mongoose from 'mongoose';
 import { CustomerRequest } from './customerRequest.model';
 import { CustomerUser } from '../customer-user/customerUser.model';
@@ -592,7 +593,7 @@ async function sendTicketCreatedAudienceEmails(params: {
 
   const roleIds = staffUsers.map((u) => u.roleId).filter(Boolean);
   const roles = await Role.find({ _id: { $in: roleIds } }).select('permissions').lean();
-  const rolePerms = new Map(roles.map((r) => [String(r._id), r.permissions ?? []]));
+  const rolePerms = new Map(await Promise.all(roles.map(async (r) => [String(r._id), await roleTreePermissions([r._id])] as const)));
 
   const sdList = TASK_FLOW_PERMISSIONS.TASKFLOW.SERVICE.TICKET.LIST;
   const sdRead = TASK_FLOW_PERMISSIONS.TASKFLOW.SERVICE.TICKET.READ;

@@ -16,6 +16,8 @@ import { AssetLicense } from '../assets/models/assetLicense.model';
 import { AccountExpense } from '../accounts/models/accountExpense.model';
 import { CoreCompanySettings } from '../core/models/coreCompanySettings.model';
 import * as hrms from '../hrms/hrms.service';
+import { ownToday } from '../hrms/attendanceDay';
+import { directReportIds, managerUserIdOf } from '../hrms/managers';
 import * as policy from '../hrms/policy.service';
 import { renderPayslipHtml } from '../hrms/payroll.service';
 import { createExpense } from '../accounts/accounts.service';
@@ -100,10 +102,10 @@ r.post(
     });
     // Approver: the manager's account, else HR's configured approvers, else anyone who can manage leave.
     const e = req.employee!;
-    const manager = e.managerId ? await HrmsEmployee.findById(e.managerId).select('userId').lean() : null;
+    const manager = await managerUserIdOf(e);
     const settings = await HrmsSettings.findOne({ taskflowOrganizationId: e.taskflowOrganizationId }).select('leaveApproverUserIds').lean();
-    const approvers = manager?.userId
-      ? [String(manager.userId)]
+    const approvers = manager && manager !== req.user!.id
+      ? [manager]
       : settings?.leaveApproverUserIds?.length
         ? settings.leaveApproverUserIds.map(String)
         : await usersWithPermission(TASK_FLOW_PERMISSIONS.TASKFLOW.HR.LEAVE.MANAGE, req.activeOrganizationId);
@@ -116,7 +118,7 @@ r.post(
             eventKey: 'approval_requested',
             title: `Leave request: ${e.name}`,
             body: `${(leave as { days?: number }).days} day(s) from ${new Date(body.startDate).toDateString()}`,
-            link: '/hrms/leave',
+            link: userId === manager ? '/me?tab=team' : '/hrms/leave',
           }).catch(() => undefined)
         )
     );
@@ -137,6 +139,40 @@ r.post(
   })
 );
 
+// My team: whoever people report to decides their leave. Being the manager is what allows it, not a permission.
+r.get(
+  '/team',
+  asyncHandler(async (req: R, res) => {
+    const reports = await directReportIds(toOrgOid(requireWorkspaceId(req.activeOrganizationId)), req.user!.id);
+    const [people, leave] = await Promise.all([
+      HrmsEmployee.find({ _id: { $in: reports }, status: { $ne: 'terminated' } }).select('name employeeCode designation department email phone status').sort({ name: 1 }).lean(),
+      HrmsLeaveRequest.find({ employeeId: { $in: reports } })
+        .select('employeeId leaveTypeId type status startDate endDate days halfDay reason decidedAt')
+        .populate('employeeId', 'name')
+        .populate('leaveTypeId', 'name color paid')
+        .sort({ startDate: -1 })
+        .limit(200)
+        .lean(),
+    ]);
+    ok(res, { people, leave });
+  })
+);
+r.patch(
+  '/team/leave/:id/decision',
+  asyncHandler(async (req: R, res) => {
+    const status = req.body?.status as 'approved' | 'rejected';
+    if (status !== 'approved' && status !== 'rejected') throw new ApiError(400, 'Choose approved or rejected');
+    const orgOid = toOrgOid(requireWorkspaceId(req.activeOrganizationId));
+    const reports = await directReportIds(orgOid, req.user!.id);
+    const mine =
+      mongoose.isValidObjectId(req.params.id) &&
+      (await HrmsLeaveRequest.exists({ _id: req.params.id, taskflowOrganizationId: orgOid, employeeId: { $in: reports } }));
+    if (!mine) throw new ApiError(404, 'Leave request not found');
+    await hrms.decideLeave(req.params.id, req.activeOrganizationId, status, req.user!.id, true);
+    ok(res, { status });
+  })
+);
+
 // Attendance
 r.get(
   '/attendance',
@@ -154,10 +190,9 @@ r.post(
   asyncHandler(async (req: R, res) => {
     const status = String(req.body?.status ?? 'present');
     if (!['present', 'remote', 'half_day'].includes(status)) throw new ApiError(400, 'You can mark present, remote or half day');
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    const today = ownToday(req.body?.date);
     const doc = await HrmsAttendance.findOneAndUpdate(
-      { employeeId: req.employee!._id, date: today },
+      { taskflowOrganizationId: req.employee!.taskflowOrganizationId, employeeId: req.employee!._id, date: today },
       {
         $set: { status, hoursWorked: status === 'half_day' ? 4 : Number(req.body?.hoursWorked) || 8, note: req.body?.note ? String(req.body.note).slice(0, 300) : undefined },
         $setOnInsert: { taskflowOrganizationId: req.employee!.taskflowOrganizationId },

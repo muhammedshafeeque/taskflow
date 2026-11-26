@@ -1,6 +1,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import AutomationRuleBuilder from '../components/project/AutomationRuleBuilder';
 import { describeAutomationRule, isAutomationRule } from '../components/project/automationRules';
+import { ALL_PROJECT_PERMISSIONS_LIST } from '../lib/projectPermissionList';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DateInputDDMMYYYY from '../components/DateInputDDMMYYYY';
@@ -87,6 +88,8 @@ import {
   type ProjectMember,
   type ProjectInvitation,
   type ProjectDesignation,
+  type DesignationTemplate,
+  type DesignationSuggestion,
   type CustomFieldType,
   type Milestone,
   type ProjectRule,
@@ -249,40 +252,6 @@ const CUSTOM_FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
   { value: 'formula', label: 'Calculated (formula)' },
 ];
 
-const ALL_PROJECT_PERMISSIONS_LIST = [
-  { code: PROJECT_PERMISSIONS.SCOPE.DELETE, label: 'Delete Project' },
-  { code: PROJECT_PERMISSIONS.ISSUE.ISSUE.CREATE, label: 'Create Issues' },
-  { code: PROJECT_PERMISSIONS.ISSUE.ISSUE.READ, label: 'View Issues' },
-  { code: PROJECT_PERMISSIONS.ISSUE.ISSUE.UPDATE, label: 'Update Issues' },
-  { code: PROJECT_PERMISSIONS.ISSUE.ISSUE.DELETE, label: 'Delete Issues' },
-  { code: PROJECT_PERMISSIONS.ISSUE.COMMENT.CREATE, label: 'Create Comments' },
-  { code: PROJECT_PERMISSIONS.ISSUE.COMMENT.READ, label: 'View Comments' },
-  { code: PROJECT_PERMISSIONS.ISSUE.COMMENT.UPDATE, label: 'Update Comments' },
-  { code: PROJECT_PERMISSIONS.ISSUE.COMMENT.DELETE, label: 'Delete Comments' },
-  { code: PROJECT_PERMISSIONS.ISSUE.ATTACHMENT.CREATE, label: 'Upload Attachments' },
-  { code: PROJECT_PERMISSIONS.ISSUE.ATTACHMENT.READ, label: 'View Attachments' },
-  { code: PROJECT_PERMISSIONS.ISSUE.ATTACHMENT.DELETE, label: 'Delete Attachments' },
-  { code: PROJECT_PERMISSIONS.ISSUE.ESTIMATE.SUBMIT, label: 'Submit Estimates' },
-  { code: PROJECT_PERMISSIONS.ISSUE.ESTIMATE.APPROVE, label: 'Approve Estimates' },
-  { code: PROJECT_PERMISSIONS.ISSUE.ESTIMATE.VIEW, label: 'View Estimates' },
-  { code: PROJECT_PERMISSIONS.ISSUE.RULE.MANAGE, label: 'Manage Automation Rules' },
-  { code: PROJECT_PERMISSIONS.WORK_LOG.WORK_LOG.CREATE, label: 'Log Work' },
-  { code: PROJECT_PERMISSIONS.WORK_LOG.WORK_LOG.READ, label: 'View Work Logs' },
-  { code: PROJECT_PERMISSIONS.BOARD.BOARD.READ, label: 'View Boards' },
-  { code: PROJECT_PERMISSIONS.BOARD.BOARD.UPDATE, label: 'Update Boards' },
-  { code: PROJECT_PERMISSIONS.SPRINT.SPRINT.CREATE, label: 'Create Sprints' },
-  { code: PROJECT_PERMISSIONS.SPRINT.SPRINT.READ, label: 'View Sprints' },
-  { code: PROJECT_PERMISSIONS.SPRINT.SPRINT.UPDATE, label: 'Update Sprints' },
-  { code: PROJECT_PERMISSIONS.SPRINT.SPRINT.DELETE, label: 'Delete Sprints' },
-  { code: PROJECT_PERMISSIONS.SPRINT.SPRINT.START, label: 'Start Sprints' },
-  { code: PROJECT_PERMISSIONS.SPRINT.SPRINT.CLOSE, label: 'Close Sprints' },
-  { code: PROJECT_PERMISSIONS.VERSION.VERSION.READ, label: 'View Versions' },
-  { code: PROJECT_PERMISSIONS.VERSION.VERSION.UPDATE, label: 'Update Versions' },
-  { code: PROJECT_PERMISSIONS.VERSION.VERSION.RELEASE, label: 'Release Versions' },
-  { code: PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.READ, label: 'View Settings' },
-  { code: PROJECT_PERMISSIONS.SETTING.PROJECT_SETTING.UPDATE, label: 'Update Settings' },
-  { code: PROJECT_PERMISSIONS.MEMBER.INVITATIONS_MANAGE, label: 'Manage Invitations' },
-];
 
 const TABS: { id: TabId; label: string; description: string }[] = [
   { id: 'general', label: 'General', description: 'Name, key, description & lead' },
@@ -590,6 +559,13 @@ export default function ProjectSettings() {
   const [inviting, setInviting] = useState(false);
   const [membersLoading, setMembersLoading] = useState(false);
   const [inviteError, setInviteError] = useState('');
+  // A designation suggested from the invitee's HR record; the picker follows it until changed by hand.
+  const [suggestionFor, setSuggestionFor] = useState<{ email: string; sug: DesignationSuggestion | null } | null>(null);
+  const inviteSuggestion = suggestionFor && suggestionFor.email === inviteEmail.trim() ? suggestionFor.sug : null;
+  const [inviteDesignationTouched, setInviteDesignationTouched] = useState(false);
+  const [companyTemplates, setCompanyTemplates] = useState<Array<DesignationTemplate & { inProject: boolean }> | null>(null);
+  const [chosenTemplates, setChosenTemplates] = useState<string[]>([]);
+  const [templatesAdding, setTemplatesAdding] = useState(false);
   const [cancelLoadingId, setCancelLoadingId] = useState<string | null>(null);
   const [inviteAutocompleteOpen, setInviteAutocompleteOpen] = useState(false);
   const inviteAutocompleteRef = useRef<HTMLDivElement>(null);
@@ -616,6 +592,43 @@ export default function ProjectSettings() {
   function inferClosedFromStatusName(name: string): boolean {
     const lower = String(name ?? '').trim().toLowerCase();
     return lower === 'done' || lower === 'closed' || lower === 'clossed' || lower === 'resolved' || lower.includes('completed');
+  }
+
+  useEffect(() => {
+    const email = inviteEmail.trim();
+    if (!token || !projectId || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return;
+    const t = setTimeout(() => {
+      void projectsApi.suggestDesignation(projectId, email, token).then((res) => {
+        const sug = res.success ? (res.data ?? null) : null;
+        setSuggestionFor({ email, sug });
+        if (!inviteDesignationTouched) {
+          const memberDefault = designations.find((d) => d.code === 'project_member')?._id ?? '';
+          setInviteDesignationId(sug?.designationId ?? memberDefault);
+        }
+      });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [inviteEmail, token, projectId, designations, inviteDesignationTouched]);
+
+  async function openCompanyTemplates() {
+    if (!token || !projectId) return;
+    const res = await projectsApi.listDesignationTemplates(projectId, token);
+    if (res.success && Array.isArray(res.data)) {
+      setCompanyTemplates(res.data);
+      setChosenTemplates([]);
+    } else setDesignationError((res as { message?: string }).message ?? 'Could not load company designations');
+  }
+
+  async function addCompanyTemplates() {
+    if (!token || !projectId || !chosenTemplates.length) return;
+    setTemplatesAdding(true);
+    const res = await projectsApi.addDesignationsFromTemplates(projectId, chosenTemplates, token);
+    setTemplatesAdding(false);
+    if (res.success) {
+      setCompanyTemplates(null);
+      const desigRes = await projectsApi.listDesignations(projectId, token);
+      if (desigRes.success && desigRes.data) setDesignations(desigRes.data);
+    } else setDesignationError((res as { message?: string }).message ?? 'Could not add designations');
   }
 
   useEffect(() => {
@@ -1250,6 +1263,7 @@ export default function ProjectSettings() {
     setInviting(false);
     if (res.success) {
       setInviteEmail('');
+      setInviteDesignationTouched(false);
       const [membersRes, invitationsRes] = await Promise.all([
         projectsApi.getMembers(projectId, token),
         projectsApi.getInvitations(projectId, token),
@@ -2811,6 +2825,21 @@ export default function ProjectSettings() {
                             );
                           })()}
                         </div>
+                        {designations.length > 0 && (
+                          <select
+                            aria-label="Designation"
+                            value={inviteDesignationId}
+                            onChange={(e) => {
+                              setInviteDesignationId(e.target.value);
+                              setInviteDesignationTouched(true);
+                            }}
+                            className={`${inputClass} w-auto min-w-[160px]`}
+                          >
+                            {designations.map((d) => (
+                              <option key={d._id} value={d._id}>{d.name}</option>
+                            ))}
+                          </select>
+                        )}
                         <button
                           type="submit"
                           disabled={inviting || !inviteEmail.trim()}
@@ -2822,6 +2851,13 @@ export default function ProjectSettings() {
                       <p className="text-[color:var(--text-muted)] text-[11px]">
                         User must have an Atrium account. Select from the list or type email.
                       </p>
+                      {inviteSuggestion && (
+                        <p className="text-[11px] text-[color:var(--text-muted)]" data-testid="invite-suggestion">
+                          {inviteSuggestion.designationId
+                            ? `Suggested: ${inviteSuggestion.name}, from their ${inviteSuggestion.reason}.`
+                            : `Their ${inviteSuggestion.reason} suggests “${inviteSuggestion.name}”, which this project does not have yet — add it on the Designations tab.`}
+                        </p>
+                      )}
                     </form>
                     {inviteError && (
                       <p className="mt-2 text-red-400 text-sm">{inviteError}</p>
@@ -2965,6 +3001,37 @@ export default function ProjectSettings() {
                   >
                     <FiPlus /> Add Designation
                   </button>
+                </div>
+                <div className="px-6 pt-4">
+                  {companyTemplates === null ? (
+                    <button type="button" onClick={() => void openCompanyTemplates()} className="text-xs text-[color:var(--accent)] hover:underline">
+                      Add from company designations…
+                    </button>
+                  ) : (
+                    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] p-4 space-y-3">
+                      <p className="text-xs text-[color:var(--text-muted)]">Company designations (Projects → Designations). Ones this project already has are greyed out.</p>
+                      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Company designations">
+                        {companyTemplates.map((t) => (
+                          <label key={t._id} title={t.description} className={`inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] px-2.5 py-1 text-xs ${t.inProject ? 'opacity-50' : ''}`}>
+                            <input
+                              type="checkbox"
+                              disabled={t.inProject}
+                              checked={t.inProject || chosenTemplates.includes(t._id)}
+                              onChange={(e) => setChosenTemplates((prev) => (e.target.checked ? [...prev, t._id] : prev.filter((x) => x !== t._id)))}
+                            />
+                            {t.name}
+                          </label>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="button" disabled={!chosenTemplates.length || templatesAdding} onClick={() => void addCompanyTemplates()} className="btn-primary text-xs disabled:opacity-50">
+                          {templatesAdding ? 'Adding…' : `Add ${chosenTemplates.length || ''}`.trim()}
+                        </button>
+                        <button type="button" onClick={() => setCompanyTemplates(null)} className="text-xs text-[color:var(--text-muted)]">Cancel</button>
+                      </div>
+                    </div>
+                  )}
+                  {designationError && !designationModalOpen && <p className="mt-2 text-xs text-red-400">{designationError}</p>}
                 </div>
                 <div className="p-6 space-y-3">
                   {designations.map((d) => (

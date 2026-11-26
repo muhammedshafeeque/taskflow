@@ -57,6 +57,12 @@ const LEGACY_LABELS: Record<string, string> = {
   'taskflow.platform.executive.read': 'View executive dashboard',
   'taskflow.platform.audit.read': 'View audit logs',
   'taskflow.core.modules.manage': 'Enable / disable platform modules',
+  'taskflow.hr.scope.team': 'Reach: own team (reports and teams led)',
+  'taskflow.hr.scope.department': 'Reach: own department',
+  'taskflow.hr.scope.all': 'Reach: everyone',
+  'taskflow.timesheet.scope.team': 'Approve reach: own team',
+  'taskflow.timesheet.scope.department': 'Approve reach: own department',
+  'taskflow.timesheet.scope.all': 'Approve reach: everyone',
 };
 
 const ACTION_LABELS: Record<string, string> = {

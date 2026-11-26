@@ -26,6 +26,9 @@ export default function RolePermissions() {
   const [saved, setSaved] = useState(false);
   const [initialSelected, setInitialSelected] = useState<string[]>([]);
   const [initialName, setInitialName] = useState('');
+  const [inherits, setInherits] = useState<string[]>([]);
+  const [initialInherits, setInitialInherits] = useState<string[]>([]);
+  const [otherRoles, setOtherRoles] = useState<Role[]>([]);
   const [templates, setTemplates] = useState<Array<{ code: string; name: string; description: string; permissions: string[] }>>([]);
 
   useEffect(() => {
@@ -43,6 +46,9 @@ export default function RolePermissions() {
         setAllPermissions(Array.isArray(pRes.data) ? pRes.data : []);
       }
 
+      void rolesApi.list(token).then((r) => {
+        if (!cancelled && r.success && Array.isArray(r.data)) setOtherRoles(r.data.filter((x) => x._id !== roleId));
+      });
       if (isNew) {
         void rolesApi.templates(token).then((r) => {
           if (!cancelled && r.success && r.data) setTemplates(r.data);
@@ -67,6 +73,8 @@ export default function RolePermissions() {
       setSelected(role.permissions ?? []);
       setInitialName(role.name);
       setInitialSelected(role.permissions ?? []);
+      setInherits((role.inherits ?? []).map(String));
+      setInitialInherits((role.inherits ?? []).map(String));
     };
 
     load().catch(() => {
@@ -105,6 +113,7 @@ export default function RolePermissions() {
   function handleReset() {
     setName(initialName);
     setSelected(initialSelected);
+    setInherits(initialInherits);
     setError('');
     setSaved(false);
   }
@@ -123,7 +132,7 @@ export default function RolePermissions() {
     try {
       if (isNew) {
         const res = await rolesApi.create(
-          { name: trimmed, permissions: selected },
+          { name: trimmed, permissions: selected, inherits },
           token
         );
         if (res.success && res.data) {
@@ -136,11 +145,12 @@ export default function RolePermissions() {
       } else if (roleId) {
         const res = await rolesApi.update(
           roleId,
-          { name: trimmed, permissions: selected },
+          { name: trimmed, permissions: selected, inherits },
           token
         );
         if (res.success && res.data) {
           const updated = res.data as Role;
+          setInitialInherits((updated.inherits ?? []).map(String));
           setName(updated.name);
           setSelected(updated.permissions ?? []);
           setInitialName(updated.name);
@@ -203,8 +213,29 @@ export default function RolePermissions() {
               placeholder="e.g. Admin"
             />
           </div>
+          {otherRoles.length > 0 && (
+            <div className="max-w-xl">
+              <p className="block text-sm font-medium text-[color:var(--text-primary)] mb-1.5">Builds on</p>
+              <p className="text-xs text-[color:var(--text-muted)] mb-2">This role also has everything these roles have (for example, Senior builds on Junior).</p>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Builds on">
+                {otherRoles.map((r) => (
+                  <label key={r._id} className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] px-2.5 py-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={inherits.includes(r._id)}
+                      onChange={(e) => {
+                        setInherits((prev) => (e.target.checked ? [...prev, r._id] : prev.filter((x) => x !== r._id)));
+                        setSaved(false);
+                      }}
+                    />
+                    {r.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="text-xs text-[color:var(--text-muted)]">
-            Assign permissions by module. {selected.length} selected.
+            Assign permissions by module. {selected.length} selected{inherits.length ? `, plus what ${inherits.length} role(s) it builds on have` : ''}.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">

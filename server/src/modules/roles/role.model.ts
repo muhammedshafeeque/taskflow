@@ -5,6 +5,8 @@ export interface IRole extends Document {
   name: string;
   code?: string;
   permissions: string[];
+  /** Roles whose permissions this one also has (e.g. Senior builds on Junior). */
+  inherits: mongoose.Types.ObjectId[];
   isSystem: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -31,6 +33,7 @@ const roleSchema = new Schema<IRole>(
           `Invalid permission(s): ${invalidRolePermissions(props.value).join(', ')}`,
       },
     },
+    inherits: { type: [{ type: Schema.Types.ObjectId, ref: 'Role' }], default: [] },
     isSystem: { type: Boolean, default: false },
   },
   { timestamps: true }

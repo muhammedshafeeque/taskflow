@@ -216,6 +216,11 @@ export function PermissionCatalogCards({
                             {resourceSelected}/{perms.length}
                           </button>
                         </div>
+                        {resource === 'Scope' && (module === 'HRMS' || module === 'Timesheets') && (
+                          <p className="px-4 pt-2 text-[11px] text-[color:var(--text-muted)]">
+                            Whose records this module&apos;s other permissions reach. Team = people who report to them and teams they lead. None ticked = only their own.
+                          </p>
+                        )}
                         <ul className="p-2 space-y-0.5 flex-1">
                           {perms.map((perm) => {
                             const checked = isChecked(perm.code);

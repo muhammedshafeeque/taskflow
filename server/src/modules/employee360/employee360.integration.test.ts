@@ -32,6 +32,9 @@ const HR = [
   'taskflow.resources.allocation.read',
   'taskflow.timesheet.approve',
   'project.project.create',
+  // Reaching everyone (AUT-22); narrower reaches are covered in hrms/dataScope.integration.test.ts.
+  'taskflow.hr.scope.all',
+  'taskflow.timesheet.scope.all',
 ];
 
 const as = (user: string, perms: string[] = []) =>
@@ -145,7 +148,7 @@ describe('employee 360', () => {
   it('keeps other people out and scopes work to the viewer’s projects', async () => {
     await expect(getEmployee360(as('ben'), ids.emp)).rejects.toMatchObject({ statusCode: 404 });
 
-    const e = (await getEmployee360(as('ben', ['taskflow.hr.employee.read']), ids.emp))!;
+    const e = (await getEmployee360(as('ben', ['taskflow.hr.employee.read', 'taskflow.hr.scope.all']), ids.emp))!;
     expect(e.leave).toBeNull();
     expect(e.payroll).toBeNull();
     expect(e.allocations).toBeNull();

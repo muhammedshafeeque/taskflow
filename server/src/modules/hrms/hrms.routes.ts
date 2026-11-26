@@ -7,6 +7,7 @@ import { requireAnyPermission } from '../../middleware/requirePermission';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as ctrl from './hrms.controller';
+import { assertReachesEveryone, reachFor } from './dataScope';
 
 const H = TASK_FLOW_PERMISSIONS.TASKFLOW.HR;
 
@@ -44,8 +45,14 @@ router.patch('/leave/:id/decision', requireAnyPermission(leaveManage), asyncHand
 
 router.get('/attendance', requireAnyPermission(attRead), asyncHandler(ctrl.listAttendance));
 router.post('/attendance', requireAnyPermission(attManage), asyncHandler(ctrl.markAttendance));
+router.post('/attendance/bulk', requireAnyPermission(attManage), asyncHandler(ctrl.markAttendanceBulk));
 
 router.use('/', hrPeopleRouter);
+// Payroll covers the whole company, so it needs HR access that reaches everyone.
+router.use('/payroll', asyncHandler(async (req, _res, next) => {
+  assertReachesEveryone(await reachFor(req as never, 'hr'), 'Payroll');
+  next();
+}));
 router.get('/payroll', requireAnyPermission(payrollRead), asyncHandler(ctrl.getPayroll));
 
 // Payroll v2: settings, monthly runs, adjustments, payslips

@@ -56,6 +56,9 @@ export function buildPmNav(user: NavUser): NavItem[] {
   if (allow(user, 'project.project.create', 'projects:create')) {
     nav.push({ to: '/project-templates', label: 'Templates', icon: <PackageIcon /> });
   }
+  if (allow(user, 'project.designation.list', 'project.designation.create', 'project.designation.update')) {
+    nav.push({ to: '/project-designation-templates', label: 'Designations', icon: <PackageIcon /> });
+  }
 
   if (allow(user, 'taskflow.report.read', 'reports:view')) {
     nav.push({ to: '/estimates', label: 'Estimates', icon: <TimesheetIcon /> });
@@ -241,6 +244,9 @@ export function buildHrmsNav(user: NavUser): NavItem[] {
   nav.push({ to: '/hrms', label: 'Dashboard', icon: <DashboardIcon />, end: true });
   if (allow(user, 'taskflow.hr.employee.list', 'taskflow.hr.employee.read', 'taskflow.hr.designation.manage')) {
     nav.push({ to: '/hrms/employees', label: 'Employees', icon: <UsersIcon /> });
+  }
+  if (allow(user, 'taskflow.hr.employee.list', 'taskflow.hr.employee.read')) {
+    nav.push({ to: '/hrms/org-chart', label: 'Org chart', icon: <BoardsIcon /> });
   }
   if (allow(user, 'taskflow.hr.attendance.read', 'taskflow.hr.attendance.manage')) {
     nav.push({ to: '/hrms/attendance', label: 'Attendance', icon: <TimesheetIcon /> });

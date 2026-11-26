@@ -10,6 +10,7 @@ import { userHasPermission } from '../../../shared/constants/legacyPermissionMap
 import { requireWorkspaceId, toOrgOid } from '../crmWorkspace';
 import { CrmDeal } from '../models/crmDeal.model';
 import { User } from '../../auth/user.model';
+import { HrmsPayrollRun } from '../../hrms/models/hrmsPayroll.model';
 
 /**
  * Sales commission plans. Who a plan applies to is data: explicit users and/or
@@ -48,6 +49,8 @@ const entrySchema = new Schema(
     period: { type: String, index: true }, // YYYY-MM of the win
     note: { type: String },
     paidAt: { type: Date },
+    /** Payroll run that pays it; set while a draft includes it, so no other run can. */
+    payrollRunId: { type: Schema.Types.ObjectId, ref: 'HrmsPayrollRun', default: null, index: true },
   },
   { timestamps: true }
 );
@@ -143,9 +146,18 @@ commissionRoutes.get('/entries', requireAnyPermission([C.READ, C.MANAGE]), async
   res.json({ success: true, data });
 }));
 commissionRoutes.patch('/entries/:id', requireAnyPermission([C.MANAGE]), asyncHandler(async (req: R, res: Response) => {
+  const entry = await CommissionEntry.findOne({ _id: req.params.id, taskflowOrganizationId: org(req) }).select('payrollRunId').lean();
+  if (!entry) throw new ApiError(404, 'Entry not found');
+  if (entry.payrollRunId) {
+    const run = await HrmsPayrollRun.findById(entry.payrollRunId).select('status period').lean();
+    // A finalized or paid run has already committed to paying it.
+    if (run && run.status !== 'draft') throw new ApiError(409, `This commission is in the ${run.period} payroll, which is ${run.status}`);
+  }
   const set: Record<string, unknown> = {};
   if (req.body?.status) set.status = req.body.status;
   if (req.body?.status === 'paid') set.paidAt = new Date();
+  // Changed while a draft holds it: the draft lets go and picks it up again (or not) when recalculated.
+  if (entry.payrollRunId && (req.body?.status !== undefined || req.body?.amount !== undefined)) set.payrollRunId = null;
   if (req.body?.amount !== undefined) set.amount = Number(req.body.amount);
   if (req.body?.note !== undefined) set.note = req.body.note;
   const doc = await CommissionEntry.findOneAndUpdate({ _id: req.params.id, taskflowOrganizationId: org(req) }, { $set: set }, { new: true, runValidators: true });

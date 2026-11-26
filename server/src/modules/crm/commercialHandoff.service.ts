@@ -128,6 +128,9 @@ async function bindProject(
       ...(customerOrgId ? { orgId: customerOrgId } : {}),
     },
   });
+  // Time to invoice bills a project's CRM account.
+  const accountId = customerOrgId ? (await CustomerOrg.findById(customerOrgId).select('crmAccountId').lean())?.crmAccountId : null;
+  if (accountId) await Project.updateOne({ _id: projectId, crmAccountId: null }, { $set: { crmAccountId: accountId } });
   if (customerOrgId) {
     const exists = await CustomerProjectMapping.findOne({ customerOrgId, projectId }).lean();
     if (!exists) {

@@ -586,6 +586,12 @@ async function convertAcceptedQuote(
   const orgOid = toOrgOid(orgId);
   if (!quote.customerOrgId && !quote.accountId) return result;
   try {
+    // Customers that came in through lead conversion have a portal organisation; billing needs its CRM account.
+    if (!quote.accountId && quote.customerOrgId) {
+      const { syncCrmAccountFromCustomerOrg } = await import('../crmBridge.service');
+      quote.accountId = new mongoose.Types.ObjectId(await syncCrmAccountFromCustomerOrg(String(quote.customerOrgId), orgId));
+      await CrmQuote.updateOne({ _id: quote._id }, { $set: { accountId: quote.accountId } });
+    }
     const { hourlyRateFromQuoteLines } = await import('../commercialHandoff.service');
     const hourlyRate = hourlyRateFromQuoteLines(quote.lineItems);
     const contractValue = quote.total ?? quote.subtotal ?? 0;
@@ -628,13 +634,14 @@ async function convertAcceptedQuote(
     const subtotal = round2(lines.reduce((s, l) => s + l.amount, 0));
     const taxTotal = quote.taxTotal ?? round2(lines.reduce((s, l) => s + l.amount * (l.taxRate / 100), 0));
     const total = quote.total ?? round2(subtotal + taxTotal);
-    const count = await BillingInvoice.countDocuments({ taskflowOrganizationId: orgOid });
+    const { nextInvoiceNumber } = await import('../../billing/billing.service');
     if (quote.accountId) {
     const invoice = await BillingInvoice.create({
       taskflowOrganizationId: orgOid,
       accountId: quote.accountId,
+      customerOrgId: quote.customerOrgId || undefined,
       contractId: contract._id,
-      number: `INV-${String(count + 1).padStart(5, '0')}`,
+      number: await nextInvoiceNumber(orgOid),
       status: 'draft',
       issueDate: new Date(),
       currency: quote.currency ?? 'USD',

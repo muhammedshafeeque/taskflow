@@ -1,4 +1,5 @@
 import { notifyUsers } from '../notifications/domainNotify';
+import { suggestDesignation } from './designationTemplates.service';
 import mongoose from 'mongoose';
 import { Project } from './project.model';
 import { ProjectMember } from './projectMember.model';
@@ -195,8 +196,13 @@ export async function inviteToProject(
     designationObjectId = designation._id as mongoose.Types.ObjectId;
     roleName = (designation as { name?: string }).name ?? roleName;
   } else if (!roleId) {
-    const memberDesignation = await ProjectDesignation.findOne({ projectId, code: 'project_member' }).select('_id').lean();
-    designationObjectId = (memberDesignation?._id as mongoose.Types.ObjectId | undefined) ?? null;
+    // Nothing chosen: the designation their HR record suggests, if the project has it, else Project Member.
+    const suggested = await suggestDesignation(projectId, userIdStr);
+    const fallback = suggested?.designationId
+      ? await ProjectDesignation.findOne({ _id: suggested.designationId, projectId }).select('_id name').lean()
+      : await ProjectDesignation.findOne({ projectId, code: 'project_member' }).select('_id name').lean();
+    designationObjectId = (fallback?._id as mongoose.Types.ObjectId | undefined) ?? null;
+    if (suggested?.designationId && fallback) roleName = (fallback as { name?: string }).name ?? roleName;
   }
   await ProjectInvitation.deleteOne({ project: projectId, user: userIdStr });
 

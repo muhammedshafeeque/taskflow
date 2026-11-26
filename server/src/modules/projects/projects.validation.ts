@@ -85,6 +85,8 @@ const createProjectSchema = z.object({
     templateId: z.string().optional(),
     orgId: z.string().optional(),
     crmAccountId: z.string().optional(),
+    /** Company designation templates to copy in; omitted = the ones marked for new projects. */
+    designationTemplateIds: z.array(z.string()).max(50).optional(),
   }),
 });
 

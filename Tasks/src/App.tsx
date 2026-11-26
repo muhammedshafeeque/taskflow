@@ -43,6 +43,7 @@ import Dashboard from './pages/Dashboard';
 import Home from './pages/Home';
 import Projects from './pages/Projects';
 import ProjectTemplates from './pages/ProjectTemplates';
+import DesignationTemplates from './pages/DesignationTemplates';
 import Inbox from './pages/Inbox';
 import Profile from './pages/Profile';
 import NotificationPreferences from './pages/NotificationPreferences';
@@ -88,6 +89,7 @@ import Versions from './pages/Versions';
 import Timesheet from './pages/Timesheet';
 import Roles from './pages/Roles';
 import RolePermissions from './pages/RolePermissions';
+import AccessRules from './pages/AccessRules';
 import UserPermissions from './pages/UserPermissions';
 import Users from './pages/Users';
 // Customer Portal pages
@@ -133,6 +135,7 @@ import ServiceDesk from './pages/service/ServiceDesk';
 import ServiceDashboard from './pages/service/ServiceDashboard';
 import ServiceSla from './pages/service/ServiceSla';
 import HrmsDashboard from './pages/hrms/HrmsDashboard';
+import OrgChart from './pages/hrms/OrgChart';
 import { HrmsEmployees, HrmsAttendance, HrmsLeave, HrmsPayroll } from './pages/hrms/HrmsSections';
 import AccountsDashboard from './pages/accounts/AccountsDashboard';
 import {
@@ -288,6 +291,7 @@ function AppRoutes() {
         <Route path="/reports" element={<Reports />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/project-templates" element={<ProjectTemplates />} />
+        <Route path="/project-designation-templates" element={<DesignationTemplates />} />
         <Route path="/projects/:projectId" element={<ProjectLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<ProjectDashboard />} />
@@ -321,6 +325,7 @@ function AppRoutes() {
           <Route path="/users" element={<Users />} />
           <Route path="/users/:userId/permissions" element={<UserPermissions />} />
           <Route path="/roles" element={<Roles />} />
+          <Route path="/roles/access-rules" element={<AccessRules />} />
           <Route path="/roles/:roleId/permissions" element={<RolePermissions />} />
         </Route>
 
@@ -364,6 +369,7 @@ function AppRoutes() {
         <Route element={<HrmsModuleLayout />}>
           <Route path="/hrms" element={<HrmsDashboard />} />
           <Route path="/hrms/employees" element={<HrmsEmployees />} />
+          <Route path="/hrms/org-chart" element={<OrgChart />} />
           <Route path="/employees/:id" element={<Employee360 />} />
           <Route path="/hrms/attendance" element={<HrmsAttendance />} />
           <Route path="/hrms/leave" element={<HrmsLeave />} />

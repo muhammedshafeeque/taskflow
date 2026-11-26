@@ -7,6 +7,8 @@ export interface IProjectDesignation extends Document {
   projectId: mongoose.Types.ObjectId;
   permissions: string[];
   isSystem: boolean;
+  /** The company template it was copied from, if any. */
+  templateId?: mongoose.Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -27,6 +29,7 @@ const projectDesignationSchema = new Schema<IProjectDesignation>(
       },
     },
     isSystem: { type: Boolean, default: false },
+    templateId: { type: Schema.Types.ObjectId, ref: 'DesignationTemplate', default: null },
   },
   { timestamps: true }
 );

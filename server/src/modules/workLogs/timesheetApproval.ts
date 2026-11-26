@@ -8,7 +8,10 @@ import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import { WorkLog } from './workLog.model';
 import { HrmsEmployee } from '../hrms/models/hrmsEmployee.model';
 import { notifyUser } from '../notifications/notificationDispatch.service';
+import { managerUserIdOf } from '../hrms/managers';
 import { usersWithPermission } from '../auth/usersWithPermission';
+import { reachFor, reachOf, type ScopeLevel } from '../hrms/dataScope';
+import { toOrgOid } from '../crm/crmWorkspace';
 
 /**
  * Weekly timesheets: people submit a week of time logs, an approver (their
@@ -42,18 +45,28 @@ export function weekStartOf(d: Date): Date {
   return x;
 }
 
+const T = TASK_FLOW_PERMISSIONS.TASKFLOW.TIMESHEET;
+
 async function approversFor(userId: string, orgId?: string): Promise<string[]> {
   const emp = await HrmsEmployee.findOne({ userId }).select('managerId').lean();
-  if (emp?.managerId) {
-    const mgr = await HrmsEmployee.findById(emp.managerId).select('userId').lean();
-    if (mgr?.userId) return [String(mgr.userId)];
+  const manager = emp ? await managerUserIdOf(emp) : undefined;
+  if (manager && manager !== userId) return [manager];
+  const approvers = (await usersWithPermission(T.APPROVE, orgId)).filter((u) => u !== userId);
+  if (!orgId || !approvers.length) return approvers;
+  // Only approvers whose timesheet reach includes this person.
+  const [all, dept, team] = await Promise.all([T.SCOPE.ALL, T.SCOPE.DEPARTMENT, T.SCOPE.TEAM].map((p) => usersWithPermission(p, orgId).then((ids) => new Set(ids))));
+  const orgOid = toOrgOid(orgId);
+  const out: string[] = [];
+  for (const a of approvers) {
+    const level: ScopeLevel = all.has(a) ? 'all' : dept.has(a) ? 'department' : team.has(a) ? 'team' : 'own';
+    const reach = await reachOf(orgOid, a, level);
+    if (reach === null || reach.userIds.has(userId)) out.push(a);
   }
-  return (await usersWithPermission(TASK_FLOW_PERMISSIONS.TASKFLOW.TIMESHEET.APPROVE, orgId)).filter((u) => u !== userId);
+  return out;
 }
 
 type R = Request & { activeOrganizationId?: string; user?: { id: string; permissions?: string[] } };
 const ok = (res: Response, data: unknown) => res.json({ success: true, data });
-const T = TASK_FLOW_PERMISSIONS.TASKFLOW.TIMESHEET;
 
 export const timesheetApprovalRouter = Router();
 
@@ -65,8 +78,15 @@ timesheetApprovalRouter.get(
     const filter: Record<string, unknown> = {};
     if (req.query.scope === 'approve') {
       filter.status = 'submitted';
-      if (!isApprover) filter.approverIds = new mongoose.Types.ObjectId(req.user!.id);
-      else filter.$or = [{ approverIds: new mongoose.Types.ObjectId(req.user!.id) }, { taskflowOrganizationId: req.activeOrganizationId }];
+      const me = new mongoose.Types.ObjectId(req.user!.id);
+      filter.userId = { $ne: me };
+      if (!isApprover || !req.activeOrganizationId) filter.approverIds = me;
+      else {
+        // Named approver, or anyone in this workspace within the approver's timesheet reach.
+        const reach = await reachFor(req, 'timesheet');
+        const inReach = reach === null ? {} : { userId: { $in: [...reach.userIds].map((u) => new mongoose.Types.ObjectId(u)), $ne: me } };
+        filter.$or = [{ approverIds: me }, { taskflowOrganizationId: new mongoose.Types.ObjectId(req.activeOrganizationId), ...inReach }];
+      }
     } else filter.userId = new mongoose.Types.ObjectId(req.user!.id);
     ok(res, await TimesheetSubmission.find(filter).populate('userId', 'name email').sort({ weekStart: -1 }).limit(100).lean());
   })
@@ -123,7 +143,12 @@ timesheetApprovalRouter.post(
   asyncHandler(async (req: R, res) => {
     const sub = await TimesheetSubmission.findById(req.params.id);
     if (!sub) throw new ApiError(404, 'Timesheet not found');
-    const allowed = sub.approverIds.some((a) => String(a) === req.user!.id) || userHasPermission(req.user?.permissions ?? [], T.APPROVE);
+    const named = sub.approverIds.some((a) => String(a) === req.user!.id);
+    let allowed = named;
+    if (!allowed && userHasPermission(req.user?.permissions ?? [], T.APPROVE) && req.activeOrganizationId && String(sub.taskflowOrganizationId) === req.activeOrganizationId) {
+      const reach = await reachFor(req, 'timesheet');
+      allowed = reach === null || reach.userIds.has(String(sub.userId));
+    }
     if (!allowed || String(sub.userId) === req.user!.id) throw new ApiError(403, 'You cannot approve this timesheet');
     if (sub.status !== 'submitted') throw new ApiError(409, `Timesheet is already ${sub.status}`);
     const decision = req.body?.decision === 'approved' ? 'approved' : 'rejected';

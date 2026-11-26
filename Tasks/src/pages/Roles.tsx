@@ -60,12 +60,20 @@ export default function Roles() {
             Create and edit roles. Assign permissions from the predefined catalog.
           </p>
         </div>
-        <Link
-          to="/roles/new/permissions"
-          className="btn-primary shrink-0 px-4 py-2 rounded-lg text-sm inline-flex items-center justify-center"
-        >
-          Add role
-        </Link>
+        <div className="flex shrink-0 gap-2">
+          <Link
+            to="/roles/access-rules"
+            className="px-4 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm inline-flex items-center justify-center"
+          >
+            Team &amp; level rules
+          </Link>
+          <Link
+            to="/roles/new/permissions"
+            className="btn-primary px-4 py-2 rounded-lg text-sm inline-flex items-center justify-center"
+          >
+            Add role
+          </Link>
+        </div>
       </div>
 
       <input

@@ -143,6 +143,12 @@ export const TASK_FLOW_PERMISSIONS = {
     TIMESHEET: {
       SUBMIT: 'taskflow.timesheet.submit',
       APPROVE: 'taskflow.timesheet.approve',
+      /** Whose timesheets an approver reaches. None: only people who report to them. */
+      SCOPE: {
+        TEAM: 'taskflow.timesheet.scope.team',
+        DEPARTMENT: 'taskflow.timesheet.scope.department',
+        ALL: 'taskflow.timesheet.scope.all',
+      },
     },
     HR: {
       /** Company job titles (legacy designations collection) */
@@ -178,6 +184,15 @@ export const TASK_FLOW_PERMISSIONS = {
       APPRAISAL: { READ: 'taskflow.hr.appraisal.read', MANAGE: 'taskflow.hr.appraisal.manage' },
       /** Hourly cost rates used for profitability */
       COST_RATE: { MANAGE: 'taskflow.hr.cost_rate.manage' },
+      /**
+       * Whose HR records the other HR permissions reach. The widest one held applies; none = only your own record.
+       * Team = people who report to you (at any depth) and members of teams you lead; department = also your department.
+       */
+      SCOPE: {
+        TEAM: 'taskflow.hr.scope.team',
+        DEPARTMENT: 'taskflow.hr.scope.department',
+        ALL: 'taskflow.hr.scope.all',
+      },
     },
     ACCOUNTS: {
       DASHBOARD: { READ: 'taskflow.accounts.dashboard.read' },

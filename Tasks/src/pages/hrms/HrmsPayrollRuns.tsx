@@ -112,9 +112,13 @@ export function HrmsPayroll() {
               <p className="text-xs text-[color:var(--text-muted)]">{periodLabel(run.period)}</p>
               <StatusPill label={run.status} tone={runTone[run.status]} />
             </div>
-            <div><p className="text-xs text-[color:var(--text-muted)]">Gross</p><p className="text-xl font-bold">{money(run.totals.gross, currency)}</p></div>
-            <div><p className="text-xs text-[color:var(--text-muted)]">Deductions</p><p className="text-xl font-bold">{money(run.totals.deductions, currency)}</p></div>
-            <div><p className="text-xs text-[color:var(--text-muted)]">Net pay</p><p className="text-xl font-bold">{money(run.totals.net, currency)}</p></div>
+            {(run.totalsByCurrency?.length ? run.totalsByCurrency : [{ ...run.totals, currency: run.totals.currency ?? currency }]).map((t) => (
+              <div key={t.currency} className="flex flex-wrap gap-6" data-testid="payroll-totals">
+                <div><p className="text-xs text-[color:var(--text-muted)]">Gross</p><p className="text-xl font-bold">{money(t.gross, t.currency)}</p></div>
+                <div><p className="text-xs text-[color:var(--text-muted)]">Deductions</p><p className="text-xl font-bold">{money(t.deductions, t.currency)}</p></div>
+                <div><p className="text-xs text-[color:var(--text-muted)]">Net pay</p><p className="text-xl font-bold">{money(t.net, t.currency)}</p></div>
+              </div>
+            ))}
             <div><p className="text-xs text-[color:var(--text-muted)]">Employees</p><p className="text-xl font-bold">{run.totals.employees}</p></div>
             {canManage && (
               <div className="ml-auto flex gap-2">
@@ -152,9 +156,14 @@ export function HrmsPayroll() {
                       <p className="text-[11px] text-[color:var(--text-muted)]">
                         {p.employeeCode} · {p.department || '—'}
                         {p.adjustments.length > 0 && ` · ${p.adjustments.length} adjustment${p.adjustments.length > 1 ? 's' : ''}`}
+                        {(p.commissions ?? []).some((c) => c.paid) && ` · commission ${money((p.commissions ?? []).filter((c) => c.paid).reduce((s, c) => s + c.amount, 0), p.currency)}`}
+                        {(p.commissions ?? []).some((c) => !c.paid) && ' · commission in another currency not included'}
                       </p>
                     </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{p.lopDays || '—'}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">
+                      {p.lopDays || '—'}
+                      {p.daysNotEmployed ? <span className="block text-[11px] text-[color:var(--text-muted)]">+{p.daysNotEmployed} not employed</span> : null}
+                    </td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{money(p.gross, p.currency)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-[color:var(--text-muted)]">{money(p.totalDeductions, p.currency)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums font-medium">{money(p.net, p.currency)}</td>

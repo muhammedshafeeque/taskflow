@@ -28,7 +28,13 @@ const PRIVATE = [...all(TASKFLOW.HR.PAYROLL), ...all(TASKFLOW.HR.SALARY), ...all
 
 /** Views every business module and edits none (own self-service excepted). New view permissions join by themselves. */
 export const EXECUTIVE_PERMISSIONS: string[] = [
-  ...new Set([...ALL_TASK_FLOW_PERMISSIONS.filter((p) => VIEW.test(p) && !PRIVATE.includes(p)), ...all(TASKFLOW.SELF)]),
+  ...new Set([
+    ...ALL_TASK_FLOW_PERMISSIONS.filter((p) => VIEW.test(p) && !PRIVATE.includes(p)),
+    ...all(TASKFLOW.SELF),
+    // What the views reach: the whole company.
+    TASKFLOW.HR.SCOPE.ALL,
+    TASKFLOW.TIMESHEET.SCOPE.ALL,
+  ]),
 ];
 
 /** Starting points offered when creating a role; what is saved is an ordinary, editable role. */

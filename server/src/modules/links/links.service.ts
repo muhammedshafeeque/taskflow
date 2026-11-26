@@ -17,6 +17,7 @@ import { isModuleEnabled, type ModuleId } from '../../shared/constants/moduleAcc
 import { escapeRegex } from '../../utils/safeUrl';
 import { logAudit } from '../auditLogs/logAudit';
 import { RecordLink } from './recordLink.model';
+import { employeeFilter, reachOf, scopeLevel, type Reach } from '../hrms/dataScope';
 import { RECORD_TYPES, RECORD_TYPE_DEFS, isRecordType, type RecordType } from './recordTypes';
 
 export type RecordRef = { type: RecordType; id: string };
@@ -50,6 +51,7 @@ const LINK_LIMIT = 200;
 export class GraphAccess {
   private projectIds?: Promise<Set<string> | 'all'>;
   private modules?: ReturnType<typeof getPlatformEnabledModules>;
+  private hr?: Promise<Reach>;
 
   constructor(
     readonly orgOid: mongoose.Types.ObjectId,
@@ -73,6 +75,20 @@ export class GraphAccess {
     return permissions.some((p) => userHasPermission(this.viewer.permissions, p));
   }
 
+  /** How far the viewer's HR permissions reach (null = everyone). */
+  hrReach(): Promise<Reach> {
+    this.hr ??= reachOf(this.orgOid, this.viewer.userId, scopeLevel(this.viewer.permissions, 'hr'));
+    return this.hr;
+  }
+
+  /** Extra conditions on rows of a type, beyond the type's permission: HR records follow the HR reach. */
+  async rowFilter(type: RecordType): Promise<Record<string, unknown>> {
+    if (type !== 'employee') return {};
+    const filter = employeeFilter(await this.hrReach());
+    // The viewer's own record is always theirs to see.
+    return Object.keys(filter).length ? { $or: [filter, { userId: new mongoose.Types.ObjectId(this.viewer.userId) }] } : {};
+  }
+
   /** Projects this viewer may open: all in the workspace for project admins, else memberships. */
   visibleProjects(): Promise<Set<string> | 'all'> {
     this.projectIds ??= (async () => {
@@ -93,6 +109,11 @@ export class GraphAccess {
 }
 
 type Doc = Record<string, unknown> & { _id: unknown };
+
+/** Add conditions without clobbering an `$or` already in the filter. */
+function andWhere(filter: Record<string, unknown>, extra: Record<string, unknown>) {
+  if (Object.keys(extra).length) filter.$and = [...((filter.$and as unknown[]) ?? []), extra];
+}
 
 function summarize(type: RecordType, d: Doc): RecordSummary {
   const def = RECORD_TYPE_DEFS[type];
@@ -129,6 +150,7 @@ async function loadRecords(access: GraphAccess, type: RecordType, ids: string[])
   const def = RECORD_TYPE_DEFS[type];
   const filter: Record<string, unknown> = { _id: { $in: oids } };
   if (def.orgScoped) filter.taskflowOrganizationId = access.orgOid;
+  andWhere(filter, await access.rowFilter(type));
   const rows = (await def.model.find(filter).select(def.select).lean()) as Doc[];
   const existing = new Set<string>();
   for (const row of rows) {
@@ -191,6 +213,7 @@ export async function getGraph(
       const other = RECORD_TYPE_DEFS[type];
       const filter: Record<string, unknown> = { [r.field]: oid };
       if (other.orgScoped) filter.taskflowOrganizationId = access.orgOid;
+      andWhere(filter, await access.rowFilter(type));
       const rows = (await other.model.find(filter).select('_id').sort({ updatedAt: -1 }).limit(INVERSE_LIMIT).lean()) as Doc[];
       return rows.map((d) => ({ type, id: String(d._id), label: r.label }));
     })
@@ -292,6 +315,7 @@ export async function searchRecords(access: GraphAccess, type: RecordType, rawQu
     else filter.project = { $in: inOrg };
   }
 
+  andWhere(filter, await access.rowFilter(type));
   const rows = (await def.model.find(filter).select(def.select).sort({ updatedAt: -1 }).limit(10).lean()) as Doc[];
   return rows.map((d) => summarize(type, d));
 }

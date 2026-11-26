@@ -64,7 +64,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await flushAuditLogs();
   await mongoose.connection.dropDatabase();
-  const hr = await Role.create({ name: 'HR', permissions: ['taskflow.hr.employee.update', 'taskflow.hr.employee.list'] });
+  const hr = await Role.create({ name: 'HR', permissions: ['taskflow.hr.employee.update', 'taskflow.hr.employee.list', 'taskflow.hr.scope.all'] });
   const staff = await Role.create({ name: 'Staff', permissions: ['taskflow.hr.employee.list'] });
   org = (await Organization.create({ name: 'Co', slug: 'co', createdBy: oid() }))._id as mongoose.Types.ObjectId;
   const mk = async (name: string, extra: Record<string, unknown>) => {

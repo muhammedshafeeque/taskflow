@@ -18,6 +18,7 @@ export async function getHrSettings(workspaceId: string | null | undefined) {
       weekendDays: [0, 6],
       leaveYearStartMonth: 1,
       recruitmentStages: ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'],
+      levels: ['Intern', 'Junior', 'Senior', 'Lead', 'Manager'],
       leaveApproverUserIds: [],
       standardHoursPerDay: 8,
       workingDaysPerYear: 260,
@@ -45,6 +46,11 @@ export async function updateHrSettings(workspaceId: string | null | undefined, i
     const m = Number(input.leaveYearStartMonth);
     if (!Number.isInteger(m) || m < 1 || m > 12) throw new ApiError(400, 'leaveYearStartMonth must be 1–12');
     $set.leaveYearStartMonth = m;
+  }
+  if (Array.isArray(input.levels)) {
+    const levels = [...new Set(input.levels.map((s) => String(s).trim().slice(0, 40)).filter(Boolean))].slice(0, 20);
+    if (!levels.length) throw new ApiError(400, 'Add at least one level');
+    $set.levels = levels;
   }
   if (Array.isArray(input.recruitmentStages)) {
     const stages = input.recruitmentStages.map((s) => String(s).trim()).filter(Boolean).slice(0, 15);
@@ -284,27 +290,4 @@ export async function carryForward(workspaceId: string | null | undefined, fromY
     }
   }
   return { updated };
-}
-
-/** Unpaid leave days in a payroll month, by employee (for loss of pay). */
-export async function unpaidLeaveDays(orgOid: mongoose.Types.ObjectId, start: Date, end: Date): Promise<Map<string, number>> {
-  const unpaidTypes = await HrmsLeaveType.find({ taskflowOrganizationId: orgOid, paid: false }).distinct('_id');
-  const leaves = await HrmsLeaveRequest.find({
-    taskflowOrganizationId: orgOid,
-    status: 'approved',
-    startDate: { $lt: end },
-    endDate: { $gte: start },
-    $or: [{ leaveTypeId: { $in: unpaidTypes } }, { leaveTypeId: null, type: 'unpaid' }],
-  })
-    .select('employeeId startDate endDate days')
-    .lean();
-  const out = new Map<string, number>();
-  for (const l of leaves) {
-    const ls = new Date(l.startDate).getTime();
-    const le = new Date(l.endDate).getTime() + 86_400_000;
-    const span = Math.max(1, (le - ls) / 86_400_000);
-    const overlap = Math.max(0, (Math.min(le, end.getTime()) - Math.max(ls, start.getTime())) / 86_400_000);
-    out.set(String(l.employeeId), (out.get(String(l.employeeId)) ?? 0) + round2((l.days ?? span) * (overlap / span)));
-  }
-  return out;
 }

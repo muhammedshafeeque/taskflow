@@ -1,3 +1,4 @@
+import { grantActorOf } from '../auth/grantGuard';
 import { Request, Response } from 'express';
 import type { AuthPayload } from '../../types/express';
 import { ApiError } from '../../utils/ApiError';
@@ -235,12 +236,12 @@ export async function listTeams(req: Req, res: Response) {
 }
 
 export async function createTeam(req: Req, res: Response) {
-  const data = await teamsService.createTeam(ws(req), uid(req), req.body ?? {});
+  const data = await teamsService.createTeam(ws(req), uid(req), req.body ?? {}, grantActorOf(req));
   res.status(201).json({ success: true, data });
 }
 
 export async function updateTeam(req: Req, res: Response) {
-  const data = await teamsService.updateTeam(ws(req), uid(req), req.params.id, req.body ?? {});
+  const data = await teamsService.updateTeam(ws(req), uid(req), req.params.id, req.body ?? {}, grantActorOf(req));
   res.json({ success: true, data });
 }
 

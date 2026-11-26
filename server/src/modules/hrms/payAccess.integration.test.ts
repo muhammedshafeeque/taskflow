@@ -48,7 +48,7 @@ beforeAll(async () => {
   await mongoose.connect(mongo.getUri());
   org = (await Organization.create({ name: 'Co', slug: 'co', createdBy: new mongoose.Types.ObjectId() }))._id as mongoose.Types.ObjectId;
   for (const [name, codes] of Object.entries({ ...ROLES, admin: [] })) {
-    const role = await Role.create({ name, permissions: codes.map((c) => H + c) });
+    const role = await Role.create({ name, permissions: [...codes.map((c) => H + c), H + 'scope.all'] });
     const user = await User.create({ email: `${name}@example.com`.toLowerCase(), name, password: 'Passw0rd!x', mustChangePassword: false, role: name === 'admin' ? 'admin' : 'user', roleId: role._id });
     await OrganizationMember.create({ organization: org, user: user._id, role: 'org_member', status: 'active' });
     token[name] = (await createToken(String(user._id), String(org), { name: 't' })).token;

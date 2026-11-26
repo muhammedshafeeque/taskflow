@@ -4,6 +4,8 @@ import { logAudit } from '../auditLogs/logAudit';
 import { OrganizationMember } from '../organizations/organizationMember.model';
 import { User } from '../auth/user.model';
 import { Project } from '../projects/project.model';
+import { withRuleGainCheck } from '../auth/accessProfile';
+import type { GrantActor } from '../auth/grantGuard';
 import { ResourceTeam } from './models/resourceTeam.model';
 import { requireWorkspaceId, toOrgOid } from './resourcesWorkspace';
 
@@ -108,7 +110,7 @@ async function rowOf(workspaceId: string, id: string): Promise<TeamRow> {
   return row;
 }
 
-export async function createTeam(workspaceId: string | null | undefined, actorId: string, input: TeamInput) {
+export async function createTeam(workspaceId: string | null | undefined, actorId: string, input: TeamInput, actor?: GrantActor) {
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
   const name = cleanName(input.name);
@@ -118,7 +120,7 @@ export async function createTeam(workspaceId: string | null | undefined, actorId
   // The lead is always part of the team.
   if (leadId && !memberIds.includes(leadId)) memberIds.push(leadId);
   await Promise.all([assertUniqueName(orgOid, name), assertMembers(orgOid, memberIds), assertProjects(orgId, projectIds)]);
-  const doc = await ResourceTeam.create({
+  const make = () => ResourceTeam.create({
     taskflowOrganizationId: orgOid,
     name,
     description: input.description?.trim() || undefined,
@@ -128,6 +130,9 @@ export async function createTeam(workspaceId: string | null | undefined, actorId
     projectIds,
     createdBy: actorId,
   });
+  // Membership and lead can bring roles through access rules.
+  let made: Awaited<ReturnType<typeof make>> | undefined;
+  const doc = actor ? await withRuleGainCheck(orgOid, actor, async () => (made = await make()), async () => made && ResourceTeam.deleteOne({ _id: made._id })) : await make();
   logAudit({ userId: actorId, action: 'create', resourceType: 'resource_team', resourceId: String(doc._id), meta: { name } });
   return rowOf(orgId, String(doc._id));
 }
@@ -139,7 +144,7 @@ async function findTeam(orgOid: mongoose.Types.ObjectId, id: string) {
   return doc;
 }
 
-export async function updateTeam(workspaceId: string | null | undefined, actorId: string, id: string, input: TeamInput) {
+export async function updateTeam(workspaceId: string | null | undefined, actorId: string, id: string, input: TeamInput, actor?: GrantActor) {
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
   const doc = await findTeam(orgOid, id);
@@ -168,7 +173,9 @@ export async function updateTeam(workspaceId: string | null | undefined, actorId
     await assertMembers(orgOid, [String(doc.leadId)]);
     doc.memberIds.push(doc.leadId);
   }
-  await doc.save();
+  const previous = (await ResourceTeam.findById(doc._id).lean())!;
+  if (actor) await withRuleGainCheck(orgOid, actor, () => doc.save(), () => ResourceTeam.replaceOne({ _id: doc._id }, previous));
+  else await doc.save();
   logAudit({ userId: actorId, action: 'update', resourceType: 'resource_team', resourceId: id, meta: { fields: Object.keys(input) } });
   return rowOf(orgId, id);
 }

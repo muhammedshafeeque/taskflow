@@ -10,6 +10,7 @@ import { BillingInvoice } from '../billing/models/billingInvoice.model';
 import { ServiceTicket } from '../service-desk/models/serviceTicket.model';
 import { KbArticle } from '../service-desk/models/kbArticle.model';
 import { HrmsEmployee } from '../hrms/models/hrmsEmployee.model';
+import { employeeFilter, reachOf, scopeLevel } from '../hrms/dataScope';
 import { DocumentRecord } from '../documents/models/documentRecord.model';
 import { Project } from '../projects/project.model';
 import { ProjectMember } from '../projects/projectMember.model';
@@ -48,7 +49,7 @@ type Source = {
   module: ModuleId;
   /** Any one of these grants visibility. Empty = membership-scoped (issues/projects). */
   permissions: string[];
-  run: (ctx: { orgOid: mongoose.Types.ObjectId; rx: RegExp; limit: number; userId: string }) => Promise<SearchHit[]>;
+  run: (ctx: { orgOid: mongoose.Types.ObjectId; rx: RegExp; limit: number; userId: string; permissions: string[] }) => Promise<SearchHit[]>;
 };
 
 const DOCUMENT_LINKS: Record<string, string> = {
@@ -255,11 +256,13 @@ const SOURCES: Source[] = [
     type: 'employee',
     module: 'hrms',
     permissions: ['taskflow.hr.employee.list', 'taskflow.hr.employee.read'],
-    run: async ({ orgOid, rx, limit }) =>
+    run: async ({ orgOid, rx, limit, userId, permissions }) =>
       (
         await HrmsEmployee.find({
           taskflowOrganizationId: orgOid,
           $or: [{ name: rx }, { email: rx }, { employeeCode: rx }],
+          // Only people within the viewer's HR reach.
+          ...employeeFilter(await reachOf(orgOid, userId, scopeLevel(permissions, 'hr'))),
         })
           .select('name employeeCode designation department')
           .limit(limit)
@@ -320,7 +323,7 @@ export async function globalSearch(
   const results = await Promise.all(
     visible.map((s) =>
       s
-        .run({ orgOid, rx, userId: viewer.userId, limit: s.type === 'issue' ? (looksLikeKey ? 10 : 8) : 5 })
+        .run({ orgOid, rx, userId: viewer.userId, permissions: viewer.permissions, limit: s.type === 'issue' ? (looksLikeKey ? 10 : 8) : 5 })
         .catch((err) => {
           console.error(`search source ${s.type} failed`, err);
           return [] as SearchHit[];

@@ -53,8 +53,15 @@ const payslipSchema = new Schema(
     monthlyCtc: Number,
     workingDays: Number,
     lopDays: { type: Number, default: 0 },
+    /** Working days (on the payroll basis) before joining or after leaving that month. */
+    daysNotEmployed: { type: Number, default: 0 },
     earnings: { type: [lineSchema], default: [] },
     deductions: { type: [lineSchema], default: [] },
+    /** Approved sales commission paid in this run (shown as earnings); `paid` false when in another currency. */
+    commissions: {
+      type: [new Schema({ entryId: Schema.Types.ObjectId, name: String, amount: Number, currency: String, paid: Boolean }, { _id: false })],
+      default: [],
+    },
     /** Manual one-off lines for this month (bonus, reimbursement, advance recovery…). */
     adjustments: { type: [new Schema({ name: String, amount: Number, kind: { type: String, enum: ['earning', 'deduction'] } }, { _id: false })], default: [] },
     gross: Number,
@@ -71,11 +78,17 @@ const payrollRunSchema = new Schema(
     period: { type: String, required: true },
     status: { type: String, enum: ['draft', 'finalized', 'paid'], default: 'draft' },
     payslips: { type: [payslipSchema], default: [] },
+    /** Main currency only (see totalsByCurrency for all), plus everyone's head count. */
     totals: {
+      currency: String,
       gross: { type: Number, default: 0 },
       deductions: { type: Number, default: 0 },
       net: { type: Number, default: 0 },
       employees: { type: Number, default: 0 },
+    },
+    totalsByCurrency: {
+      type: [new Schema({ currency: String, gross: Number, deductions: Number, net: Number, employees: Number }, { _id: false })],
+      default: [],
     },
     finalizedAt: Date,
     finalizedBy: { type: Schema.Types.ObjectId, ref: 'User' },

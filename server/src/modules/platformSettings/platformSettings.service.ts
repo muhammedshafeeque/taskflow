@@ -1,3 +1,4 @@
+import { roleTreePermissions } from '../auth/accessProfile';
 import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError';
 import { Role } from '../roles/role.model';
@@ -34,7 +35,7 @@ export async function updatePlatformSettings(
       const role = mongoose.Types.ObjectId.isValid(input.defaultRoleId) ? await Role.findById(input.defaultRoleId).select('name permissions').lean() : null;
       if (!role) throw new ApiError(400, 'Role not found');
       // Everyone who signs up gets it, so it counts as giving it out.
-      if (String(input.defaultRoleId) !== (await load()).defaultRoleId) assertCanAssignRole(actor, role, { defaultRole: true });
+      if (String(input.defaultRoleId) !== (await load()).defaultRoleId) assertCanAssignRole(actor, { name: role.name, permissions: await roleTreePermissions([role._id]) }, { defaultRole: true });
       $set.defaultRoleId = new mongoose.Types.ObjectId(input.defaultRoleId);
     } else $set.defaultRoleId = null;
   }
@@ -57,6 +58,6 @@ export async function defaultRoleAssignment(): Promise<{ roleId: mongoose.Types.
   if (!role) return { roleId: null, permissions: mergeTaskflowPermissionFloor([]) };
   return {
     roleId: new mongoose.Types.ObjectId(defaultRoleId),
-    permissions: mergeTaskflowPermissionFloor((role.permissions as string[]) ?? []),
+    permissions: mergeTaskflowPermissionFloor(await roleTreePermissions([defaultRoleId])),
   };
 }

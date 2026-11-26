@@ -802,7 +802,7 @@ export const projectsApi = {
   get: (id: string, token: string) => api.get<Project>(`/projects/${id}`, token),
   getMyPermissions: (projectId: string, token: string) =>
     api.get<{ permissions: string[] }>(`/projects/${projectId}/my-permissions`, token),
-  create: (body: { name: string; key: string; description?: string; lead: string; templateId?: string }, token: string) =>
+  create: (body: { name: string; key: string; description?: string; lead: string; templateId?: string; designationTemplateIds?: string[] }, token: string) =>
     api.post<Project>('/projects', body, token),
   update: (
     id: string,
@@ -860,6 +860,14 @@ export const projectsApi = {
     api.patch<ProjectDesignation>(`/projects/${projectId}/designations/${id}`, body, token),
   deleteDesignation: (projectId: string, id: string, token: string) =>
     api.delete(`/projects/${projectId}/designations/${id}`, token),
+  /** Company templates, marked when the project already has them. */
+  listDesignationTemplates: (projectId: string, token: string) =>
+    api.get<Array<DesignationTemplate & { inProject: boolean }>>(`/projects/${projectId}/designations/templates`, token),
+  addDesignationsFromTemplates: (projectId: string, templateIds: string[], token: string) =>
+    api.post<{ added: string[] }>(`/projects/${projectId}/designations/from-templates`, { templateIds }, token),
+  /** A designation for someone being invited, from their HR record (null when nothing fits). */
+  suggestDesignation: (projectId: string, email: string, token: string) =>
+    api.get<DesignationSuggestion | null>(`/projects/${projectId}/designations/suggest?email=${encodeURIComponent(email)}`, token),
 
   getTimeline: (projectId: string, token: string) =>
     api.get<ProjectTimeline>(`/projects/${projectId}/timeline`, token),
@@ -1625,6 +1633,8 @@ export interface Role {
   _id: string;
   name: string;
   permissions: string[];
+  /** Roles this one builds on. */
+  inherits?: string[];
   code?: string;
   isSystem?: boolean;
   createdAt?: string;
@@ -1640,9 +1650,9 @@ export const rolesApi = {
     api.get<Array<{ code: string; name: string; description: string; permissions: string[] }>>('/roles/templates', token),
   list: (token: string) => api.get<Role[]>('/roles', token),
   get: (id: string, token: string) => api.get<Role>(`/roles/${id}`, token),
-  create: (body: { name: string; permissions: string[] }, token: string) =>
+  create: (body: { name: string; permissions: string[]; inherits?: string[] }, token: string) =>
     api.post<Role>('/roles', body, token),
-  update: (id: string, body: { name?: string; permissions?: string[] }, token: string) =>
+  update: (id: string, body: { name?: string; permissions?: string[]; inherits?: string[] }, token: string) =>
     api.patch<Role>(`/roles/${id}`, body, token),
   delete: (id: string, token: string) => api.delete(`/roles/${id}`, token),
 };
@@ -3336,6 +3346,10 @@ export interface HrmsEmployee {
   /** When the leaver's sign-in was closed. */
   accessClosedAt?: string | null;
   userId?: string;
+  managerId?: string;
+  /** Seniority from the HR settings list. */
+  level?: string | null;
+  mentorId?: string | null;
   location?: string;
   annualCtc?: number;
   /** Optional explicit cost per hour; otherwise derived from CTC and HR settings. */
@@ -3354,6 +3368,9 @@ export interface HrmsLeaveRequest {
   _id: string;
   employeeId: string | { _id: string; name: string; employeeCode: string; department?: string };
   type: string;
+  /** Configured leave type, populated in lists. */
+  leaveTypeId?: string | { _id: string; name: string; color?: string; paid?: boolean } | null;
+  halfDay?: boolean;
   status: string;
   startDate: string;
   endDate: string;
@@ -3393,6 +3410,8 @@ export const hrmsApi = {
     return api.get<HrmsAttendance[]>(`/hrms/attendance${q}`, token);
   },
   markAttendance: (data: Record<string, unknown>, token: string) => api.post<HrmsAttendance>('/hrms/attendance', data, token),
+  markAttendanceBulk: (data: { employeeIds: string[]; date: string; status: string }, token: string) =>
+    api.post<{ marked: number; created: number; updated: number }>('/hrms/attendance/bulk', data, token),
   payroll: (token: string) => api.get('/hrms/payroll', token),
   payrollSettings: (token: string) => api.get<PayrollSettings>('/hrms/payroll/settings', token),
   updatePayrollSettings: (body: Partial<PayrollSettings>, token: string) => api.put<PayrollSettings>('/hrms/payroll/settings', body, token),
@@ -3773,9 +3792,13 @@ export interface Payslip {
   monthlyCtc: number;
   workingDays: number;
   lopDays: number;
+  /** Working days before joining or after leaving that month. */
+  daysNotEmployed?: number;
   earnings: Array<{ name: string; amount: number }>;
   deductions: Array<{ name: string; amount: number }>;
   adjustments: PayrollAdjustment[];
+  /** Approved sales commission in this run; `paid` false when in another currency than the payslip. */
+  commissions?: Array<{ entryId: string; name: string; amount: number; currency: string; paid: boolean }>;
   gross: number;
   totalDeductions: number;
   net: number;
@@ -3785,7 +3808,9 @@ export interface PayrollRun {
   period: string;
   status: 'draft' | 'finalized' | 'paid';
   payslips?: Payslip[];
-  totals: { gross: number; deductions: number; net: number; employees: number };
+  totals: { currency?: string; gross: number; deductions: number; net: number; employees: number };
+  /** Every currency the run pays in; amounts are never added across currencies. */
+  totalsByCurrency?: Array<{ currency: string; gross: number; deductions: number; net: number; employees: number }>;
   finalizedAt?: string;
   paidAt?: string;
 }
@@ -4759,4 +4784,29 @@ export interface Employee360LeaveItem {
 
 export const employee360Api = {
   get: (id: string, token: string) => api.get<Employee360 | null>(`/employee-360/${encodeURIComponent(id)}`, token),
+};
+
+/** Company-wide project designation (AUT-23). */
+export interface DesignationTemplate {
+  _id: string;
+  name: string;
+  code: string;
+  description?: string;
+  permissions: string[];
+  levels: string[];
+  keywords: string[];
+  addToNewProjects: boolean;
+  active: boolean;
+}
+
+export interface DesignationSuggestion {
+  templateId: string;
+  name: string;
+  reason: string;
+  designationId: string | null;
+}
+
+export const designationTemplatesApi = {
+  list: (token: string, activeOnly = false) =>
+    api.get<DesignationTemplate[]>(`/project-designation-templates${activeOnly ? '?active=1' : ''}`, token),
 };

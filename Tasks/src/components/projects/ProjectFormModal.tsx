@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { FiCheck, FiLayers, FiX } from 'react-icons/fi';
 import { useAuth } from '../../contexts/AuthContext';
-import { projectsApi, projectTemplatesApi, usersApi, type Project, type ProjectTemplate, type User } from '../../lib/api';
+import { designationTemplatesApi, projectsApi, projectTemplatesApi, usersApi, type DesignationTemplate, type Project, type ProjectTemplate, type User } from '../../lib/api';
 import { PersonSelect, toPeople } from '../people';
 
 /** Suggest a key from a name: initials of up to four words, else the first letters ("Mobile Banking App" → MBA). */
@@ -42,18 +42,28 @@ export default function ProjectFormModal({
   const [users, setUsers] = useState<User[]>([]);
   const [templates, setTemplates] = useState<ProjectTemplate[]>([]);
   const [error, setError] = useState('');
+  // Company designations to copy into a new project; null until loaded (or when not allowed to read them).
+  const [desigTemplates, setDesigTemplates] = useState<DesignationTemplate[] | null>(null);
+  const [chosenDesigs, setChosenDesigs] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!token) return;
     void usersApi.list(1, 100, token).then((res) => res.success && res.data && setUsers(res.data.data));
+    if (!editing) {
+      void designationTemplatesApi.list(token, true).then((res) => {
+        if (!res.success || !Array.isArray(res.data)) return;
+        setDesigTemplates(res.data);
+        setChosenDesigs(res.data.filter((t) => t.addToNewProjects).map((t) => t._id));
+      });
+    }
     void Promise.all([projectTemplatesApi.list(token), projectTemplatesApi.listLibrary(token)]).then(([all, lib]) => {
       const byId = new Map<string, ProjectTemplate>();
       for (const t of Array.isArray(all.data) ? all.data : []) byId.set(t._id, t);
       for (const t of Array.isArray(lib.data) ? lib.data : []) if (!byId.has(t._id)) byId.set(t._id, t);
       setTemplates([...byId.values()].filter((t) => t._id !== 'default'));
     });
-  }, [token]);
+  }, [token, editing]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -82,7 +92,7 @@ export default function ProjectFormModal({
           { name, key, description, lead, ...(templateId ? { templateId } : {}) },
           token
         )
-      : await projectsApi.create({ name, key, description: description || undefined, lead, templateId: templateId || undefined }, token);
+      : await projectsApi.create({ name, key, description: description || undefined, lead, templateId: templateId || undefined, ...(desigTemplates ? { designationTemplateIds: chosenDesigs } : {}) }, token);
     setSaving(false);
     if (res.success && res.data) onSaved(res.data as Project);
     else setError(res.message ?? 'Could not save the project');
@@ -199,6 +209,30 @@ export default function ProjectFormModal({
               </p>
             )}
           </div>
+
+          {!editing && desigTemplates && desigTemplates.length > 0 && (
+            <div>
+              <div className="mb-1.5 flex items-baseline justify-between">
+                <span className="text-xs font-medium">Designations</span>
+                <Link to="/project-designation-templates" className="text-[11px] text-[color:var(--accent)] hover:underline">
+                  Manage designations
+                </Link>
+              </div>
+              <p className="mb-2 text-[11px] text-[color:var(--text-muted)]">Project Lead and Project Member are always added. Also add:</p>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Designations">
+                {desigTemplates.map((t) => (
+                  <label key={t._id} title={t.description} className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] px-2.5 py-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={chosenDesigs.includes(t._id)}
+                      onChange={(e) => setChosenDesigs((prev) => (e.target.checked ? [...prev, t._id] : prev.filter((x) => x !== t._id)))}
+                    />
+                    {t.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {error && <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-500">{error}</p>}
         </div>

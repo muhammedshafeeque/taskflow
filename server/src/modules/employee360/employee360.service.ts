@@ -8,6 +8,8 @@ import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError';
 import { HrmsEmployee } from '../hrms/models/hrmsEmployee.model';
 import { HrmsLeaveRequest } from '../hrms/models/hrmsLeaveRequest.model';
+// Registers the leave type model, which leave requests are populated with.
+import '../hrms/models/hrmsPolicy.model';
 import { HrmsAttendance } from '../hrms/models/hrmsAttendance.model';
 import { HrmsPayrollRun } from '../hrms/models/hrmsPayroll.model';
 import { ResourceAllocation } from '../resources/models/resourceAllocation.model';
@@ -20,6 +22,7 @@ import { getClosedStatusNamesFromStatuses } from '../projects/statusClassificati
 import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import { GraphAccess } from '../links/links.service';
+import { reachOf, reaches, scopeLevel } from '../hrms/dataScope';
 
 const P = TASK_FLOW_PERMISSIONS.TASKFLOW;
 const DAY = 86_400_000;
@@ -63,6 +66,9 @@ export async function getEmployee360(access: GraphAccess, id: string) {
 
   const isSelf = Boolean(employee.userId && String(employee.userId) === viewerId);
   if (!isSelf && !(await access.canSeeType('employee'))) throw new ApiError(404, 'Employee not found');
+  // HR permissions reach only so far (own / team / department / everyone).
+  const hrReach = isSelf ? null : await access.hrReach();
+  if (!reaches(hrReach, employee._id)) throw new ApiError(404, 'Employee not found');
 
   const perms = access.viewer.permissions;
   const allowed = async (section: keyof typeof SECTION_PERMS) => {
@@ -70,7 +76,7 @@ export async function getEmployee360(access: GraphAccess, id: string) {
     if (isSelf) return access.can(module, []);
     return access.can(module, [...SECTION_PERMS[section]]);
   };
-  const [canAlloc, canTime, canLeave, canAttend, canPayrollSection] = await Promise.all([
+  const [canAlloc, canTimeSection, canLeave, canAttend, canPayrollSection] = await Promise.all([
     allowed('allocations'),
     allowed('timesheet'),
     allowed('leave'),
@@ -78,7 +84,11 @@ export async function getEmployee360(access: GraphAccess, id: string) {
     allowed('payroll'),
   ]);
   const payrollReader = SECTION_PERMS.payroll.some((p) => userHasPermission(perms, p));
-  const canPayroll = canPayrollSection && (!isSelf || payrollReader || userHasPermission(perms, P.SELF.PAYSLIP.READ));
+  // Payroll is company-wide: someone else's pay needs HR access that reaches everyone.
+  const canPayroll = canPayrollSection && (isSelf ? payrollReader || userHasPermission(perms, P.SELF.PAYSLIP.READ) : hrReach === null);
+  // Someone else's timesheet: only within the viewer's timesheet reach.
+  const timeReach = isSelf || !canTimeSection || !employee.userId ? null : await reachOf(access.orgOid, viewerId, scopeLevel(perms, 'timesheet'));
+  const canTime = canTimeSection && (timeReach === null || timeReach.userIds.has(String(employee.userId)));
 
   const now = Date.now();
   const userOid = employee.userId ? new mongoose.Types.ObjectId(String(employee.userId)) : null;
@@ -286,11 +296,14 @@ async function loadTimesheet(access: GraphAccess, userOid: mongoose.Types.Object
 }
 
 async function loadLeave(orgOid: mongoose.Types.ObjectId, empOid: mongoose.Types.ObjectId, balance: number, now: number) {
-  const rows = await HrmsLeaveRequest.find({ taskflowOrganizationId: orgOid, employeeId: empOid })
-    .select('type status startDate endDate days halfDay reason')
+  const raw = await HrmsLeaveRequest.find({ taskflowOrganizationId: orgOid, employeeId: empOid })
+    .select('type leaveTypeId status startDate endDate days halfDay reason')
+    .populate<{ leaveTypeId: { name?: string } | null }>('leaveTypeId', 'name')
     .sort({ startDate: -1 })
     .limit(30)
     .lean();
+  // The configured leave type's name where there is one ("Sick"), else the old fixed type.
+  const rows = raw.map(({ leaveTypeId, ...r }) => ({ ...r, type: leaveTypeId?.name ?? r.type }));
   const today = new Date(now);
   const approved = rows.filter((r) => r.status === 'approved');
   const onLeaveNow = approved.find((r) => r.startDate <= today && r.endDate >= today) ?? null;

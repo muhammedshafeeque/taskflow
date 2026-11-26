@@ -13,6 +13,10 @@ export interface IHrmsEmployee extends Document {
   department?: string;
   designation?: string;
   managerId?: mongoose.Types.ObjectId;
+  /** Seniority, from the list in HR settings (Intern, Junior, Senior, Lead…); access rules can use it. */
+  level?: string | null;
+  /** Someone who guides them; recorded only, gives no rights. */
+  mentorId?: mongoose.Types.ObjectId | null;
   employmentType: EmploymentType;
   status: EmploymentStatus;
   joinedDate: Date;
@@ -44,6 +48,8 @@ const hrmsEmployeeSchema = new Schema<IHrmsEmployee>(
     department: { type: String, index: true },
     designation: { type: String },
     managerId: { type: Schema.Types.ObjectId, ref: 'HrmsEmployee' },
+    level: { type: String, trim: true, default: null },
+    mentorId: { type: Schema.Types.ObjectId, ref: 'HrmsEmployee', default: null },
     employmentType: { type: String, enum: ['full_time', 'part_time', 'contract', 'intern'], default: 'full_time' },
     status: { type: String, enum: ['active', 'on_leave', 'terminated', 'probation'], default: 'active', index: true },
     joinedDate: { type: Date, required: true },

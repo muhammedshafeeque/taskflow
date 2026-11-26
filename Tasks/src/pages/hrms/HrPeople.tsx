@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { canAny } from '../../utils/moduleAccess';
 import { CrudPage, SettingsForm, fmtDate, type Row } from '../../components/CrudPage';
 import { Field, GhostButton, Modal, PrimaryButton, SectionPage, Select, StatusPill, TextArea, TextInput } from '../../components/moduleKit';
+import HireModal from './HireModal';
 import { PersonSelect, toPeople } from '../../components/people';
 
 const H = {
@@ -53,6 +54,7 @@ export function HrSettingsPage() {
         { key: 'workingDaysPerYear', label: 'Working days per year (cost rate basis)', type: 'number' },
         { key: 'timesheetReminderWeekday', label: 'Timesheet reminder day', type: 'select', options: WEEKDAYS, help: 'Leave blank to disable reminders.' },
         { key: 'recruitmentStages', label: 'Default recruitment stages', type: 'list', help: 'Comma separated, in order. The last one is treated as hired.' },
+        { key: 'levels', label: 'Levels', type: 'list', help: 'Seniority levels, most junior first (e.g. Intern, Junior, Senior, Lead). Set on each employee; team & level rules can use them.' },
         { key: 'leaveApproverUserIds', label: 'Fallback leave approvers', type: 'multiselect', optionsFrom: { endpoint: '/core/people' }, help: "Used when an employee has no manager linked to a user account." },
       ]}
     />
@@ -335,6 +337,7 @@ export function HrRecruitmentPage() {
   const [editJob, setEditJob] = useState<Row | null>(null);
   const [cand, setCand] = useState<Row | null>(null);
   const [interview, setInterview] = useState<Row | null>(null);
+  const [hiring, setHiring] = useState<Row | null>(null);
   const stages = ((job?.stages as string[]) ?? []).length ? (job!.stages as string[]) : ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'];
 
   const save = async (path: string, body: Row, id?: unknown) => {
@@ -352,15 +355,6 @@ export function HrRecruitmentPage() {
   const move = async (c: Row, stage: string) => {
     if (await save('/hrms/candidates', { stage }, c._id)) candidates.reload();
   };
-  const hire = async (c: Row) => {
-    if (!token) return;
-    const joinedDate = prompt('Joining date (YYYY-MM-DD)', new Date().toISOString().slice(0, 10));
-    if (!joinedDate) return;
-    const r = await api.post(`/hrms/candidates/${c._id}/hire`, { joinedDate }, token);
-    alert(r.success ? 'Employee record created.' : r.message);
-    candidates.reload();
-  };
-
   return (
     <SectionPage
       title="Recruitment"
@@ -422,7 +416,7 @@ export function HrRecruitmentPage() {
                         <button className="text-[color:var(--accent)]" onClick={() => setInterview({ candidateId: c._id, at: '', rating: '', feedback: '', recommendation: '' })}>
                           + Interview
                         </button>
-                        <button className="text-emerald-600" onClick={() => hire(c)}>
+                        <button className="text-emerald-600" onClick={() => setHiring(c)}>
                           Hire
                         </button>
                         <button className="text-rose-500" onClick={async () => (await save('/hrms/candidates', { status: 'rejected', rejectionReason: prompt('Reason?') ?? '' }, c._id)) && candidates.reload()}>
@@ -505,6 +499,7 @@ export function HrRecruitmentPage() {
           ))}
         </Modal>
       )}
+      {hiring && job && <HireModal candidate={hiring} job={job} onClose={() => setHiring(null)} onHired={candidates.reload} />}
       {interview && (
         <Modal
           title="Log interview"

@@ -1,3 +1,4 @@
+import { permissionsFor, type PermissionSubject } from './accessProfile';
 import { issueChallenge } from './twoFactor.service';
 import { defaultRoleAssignment, getPlatformSettings } from '../platformSettings/platformSettings.service';
 import bcrypt from 'bcryptjs';
@@ -190,27 +191,18 @@ export async function issueTaskflowAccessTokenForOAuth(userId: string): Promise<
   return tokens.accessToken;
 }
 
-async function toAuthUser(user: IUser & { roleId?: unknown; mustChangePassword?: boolean }): Promise<AuthUser> {
-  let rolePermissions: string[] = [];
+/** `orgId`: the workspace whose team and level rules apply (left out where it isn't known yet). */
+async function toAuthUser(user: IUser & { roleId?: unknown; mustChangePassword?: boolean }, orgId?: string): Promise<AuthUser> {
   let roleName: string | undefined;
   if (user.roleId) {
-    const role = await Role.findById(user.roleId).select('permissions name').lean();
-    if (role?.permissions) rolePermissions = role.permissions;
+    const role = await Role.findById(user.roleId).select('name').lean();
     if (role?.name) roleName = role.name;
   }
   if (!roleName) roleName = user.role === 'admin' ? 'Administrator' : 'Member';
 
   const mustChange = user.mustChangePassword ?? false;
-  const overrides = (user as IUser & { permissionOverrides?: { granted?: string[]; revoked?: string[] } }).permissionOverrides;
-  // Always resolve from role + overrides (same as authMiddleware) — do not prefer stale user.permissions snapshot.
-  const permissions = mergeTaskflowPermissionFloor(
-    resolveEffectiveGlobalPermissions({
-      rolePermissions,
-      role: user.role,
-      mustChangePassword: mustChange,
-      permissionOverrides: overrides,
-    })
-  );
+  // Same as the auth middleware — never the stored user.permissions snapshot.
+  const permissions = await permissionsFor(user as unknown as PermissionSubject, orgId);
   const u = user as IUser & { avatarUrl?: string; createdAt?: Date };
   return {
     id: user._id.toString(),
@@ -435,14 +427,14 @@ export async function refresh(refreshToken: string): Promise<{ user: AuthUser | 
   };
 }
 
-export async function me(userId: string): Promise<AuthUser> {
+export async function me(userId: string, orgId?: string): Promise<AuthUser> {
   const user = await User.findById(userId).lean();
   if (!user) throw new ApiError(401, 'User not found');
   const u = user as { enabled?: boolean };
   if (u.enabled === false) {
     throw new ApiError(401, 'Account is disabled');
   }
-  return toAuthUser(user as unknown as IUser & { roleId?: unknown; designation?: unknown; mustChangePassword?: boolean });
+  return toAuthUser(user as unknown as IUser & { roleId?: unknown; designation?: unknown; mustChangePassword?: boolean }, orgId);
 }
 
 export async function customerMe(customerUserId: string): Promise<Record<string, unknown>> {

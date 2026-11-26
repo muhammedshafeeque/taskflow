@@ -17,6 +17,7 @@ import {
   type JwtAuthClaims,
 } from './assertAccessToken';
 import { authenticateInternal, hasInternalKey } from './internalAuth';
+import { permissionsFor, type PermissionSubject } from '../modules/auth/accessProfile';
 
 export async function authMiddleware(
   req: Request,
@@ -140,7 +141,7 @@ export async function authMiddleware(
 
 /** Load a staff user, resolve permissions and the active workspace onto `req`. Returns an error instead of throwing. */
 export async function authenticateStaffUser(req: Request, userId: string, tokenOrgId?: string): Promise<ApiError | null> {
-    const user = await User.findById(userId).populate('roleId', 'permissions').lean();
+    const user = await User.findById(userId).lean();
     if (!user) {
       return new ApiError(401, 'User not found');
     }
@@ -152,17 +153,6 @@ export async function authenticateStaffUser(req: Request, userId: string, tokenO
     if (u.enabled === false) {
       return new ApiError(401, 'Account is disabled');
     }
-    const role = user.roleId as { _id?: { toString(): string }; permissions?: string[] } | null | undefined;
-    const overrides = (user as { permissionOverrides?: { granted?: string[]; revoked?: string[] } })
-      .permissionOverrides;
-    const permissions = mergeTaskflowPermissionFloor(
-      resolveEffectiveGlobalPermissions({
-        rolePermissions: role?.permissions,
-        role: user.role,
-        mustChangePassword: user.mustChangePassword ?? false,
-        permissionOverrides: overrides,
-      })
-    );
     const roleIdStr =
       user.roleId && typeof user.roleId === 'object' && '_id' in user.roleId
         ? (user.roleId as { _id: { toString(): string } })._id.toString()
@@ -175,7 +165,7 @@ export async function authenticateStaffUser(req: Request, userId: string, tokenO
       name: user.name,
       role: user.role,
       roleId: roleIdStr,
-      permissions,
+      permissions: [],
       mustChangePassword: user.mustChangePassword ?? false,
       userType: 'taskflow',
     } as AuthPayload;
@@ -208,6 +198,8 @@ export async function authenticateStaffUser(req: Request, userId: string, tokenO
       if (m?.organization) activeOrganizationId = String(m.organization);
     }
     req.activeOrganizationId = activeOrganizationId;
+    // Role (and what it builds on), the team and level rules of this workspace, personal grants and revokes.
+    req.user!.permissions = await permissionsFor(user as PermissionSubject, activeOrganizationId);
 
     // Workspace policy: no 2FA yet → only the auth endpoints (to set it up) are allowed.
     if (!(user as { twoFactorEnabled?: boolean }).twoFactorEnabled && !req.originalUrl.startsWith('/api/auth/')) {

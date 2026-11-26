@@ -69,6 +69,8 @@ const hrSettingsSchema = new Schema(
       type: [String],
       default: ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'],
     },
+    /** Seniority levels the company uses, most junior first. */
+    levels: { type: [String], default: ['Intern', 'Junior', 'Senior', 'Lead', 'Manager'] },
     /** Weekday (0–6) to remind people with incomplete timesheets; null = off. */
     timesheetReminderWeekday: { type: Number, default: null, min: 0, max: 6 },
     expectedWeeklyHours: { type: Number, default: 40, min: 1, max: 80 },
