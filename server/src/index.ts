@@ -9,6 +9,7 @@ import { startMonitorUptimeScheduler } from "./modules/monitor/uptime.scheduler"
 import { startReminderScheduler } from "./modules/reminders/reminders.scheduler";
 import { startSupportMailPoller } from "./modules/service-desk/emailInbound";
 import { monitorError, monitorLog } from "./shared/monitorClient";
+import { syncUpdatesFromFile } from "./modules/updates/updates.sync";
 
 async function startServer() {
   try {
@@ -17,6 +18,9 @@ async function startServer() {
     loadOrCreateInternalSecret();
     console.log(`[internal] PA service key ready (${process.env.ATRIUM_INTERNAL_SECRET ? 'env' : internalSecretFilePath()})`);
     await connectDb();
+    await syncUpdatesFromFile().catch((err) => {
+      console.error("[updates] Startup sync failed (continuing startup):", err);
+    });
 
     const server = http.createServer(app);
 

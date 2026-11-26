@@ -1,0 +1,33 @@
+# Atrium Changelog (updates.txt)
+#
+# Format (one update per line, pipe-separated):
+# UPDATE_ID | DATE (YYYY-MM-DD) | TYPE | TITLE | DETAILS
+#
+# Rules:
+# - UPDATE_ID : Unique and sequential, e.g. UPD-0001, UPD-0002 (never reuse or renumber)
+# - DATE      : Release date in YYYY-MM-DD format
+# - TYPE      : One of: feature, improvement, fix, security, other
+# - TITLE     : Short, user-friendly title for the update
+# - DETAILS   : Clear user-friendly summary; separate multiple points with " ; "
+# - Lines starting with # are comments; blank lines are ignored.
+#
+UPD-0001 | 2026-11-26 | feature | What's New Changelog Modal | Added automatic changelog sync on server startup from updates.txt ; Added a What's New modal that highlights new features, improvements, and fixes when you sign in ; Added per-user acknowledgement tracking so dismissed updates stay hidden across sessions
+UPD-0002 | 2026-10-24 | feature | Model Context Protocol (MCP) & OAuth Integration | Connect AI assistants (Claude, Claude Code, Cursor, VS Code) to your Atrium workspace over MCP ; Added OAuth 2.1 PKCE consent screen at /auth/mcp and an MCP connection card in Profile ; Added interactive MCP setup and tool documentation at /developers/mcp ; Added read-only API token support and workspace-scoped MCP tools
+UPD-0003 | 2026-10-24 | improvement | CRM & Docs Workspace Redesign | Added dedicated Deal detail view and Deal creation/editing modal ; Refreshed CRM Deals, Activities, Campaigns, Contracts, Account detail, and CRM Settings pages ; Upgraded Docs home, spaces, page tree, and rich-text page editor
+UPD-0004 | 2026-10-25 | feature | WhatsApp Support Assistant Doc Answers | WhatsApp support groups can now answer client questions directly from project documentation ; Added internal client documentation lookup endpoints for the PA support pipeline
+UPD-0005 | 2026-10-25 | feature | Cross-Module Record Links Graph | Link any record (issues, projects, CRM records, contracts, invoices, tickets, assets, employees, purchase orders) to any other record ; Added inline Record Links panel on detail pages and a slide-over links drawer on list views ; Added MCP tools and PA assistant support to query and link records
+UPD-0006 | 2026-10-25 | feature | Customer 360 & Employee 360 Views | Added unified Customer 360 page aggregating portal org projects, requests, tickets, deals, quotes, contracts, and billing ; Added unified Employee 360 page showing allocations, timesheets, leave, attendance, and payroll history ; Added MCP tools and PA lookup support for Customer 360 and Employee 360
+UPD-0007 | 2026-10-25 | feature | MCP Bulk Issue Updates & Sprint Creation | Added bulk_update_issues and create_sprint tools to the MCP server ; Extended issue JQL parsing and bulk update workflows
+UPD-0008 | 2026-10-25 | improvement | Projects Directory Redesign | Redesigned the Projects page with refreshed project cards and a dedicated Project create/edit modal
+UPD-0009 | 2026-11-05 | feature | Upload Progress Tray & Media Playback Sessions | Added a floating Upload Progress tray with live percentages, cancel, and dismiss controls across rich-text editors and attachments ; Added short-lived media session tokens for authenticated video and attachment playback
+UPD-0010 | 2026-11-06 | feature | Large File Chunked & Multipart Uploads | Added chunked upload sessions supporting large files up to 10 GB within reverse-proxy body limits ; Added S3 multipart upload and Azure Blob block upload support in the storage layer
+UPD-0011 | 2026-11-15 | improvement | Scrum Board Sprint Switching & Project Permissions | Added sprint selection with date ranges on Scrum boards and paginated issue loading ; Added board deletion confirmation and stricter permission checks across boards, sprints, issues, and MCP tools
+UPD-0012 | 2026-11-15 | fix | Quotation Issue Date Validation | Required explicit selection of quotation issue dates instead of defaulting to today ; Validated that Valid Until dates cannot precede the issue date across forms, API, and PDFs
+UPD-0013 | 2026-11-21 | fix | Issue Comment Permissions & Error Feedback | Expanded legacy issues:view and issues:edit role permissions so project members keep comment read/create access ; Showed clear error messages on Issue Detail when comments fail to load or save
+UPD-0014 | 2026-11-24 | security | Role & Permission Grant Safeguards | Prevented users from granting permissions they do not hold, altering platform admins without admin rights, or editing their own permissions ; Added audit logging for user access and permission override changes
+UPD-0015 | 2026-11-24 | fix | Bulk Issue Key Resolution & Chart Sizing | Updated backlog ordering, bulk updates, and bulk deletes to safely resolve both issue IDs and issue keys ; Fixed chart ResponsiveContainer initial dimensions to eliminate mount sizing warnings
+UPD-0016 | 2026-11-24 | feature | Employee Exit Handover & Pay Visibility Controls | Added Employee Exit workflow and Handover modal to reassign open leads, deals, tasks, tickets, timesheets, reviews, and direct reports ; Protected salary, hourly cost rates, and sensitive HR notes behind dedicated pay-access permissions ; Added System Admin, Read-Only Auditor, and Sales role templates
+UPD-0017 | 2026-11-26 | feature | Team & Level Access Rules, Role Inheritance & Designation Templates | Added role inheritance and team/level-based Access Rules management ; Added company-wide Project Designation Templates with automatic level and job-title suggestions
+UPD-0018 | 2026-11-26 | feature | HRMS Hire Flow, Org Chart, Data Scopes & Payroll Enhancements | Added guided Hire modal and interactive Org Chart in HRMS ; Added manager hierarchy and data-scope filtering across employees, attendance, leave, and self-service ; Added attendance-based Loss of Pay, payroll proration, and CRM commission payouts in payroll runs
+UPD-0019 | 2026-11-26 | feature | HRMS Job Changes & Scheduled Compensation Updates | Added Job Changes workflow for promotions, transfers, intern conversions, and pay changes with approval steps and effective-date scheduling ; Automatically updates employee records, platform roles, resource seniority, and project designations when applied
+UPD-0020 | 2026-11-26 | feature | Terminal & CLI Device Login for MCP Clients | Added RFC 8628 device authorization flow so CLI, SSH, and CI MCP clients can sign in using an 8-letter code ; Added /auth/device approval screen with workspace switching, read-only toggle, and token expiry options

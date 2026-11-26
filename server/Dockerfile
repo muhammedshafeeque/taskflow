@@ -14,6 +14,7 @@ ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
+COPY updates.txt ./
 RUN mkdir -p uploads && chown -R node:node /app
 USER node
 EXPOSE 5000

@@ -497,6 +497,28 @@ Builds run tests first (`prebuild`). Prefer extending existing modules and share
 
 ---
 
+## What's New Changelog (`server/updates.txt`)
+
+Atrium syncs user-facing release notes from [`server/updates.txt`](server/updates.txt) into MongoDB (`app_updates`) on server startup. Staff users automatically see any unseen updates added after their account was created in a **What's New** modal once per session, and dismissing it records per-user acknowledgements (`user_update_acknowledgements`).
+
+### Adding a new update
+
+Append a single line to the bottom of `server/updates.txt` (do not edit or delete existing lines unless intentionally correcting an entry):
+
+```text
+UPDATE_ID | DATE (YYYY-MM-DD) | TYPE | TITLE | DETAILS
+```
+
+- **`UPDATE_ID`**: Unique sequential ID (e.g. `UPD-0002`). Never reuse or renumber existing IDs.
+- **`DATE`**: Release date in `YYYY-MM-DD` format.
+- **`TYPE`**: One of `feature`, `improvement`, `fix`, `security`, `other`.
+- **`TITLE`**: Concise, user-friendly heading.
+- **`DETAILS`**: Clear description; separate multiple bullet points with ` ; `.
+
+Restart the API server after updating `server/updates.txt` to sync the new entry into the database.
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for branch naming, PR expectations, and security notes.

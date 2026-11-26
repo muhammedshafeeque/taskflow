@@ -68,6 +68,7 @@ import { customerKbRoutes } from '../modules/customer-portal/customer-kb/custome
 import { customerTicketRoutes } from '../modules/customer-portal/customer-ticket/customerTicket.routes';
 import { customerAuthRoutes } from '../modules/customer-portal/customer-auth/customerAuth.routes';
 import { organizationsRoutes } from '../modules/organizations/organizations.routes';
+import { updatesRoutes } from '../modules/updates/updates.routes';
 import { webhooksRoutes } from './webhooks.routes';
 
 const router = Router();
@@ -137,6 +138,7 @@ router.use('/public/sign', publicLimiter, publicSigningRoutes);
 router.use('/public/csat', publicLimiter, publicCsatRoutes);
 router.use('/public/status', publicLimiter, publicStatusRoutes);
 router.use('/me', meRoutes);
+router.use('/updates', updatesRoutes);
 router.use('/announcements', announcementRoutes);
 router.use('/insights', insightsRoutes);
 router.use('/mail', mailRoutes);

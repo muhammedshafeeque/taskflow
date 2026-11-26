@@ -4867,3 +4867,23 @@ export const jobChangesApi = {
     api.get<{ employee: { name: string; joinedDate: string }; changes: JobChange[] }>(`/hrms/employees/${employeeId}/history`, token),
   roles: (token: string) => api.get<Array<{ _id: string; name: string }>>('/hrms/job-changes/roles', token),
 };
+
+export type AppUpdateType = 'feature' | 'improvement' | 'fix' | 'security' | 'other';
+
+export interface AppUpdateItem {
+  _id?: string;
+  updateId: string;
+  date: string;
+  type: AppUpdateType;
+  title: string;
+  details: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export const updatesApi = {
+  getUnseen: (token: string) => api.get<AppUpdateItem[]>('/updates/unseen', token),
+  list: (token: string) => api.get<AppUpdateItem[]>('/updates', token),
+  acknowledge: (updateIds: string[], token: string) =>
+    api.post<{ acknowledged: string[] }>('/updates/acknowledge', { updateIds }, token),
+};
