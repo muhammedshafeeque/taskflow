@@ -11,6 +11,7 @@ const INTERVALS_MS: Record<ReminderJobName, number> = {
   renewals: 6 * 60 * 60 * 1000,
   subscriptionInvoices: 60 * 60 * 1000,
   employeeExits: 60 * 60 * 1000,
+  jobChanges: 60 * 60 * 1000,
   overdueInvoices: 60 * 60 * 1000,
   mailSync: (Number(process.env.MAIL_SYNC_INTERVAL_MINUTES) || 5) * 60 * 1000,
 };

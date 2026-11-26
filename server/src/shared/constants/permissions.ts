@@ -184,6 +184,8 @@ export const TASK_FLOW_PERMISSIONS = {
       APPRAISAL: { READ: 'taskflow.hr.appraisal.read', MANAGE: 'taskflow.hr.appraisal.manage' },
       /** Hourly cost rates used for profitability */
       COST_RATE: { MANAGE: 'taskflow.hr.cost_rate.manage' },
+      /** Promotions, transfers and intern conversions: propose one, and approve them. */
+      JOB_CHANGE: { REQUEST: 'taskflow.hr.job_change.request', APPROVE: 'taskflow.hr.job_change.approve' },
       /**
        * Whose HR records the other HR permissions reach. The widest one held applies; none = only your own record.
        * Team = people who report to you (at any depth) and members of teams you lead; department = also your department.

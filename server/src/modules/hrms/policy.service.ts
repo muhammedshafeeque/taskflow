@@ -19,6 +19,7 @@ export async function getHrSettings(workspaceId: string | null | undefined) {
       leaveYearStartMonth: 1,
       recruitmentStages: ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'],
       levels: ['Intern', 'Junior', 'Senior', 'Lead', 'Manager'],
+      jobChangeNeedsApproval: true,
       leaveApproverUserIds: [],
       standardHoursPerDay: 8,
       workingDaysPerYear: 260,
@@ -52,6 +53,7 @@ export async function updateHrSettings(workspaceId: string | null | undefined, i
     if (!levels.length) throw new ApiError(400, 'Add at least one level');
     $set.levels = levels;
   }
+  if (input.jobChangeNeedsApproval !== undefined) $set.jobChangeNeedsApproval = Boolean(input.jobChangeNeedsApproval);
   if (Array.isArray(input.recruitmentStages)) {
     const stages = input.recruitmentStages.map((s) => String(s).trim()).filter(Boolean).slice(0, 15);
     if (stages.length < 2) throw new ApiError(400, 'Add at least two recruitment stages');

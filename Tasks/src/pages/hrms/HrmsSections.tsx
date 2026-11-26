@@ -8,6 +8,7 @@ import {
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
 import { PersonMultiSelect, PersonSelect, toPeople } from '../../components/people';
 import HandoverModal from './HandoverModal';
+import { JobChangeModal, JobHistoryModal } from './JobChange';
 import RecordLinksDrawer from '../../components/RecordLinksDrawer';
 import { useRecordLinksParam } from '../../hooks/useRecordLinksParam';
 import { Link } from 'react-router-dom';
@@ -37,6 +38,10 @@ export function HrmsEmployees() {
   const [editing, setEditing] = useState<Partial<HrmsEmployee> | null>(null);
   const [loading, setLoading] = useState(true);
   const [handover, setHandover] = useState<HrmsEmployee | null>(null);
+  const [jobChange, setJobChange] = useState<HrmsEmployee | null>(null);
+  const [history, setHistory] = useState<HrmsEmployee | null>(null);
+  const [jobMessage, setJobMessage] = useState('');
+  const canChangeJob = canAny(user, 'taskflow.hr.job_change.request');
   const [levels, setLevels] = useState<string[]>(['Intern', 'Junior', 'Senior', 'Lead', 'Manager']);
   useEffect(() => {
     if (!token) return;
@@ -90,6 +95,7 @@ export function HrmsEmployees() {
         { header: 'Leave balance', value: (r) => r.leaveBalanceDays ?? 0 },
       ]} /><PrimaryButton onClick={() => setEditing({ employmentType: 'full_time', status: 'active', currency: 'USD', leaveBalanceDays: 20 })}>+ Add employee</PrimaryButton></div>}
     >
+      {jobMessage && <p className="mb-3 text-xs text-emerald-600" role="status">{jobMessage}</p>}
       {loading ? (
         <ModuleLoader size="block" label="Loading employees…" />
       ) : rows.length === 0 ? (
@@ -122,6 +128,8 @@ export function HrmsEmployees() {
                     <Link to={`/employees/${e._id}`} className="text-[color:var(--accent)] hover:underline text-xs mr-3">360</Link>
                     <button onClick={() => setLinksId(e._id)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Links</button>
                     <button onClick={() => setEditing(e)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Edit</button>
+                    {canChangeJob && e.status !== 'terminated' && <button onClick={() => setJobChange(e)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Change job</button>}
+                    <button onClick={() => setHistory(e)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">History</button>
                     <button onClick={() => setHandover(e)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Hand over</button>
                     <button onClick={() => remove(e._id)} className="text-rose-500 hover:underline text-xs">Delete</button>
                   </td>
@@ -202,6 +210,20 @@ export function HrmsEmployees() {
         </Modal>
       )}
       {handover && <HandoverModal employee={handover} employees={rows} onClose={() => setHandover(null)} />}
+      {jobChange && (
+        <JobChangeModal
+          employee={jobChange}
+          employees={rows}
+          levels={levels}
+          onClose={() => setJobChange(null)}
+          onDone={(c) => {
+            setJobChange(null);
+            setJobMessage(c.status === 'applied' ? `${jobChange.name}: change applied.` : c.status === 'scheduled' ? `${jobChange.name}: change scheduled for ${c.effectiveDate.slice(0, 10)}.` : `${jobChange.name}: change sent for approval (HRMS → Job changes).`);
+            load();
+          }}
+        />
+      )}
+      {history && <JobHistoryModal employee={history} employees={rows} onClose={() => setHistory(null)} />}
       {linksId && (
         <RecordLinksDrawer type="employee" id={linksId} title={rows.find((r) => r._id === linksId)?.name} onClose={() => setLinksId(null)} />
       )}

@@ -71,6 +71,8 @@ const hrSettingsSchema = new Schema(
     },
     /** Seniority levels the company uses, most junior first. */
     levels: { type: [String], default: ['Intern', 'Junior', 'Senior', 'Lead', 'Manager'] },
+    /** Promotions, transfers and conversions need a second person to approve them. */
+    jobChangeNeedsApproval: { type: Boolean, default: true },
     /** Weekday (0–6) to remind people with incomplete timesheets; null = off. */
     timesheetReminderWeekday: { type: Number, default: null, min: 0, max: 6 },
     expectedWeeklyHours: { type: Number, default: 40, min: 1, max: 80 },

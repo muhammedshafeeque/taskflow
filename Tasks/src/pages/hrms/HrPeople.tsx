@@ -39,7 +39,7 @@ export function HrSettingsPage() {
       subtitle="Work week, leave year, cost basis and approvals — all company specific."
       endpoint="/hrms/settings"
       managePermissions={[H.policy]}
-      transformIn={(v) => ({ ...v, weekendDays: ((v.weekendDays as number[]) ?? []).map(String), leaveYearStartMonth: String(v.leaveYearStartMonth ?? 1), timesheetReminderWeekday: v.timesheetReminderWeekday ?? '' })}
+      transformIn={(v) => ({ ...v, weekendDays: ((v.weekendDays as number[]) ?? []).map(String), leaveYearStartMonth: String(v.leaveYearStartMonth ?? 1), timesheetReminderWeekday: v.timesheetReminderWeekday ?? '', jobChangeNeedsApproval: v.jobChangeNeedsApproval !== false })}
       transformOut={(v) => ({
         ...v,
         weekendDays: ((v.weekendDays as string[]) ?? []).map(Number),
@@ -54,6 +54,7 @@ export function HrSettingsPage() {
         { key: 'workingDaysPerYear', label: 'Working days per year (cost rate basis)', type: 'number' },
         { key: 'timesheetReminderWeekday', label: 'Timesheet reminder day', type: 'select', options: WEEKDAYS, help: 'Leave blank to disable reminders.' },
         { key: 'recruitmentStages', label: 'Default recruitment stages', type: 'list', help: 'Comma separated, in order. The last one is treated as hired.' },
+        { key: 'jobChangeNeedsApproval', label: 'Job changes need a second approver', type: 'checkbox', placeholder: 'Promotions, transfers and pay changes are approved by someone other than who proposed them' },
         { key: 'levels', label: 'Levels', type: 'list', help: 'Seniority levels, most junior first (e.g. Intern, Junior, Senior, Lead). Set on each employee; team & level rules can use them.' },
         { key: 'leaveApproverUserIds', label: 'Fallback leave approvers', type: 'multiselect', optionsFrom: { endpoint: '/core/people' }, help: "Used when an employee has no manager linked to a user account." },
       ]}

@@ -7,13 +7,16 @@ import { asyncHandler } from '../../utils/asyncHandler';
 import { ApiError } from '../../utils/ApiError';
 import { Organization } from '../organizations/organization.model';
 import { createToken } from '../apiTokens/apiToken.service';
-import { McpOAuthClient, McpOAuthCode } from './mcpOAuth.model';
+import { McpDeviceCode, McpOAuthClient, McpOAuthCode } from './mcpOAuth.model';
 
 /**
  * OAuth 2.1 for MCP clients that cannot send a static header (claude.ai, Claude Desktop connectors, and
  * Claude Code / Cursor without a pasted token). The user approves in Atrium and the client receives an
  * ordinary personal API token, so read-only, revocation and every permission check work exactly as for
  * a token created by hand. Public clients with PKCE (S256) only; clients register themselves (RFC 7591).
+ *
+ * Command-line tools without a browser (SSH sessions, containers, CI) use the device flow (RFC 8628) instead:
+ * they show a short code, the user approves it at /auth/device on any device, and the tool polls for the token.
  */
 
 type AuthedRequest = Request & { user?: { id: string; userType?: string }; activeOrganizationId?: string; viaApiToken?: boolean };
@@ -21,6 +24,21 @@ type AuthedRequest = Request & { user?: { id: string; userType?: string }; activ
 const CODE_TTL_MS = 10 * 60 * 1000;
 const UNUSED_CLIENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const EXPIRY_CHOICES = [30, 90, 365];
+export const DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
+const DEVICE_TTL_MS = 10 * 60 * 1000;
+const DEVICE_INTERVAL_S = 5;
+/** No vowels or look-alikes, so codes are easy to read out and never spell words (RFC 8628 §6.1). */
+const USER_CODE_ALPHABET = 'BCDFGHJKLMNPQRSTVWXZ';
+
+function newUserCode(): string {
+  let out = '';
+  for (const b of crypto.randomBytes(8)) out += USER_CODE_ALPHABET[b % USER_CODE_ALPHABET.length];
+  return out;
+}
+/** What the user typed, as stored: letters only, upper case ("bcdf-ghjk" → "BCDFGHJK"). */
+export const normalizeUserCode = (raw: unknown) => String(raw ?? '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 16);
+const showUserCode = (c: string) => `${c.slice(0, 4)}-${c.slice(4)}`;
+const deviceVerificationUrl = () => `${env.appUrl.replace(/\/$/, '')}/auth/device`;
 
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest();
 const hashCode = (code: string) => sha256(code).toString('hex');
@@ -46,7 +64,8 @@ function authorizationServerMetadata(req: Request) {
     registration_endpoint: `${issuer}/oauth/register`,
     response_types_supported: ['code'],
     response_modes_supported: ['query'],
-    grant_types_supported: ['authorization_code'],
+    device_authorization_endpoint: `${issuer}/oauth/device_authorization`,
+    grant_types_supported: ['authorization_code', DEVICE_GRANT],
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'],
     scopes_supported: ['atrium'],
@@ -174,6 +193,53 @@ function requireSignedInStaff(req: AuthedRequest, _res: Response, next: NextFunc
   next();
 }
 
+/** The personal API token an approved sign-in becomes, in RFC 6749 token-response shape. */
+async function issueToken(res: Response, grant: { clientId: string; userId?: unknown; organizationId?: unknown; expiresInDays: number; readOnly: boolean }) {
+  const client = await McpOAuthClient.findOne({ clientId: grant.clientId }).select('name').lean();
+  let issued;
+  try {
+    issued = await createToken(
+      String(grant.userId),
+      grant.organizationId ? String(grant.organizationId) : undefined,
+      { name: `${client?.name ?? 'MCP client'} (connected)`, expiresInDays: grant.expiresInDays, readOnly: grant.readOnly },
+      grant.clientId
+    );
+  } catch (e) {
+    throw new OAuthError('invalid_grant', e instanceof Error ? e.message : 'Could not issue a token');
+  }
+  const expiresAt = issued.record.expiresAt as Date | undefined;
+  res.set('Cache-Control', 'no-store').json({
+    access_token: issued.token,
+    token_type: 'Bearer',
+    expires_in: expiresAt ? Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000)) : undefined,
+    scope: 'atrium',
+  });
+}
+
+/** One poll of a device code (RFC 8628 §3.5): pending, slow down, declined, expired, or the token (once). */
+async function redeemDeviceCode(deviceCode: string, clientId: string, res: Response) {
+  if (!deviceCode) throw new OAuthError('invalid_request', 'device_code is required');
+  const grant = await McpDeviceCode.findOne({ deviceCodeHash: hashCode(deviceCode) }).lean();
+  if (!grant || grant.issuedAt) throw new OAuthError('invalid_grant', 'The device code is invalid or already used');
+  if (clientId && grant.clientId !== clientId) throw new OAuthError('invalid_grant', 'client_id does not match the device code');
+  if (grant.expiresAt <= new Date()) throw new OAuthError('expired_token', 'The code expired. Start signing in again.');
+  if (grant.status === 'denied') {
+    await McpDeviceCode.deleteOne({ _id: grant._id });
+    throw new OAuthError('access_denied', 'The user declined access');
+  }
+  if (grant.status === 'pending') {
+    const now = Date.now();
+    const tooSoon = grant.lastPolledAt && now - grant.lastPolledAt.getTime() < grant.interval * 1000;
+    await McpDeviceCode.updateOne({ _id: grant._id }, { $set: { lastPolledAt: new Date(now), ...(tooSoon ? { interval: grant.interval + 5 } : {}) } });
+    if (tooSoon) throw new OAuthError('slow_down', `Poll at most every ${grant.interval + 5} seconds`);
+    throw new OAuthError('authorization_pending', 'Waiting for the user to approve in Atrium');
+  }
+  // Approved: claim it, so two polls at once get one token.
+  const claimed = await McpDeviceCode.findOneAndUpdate({ _id: grant._id, status: 'approved', issuedAt: null }, { $set: { issuedAt: new Date() } }, { new: true }).lean();
+  if (!claimed) throw new OAuthError('invalid_grant', 'The device code is invalid or already used');
+  await issueToken(res, claimed as never);
+}
+
 export function oauthRouter() {
   const r = Router();
   const limiter = rateLimit('mcp_oauth', { max: 30, windowSec: 60 });
@@ -186,7 +252,12 @@ export function oauthRouter() {
     oauth(async (req, res) => {
       const body = (req.body ?? {}) as Record<string, unknown>;
       const uris = Array.isArray(body.redirect_uris) ? body.redirect_uris : [];
-      if (!uris.length || uris.length > 10 || !uris.every(validRedirectUri)) {
+      const grants = Array.isArray(body.grant_types) ? body.grant_types.map(String) : ['authorization_code'];
+      if (!grants.length || grants.some((g) => g !== 'authorization_code' && g !== DEVICE_GRANT)) {
+        throw new OAuthError('invalid_client_metadata', `grant_types may be authorization_code and ${DEVICE_GRANT}`);
+      }
+      const deviceOnly = !grants.includes('authorization_code');
+      if (deviceOnly ? uris.length > 0 : !uris.length || uris.length > 10 || !uris.every(validRedirectUri)) {
         throw new OAuthError('invalid_redirect_uri', 'redirect_uris must be 1–10 https URLs, http://localhost URLs or app URLs');
       }
       const method = typeof body.token_endpoint_auth_method === 'string' ? body.token_endpoint_auth_method : 'none';
@@ -199,8 +270,8 @@ export function oauthRouter() {
         client_id_issued_at: Math.floor(doc.createdAt.getTime() / 1000),
         client_name: name,
         redirect_uris: doc.redirectUris,
-        grant_types: ['authorization_code'],
-        response_types: ['code'],
+        grant_types: grants,
+        response_types: deviceOnly ? [] : ['code'],
         token_endpoint_auth_method: 'none',
       });
     })
@@ -286,14 +357,114 @@ export function oauthRouter() {
     })
   );
 
-  /** Code → personal API token (RFC 6749 §4.1.3 with PKCE). */
+  /**
+   * Device flow, step 1 (RFC 8628 §3.1): a command-line tool asks for codes. `client_id` is optional, so a script
+   * can sign in without registering first; it then appears under its `client_name`.
+   */
+  r.post(
+    '/device_authorization',
+    limiter,
+    oauth(async (req, res) => {
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      let clientId = typeof b.client_id === 'string' ? b.client_id : '';
+      if (clientId) {
+        if (!(await McpOAuthClient.exists({ clientId }))) throw new OAuthError('invalid_client', 'Unknown client', 401);
+      } else {
+        const name = (typeof b.client_name === 'string' && b.client_name.trim().slice(0, 60)) || 'Command-line tool';
+        clientId = `mcp_${crypto.randomBytes(18).toString('base64url')}`;
+        await McpOAuthClient.create({ clientId, name, redirectUris: [], expiresAt: new Date(Date.now() + UNUSED_CLIENT_TTL_MS) });
+      }
+      const deviceCode = crypto.randomBytes(32).toString('base64url');
+      let userCode = '';
+      for (let i = 0; i < 5 && !userCode; i++) {
+        const candidate = newUserCode();
+        try {
+          await McpDeviceCode.create({ deviceCodeHash: hashCode(deviceCode), userCode: candidate, clientId, interval: DEVICE_INTERVAL_S, expiresAt: new Date(Date.now() + DEVICE_TTL_MS) });
+          userCode = candidate;
+        } catch (e) {
+          if ((e as { code?: number }).code !== 11000) throw e;
+        }
+      }
+      if (!userCode) throw new OAuthError('temporarily_unavailable', 'Try again', 503);
+      res.set('Cache-Control', 'no-store').json({
+        device_code: deviceCode,
+        user_code: showUserCode(userCode),
+        verification_uri: deviceVerificationUrl(),
+        verification_uri_complete: `${deviceVerificationUrl()}?code=${showUserCode(userCode)}`,
+        expires_in: Math.floor(DEVICE_TTL_MS / 1000),
+        interval: DEVICE_INTERVAL_S,
+        client_id: clientId,
+      });
+    })
+  );
+
+  /** Device flow, step 2: the signed-in user looks up the code their terminal shows. */
+  const deviceLimiter = rateLimit('mcp_device', { max: 20, windowSec: 60 });
+  const findPending = async (raw: unknown) => {
+    const userCode = normalizeUserCode(raw);
+    const grant = userCode.length === 8 ? await McpDeviceCode.findOne({ userCode, status: 'pending', expiresAt: { $gt: new Date() } }).lean() : null;
+    if (!grant) throw new ApiError(404, 'That code is not valid or has expired. Check the code in your terminal, or start signing in again.');
+    return grant;
+  };
+  r.get(
+    '/device/request',
+    authMiddleware,
+    requireSignedInStaff,
+    deviceLimiter,
+    asyncHandler(async (req: AuthedRequest, res) => {
+      const grant = await findPending(req.query.user_code);
+      const [client, org] = await Promise.all([
+        McpOAuthClient.findOne({ clientId: grant.clientId }).select('name').lean(),
+        req.activeOrganizationId ? Organization.findById(req.activeOrganizationId).select('name').lean() : null,
+      ]);
+      res.json({
+        success: true,
+        data: {
+          clientName: client?.name ?? 'Command-line tool',
+          userCode: showUserCode(grant.userCode),
+          workspace: org ? { id: String(org._id), name: org.name } : null,
+          expiresAt: grant.expiresAt,
+          expiryChoices: EXPIRY_CHOICES,
+        },
+      });
+    })
+  );
+
+  /** Device flow, step 3: allow or decline. The tool picks the result up on its next poll. */
+  r.post(
+    '/device/approve',
+    authMiddleware,
+    requireSignedInStaff,
+    deviceLimiter,
+    asyncHandler(async (req: AuthedRequest, res) => {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const grant = await findPending(body.user_code);
+      const approve = body.approve === true;
+      if (approve && !req.activeOrganizationId) throw new ApiError(400, 'Choose a workspace first');
+      const days = EXPIRY_CHOICES.includes(Number(body.expiresInDays)) ? Number(body.expiresInDays) : 90;
+      const done = await McpDeviceCode.updateOne(
+        { _id: grant._id, status: 'pending' },
+        {
+          $set: approve
+            ? { status: 'approved', userId: req.user!.id, organizationId: req.activeOrganizationId, readOnly: body.readOnly === true, expiresInDays: days }
+            : { status: 'denied', userId: req.user!.id },
+        }
+      );
+      if (!done.modifiedCount) throw new ApiError(409, 'This code has just been used');
+      if (approve) await McpOAuthClient.updateOne({ clientId: grant.clientId }, { $unset: { expiresAt: 1 } });
+      res.json({ success: true, data: { status: approve ? 'approved' : 'denied' } });
+    })
+  );
+
+  /** Code → personal API token (RFC 6749 §4.1.3 with PKCE), or device code → token (RFC 8628 §3.4). */
   r.post(
     '/token',
     limiter,
     oauth(async (req, res) => {
       const b = (req.body ?? {}) as Record<string, unknown>;
       const s = (k: string) => (typeof b[k] === 'string' ? (b[k] as string) : '');
-      if (s('grant_type') !== 'authorization_code') throw new OAuthError('unsupported_grant_type', 'Only authorization_code is supported');
+      if (s('grant_type') === DEVICE_GRANT) return redeemDeviceCode(s('device_code'), s('client_id'), res);
+      if (s('grant_type') !== 'authorization_code') throw new OAuthError('unsupported_grant_type', `Use authorization_code or ${DEVICE_GRANT}`);
       const code = s('code');
       const verifier = s('code_verifier');
       if (!code || !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier)) throw new OAuthError('invalid_request', 'code and a valid code_verifier are required');
@@ -311,25 +482,7 @@ export function oauthRouter() {
         throw new OAuthError('invalid_grant', 'PKCE verification failed');
       }
 
-      const client = await McpOAuthClient.findOne({ clientId: grant.clientId }).select('name').lean();
-      let issued;
-      try {
-        issued = await createToken(
-          String(grant.userId),
-          grant.organizationId ? String(grant.organizationId) : undefined,
-          { name: `${client?.name ?? 'MCP client'} (connected)`, expiresInDays: grant.expiresInDays, readOnly: grant.readOnly },
-          grant.clientId
-        );
-      } catch (e) {
-        throw new OAuthError('invalid_grant', e instanceof Error ? e.message : 'Could not issue a token');
-      }
-      const expiresAt = issued.record.expiresAt as Date | undefined;
-      res.set('Cache-Control', 'no-store').json({
-        access_token: issued.token,
-        token_type: 'Bearer',
-        expires_in: expiresAt ? Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000)) : undefined,
-        scope: 'atrium',
-      });
+      await issueToken(res, grant);
     })
   );
 

@@ -4810,3 +4810,45 @@ export const designationTemplatesApi = {
   list: (token: string, activeOnly = false) =>
     api.get<DesignationTemplate[]>(`/project-designation-templates${activeOnly ? '?active=1' : ''}`, token),
 };
+
+/** Promotions, transfers, conversions and pay changes (AUT-24). */
+export type JobState = {
+  designation?: string;
+  department?: string;
+  level?: string;
+  employmentType?: string;
+  managerId?: string;
+  annualCtc?: number;
+  currency?: string;
+  roleId?: string | null;
+  seniority?: string | null;
+};
+export interface JobChange {
+  _id: string;
+  employeeId: string | { _id: string; name: string; employeeCode?: string; designation?: string; level?: string; department?: string };
+  kind: 'promotion' | 'transfer' | 'conversion' | 'salary' | 'change';
+  to: JobState;
+  from?: JobState;
+  updateProjectDesignations: boolean;
+  projectChanges: Array<{ projectId: string; projectName?: string; from?: string; to: string }>;
+  effectiveDate: string;
+  status: 'pending' | 'scheduled' | 'applied' | 'rejected' | 'cancelled' | 'failed';
+  reason?: string;
+  requestedBy?: { _id: string; name: string } | string;
+  decidedBy?: { _id: string; name: string } | string;
+  decisionNote?: string;
+  appliedAt?: string;
+  error?: string;
+  createdAt: string;
+}
+export const jobChangesApi = {
+  list: (token: string, params: { status?: string; employeeId?: string } = {}) =>
+    api.get<JobChange[]>(`/hrms/job-changes?${new URLSearchParams(params as Record<string, string>).toString()}`, token),
+  request: (body: Record<string, unknown>, token: string) => api.post<JobChange>('/hrms/job-changes', body, token),
+  decide: (id: string, decision: 'approve' | 'reject', note: string, token: string) =>
+    api.post<JobChange>(`/hrms/job-changes/${id}/decision`, { decision, note }, token),
+  cancel: (id: string, token: string) => api.post<JobChange>(`/hrms/job-changes/${id}/cancel`, {}, token),
+  history: (employeeId: string, token: string) =>
+    api.get<{ employee: { name: string; joinedDate: string }; changes: JobChange[] }>(`/hrms/employees/${employeeId}/history`, token),
+  roles: (token: string) => api.get<Array<{ _id: string; name: string }>>('/hrms/job-changes/roles', token),
+};

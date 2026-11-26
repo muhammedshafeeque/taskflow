@@ -248,6 +248,9 @@ export function buildHrmsNav(user: NavUser): NavItem[] {
   if (allow(user, 'taskflow.hr.employee.list', 'taskflow.hr.employee.read')) {
     nav.push({ to: '/hrms/org-chart', label: 'Org chart', icon: <BoardsIcon /> });
   }
+  if (allow(user, 'taskflow.hr.job_change.request', 'taskflow.hr.job_change.approve')) {
+    nav.push({ to: '/hrms/job-changes', label: 'Job changes', icon: <UsersIcon /> });
+  }
   if (allow(user, 'taskflow.hr.attendance.read', 'taskflow.hr.attendance.manage')) {
     nav.push({ to: '/hrms/attendance', label: 'Attendance', icon: <TimesheetIcon /> });
   }

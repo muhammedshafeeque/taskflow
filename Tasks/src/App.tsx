@@ -136,6 +136,7 @@ import ServiceDashboard from './pages/service/ServiceDashboard';
 import ServiceSla from './pages/service/ServiceSla';
 import HrmsDashboard from './pages/hrms/HrmsDashboard';
 import OrgChart from './pages/hrms/OrgChart';
+import { HrmsJobChanges } from './pages/hrms/JobChange';
 import { HrmsEmployees, HrmsAttendance, HrmsLeave, HrmsPayroll } from './pages/hrms/HrmsSections';
 import AccountsDashboard from './pages/accounts/AccountsDashboard';
 import {
@@ -370,6 +371,7 @@ function AppRoutes() {
           <Route path="/hrms" element={<HrmsDashboard />} />
           <Route path="/hrms/employees" element={<HrmsEmployees />} />
           <Route path="/hrms/org-chart" element={<OrgChart />} />
+          <Route path="/hrms/job-changes" element={<HrmsJobChanges />} />
           <Route path="/employees/:id" element={<Employee360 />} />
           <Route path="/hrms/attendance" element={<HrmsAttendance />} />
           <Route path="/hrms/leave" element={<HrmsLeave />} />

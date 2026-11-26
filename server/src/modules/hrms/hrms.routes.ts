@@ -7,6 +7,9 @@ import { requireAnyPermission } from '../../middleware/requirePermission';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as ctrl from './hrms.controller';
+import * as jobChanges from './jobChange.service';
+import { Role } from '../roles/role.model';
+import { grantActorOf } from '../auth/grantGuard';
 import { assertReachesEveryone, reachFor } from './dataScope';
 
 const H = TASK_FLOW_PERMISSIONS.TASKFLOW.HR;
@@ -46,6 +49,25 @@ router.patch('/leave/:id/decision', requireAnyPermission(leaveManage), asyncHand
 router.get('/attendance', requireAnyPermission(attRead), asyncHandler(ctrl.listAttendance));
 router.post('/attendance', requireAnyPermission(attManage), asyncHandler(ctrl.markAttendance));
 router.post('/attendance/bulk', requireAnyPermission(attManage), asyncHandler(ctrl.markAttendanceBulk));
+
+// Promotions, transfers, conversions and pay changes (AUT-24).
+const J = H.JOB_CHANGE;
+type JR = Request & { activeOrganizationId?: string; user?: { id: string; permissions?: string[] } };
+const hrReach = (req: JR) => reachFor(req as never, 'hr');
+const jok = (res: Response, data: unknown, status = 200) => res.status(status).json({ success: true, data });
+router.get('/job-changes', requireAnyPermission([J.REQUEST, J.APPROVE]), asyncHandler(async (req: JR, res) =>
+  jok(res, await jobChanges.listJobChanges(req.activeOrganizationId, req.query as Record<string, string>, req.user?.permissions ?? [], await hrReach(req)))));
+// Roles to pick from when a change includes one (the same people may change roles in Auth → Users).
+router.get('/job-changes/roles', requireAnyPermission([J.REQUEST]), requireAnyPermission([TASK_FLOW_PERMISSIONS.AUTH.USER.UPDATE]), asyncHandler(async (_req, res) =>
+  jok(res, await Role.find({}).select('name').sort({ name: 1 }).lean())));
+router.post('/job-changes', requireAnyPermission([J.REQUEST]), asyncHandler(async (req: JR, res) =>
+  jok(res, await jobChanges.requestJobChange(req.activeOrganizationId, req.body ?? {}, grantActorOf(req), await hrReach(req)), 201)));
+router.post('/job-changes/:id/decision', requireAnyPermission([J.APPROVE]), asyncHandler(async (req: JR, res) =>
+  jok(res, await jobChanges.decideJobChange(req.activeOrganizationId, req.params.id, req.body?.decision, req.body?.note, grantActorOf(req), await hrReach(req)))));
+router.post('/job-changes/:id/cancel', requireAnyPermission([J.REQUEST, J.APPROVE]), asyncHandler(async (req: JR, res) =>
+  jok(res, await jobChanges.cancelJobChange(req.activeOrganizationId, req.params.id, grantActorOf(req), await hrReach(req)))));
+router.get('/employees/:id/history', requireAnyPermission([H.EMPLOYEE.READ, H.EMPLOYEE.LIST, J.REQUEST, J.APPROVE]), asyncHandler(async (req: JR, res) =>
+  jok(res, await jobChanges.employeeHistory(req.activeOrganizationId, req.params.id, req.user?.permissions ?? [], await hrReach(req)))));
 
 router.use('/', hrPeopleRouter);
 // Payroll covers the whole company, so it needs HR access that reaches everyone.
