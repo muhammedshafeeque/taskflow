@@ -5,12 +5,13 @@ import { APP_NAME } from '../brand';
 import { AtriumMarkSvg } from '../components/AtriumLogo';
 import { CodeBlock } from '../components/profile/McpConnectCard';
 
-type Client = 'claude' | 'claude-code' | 'cursor' | 'other';
+type Client = 'claude' | 'claude-code' | 'cursor' | 'terminal' | 'other';
 
 const CLIENTS: Array<{ id: Client; label: string }> = [
   { id: 'claude', label: 'Claude (web, desktop, mobile)' },
   { id: 'claude-code', label: 'Claude Code' },
   { id: 'cursor', label: 'Cursor / VS Code' },
+  { id: 'terminal', label: 'Terminal / no browser' },
   { id: 'other', label: 'Other clients' },
 ];
 
@@ -156,7 +157,7 @@ export default function McpDocs() {
         <>Run the command in a terminal. <Code>--scope user</Code> makes it available in every project; drop it to add it to the current project only.</>,
         <>Start Claude Code, type <Code>/mcp</Code>, select <strong>atrium</strong> and choose <strong>Authenticate</strong>.</>,
         <>A browser tab opens on {APP_NAME}. Approve, and return to the terminal.</>,
-        <>No browser available (CI, servers)? Create a token under <strong>Profile → API tokens</strong> and add <Code>--header "Authorization: Bearer atr_…"</Code> to the command instead.</>,
+        <>No browser on that machine (SSH, containers, CI)? See <strong>Terminal / no browser</strong>: sign in with a code from any device and pass the token with <Code>--header</Code>.</>,
       ],
     },
     cursor: {
@@ -168,8 +169,17 @@ export default function McpDocs() {
         <>To use a token instead, add <Code>"headers": {'{'} "Authorization": "Bearer atr_…" {'}'}</Code>.</>,
       ],
     },
+    terminal: {
+      code: `curl -fsSL ${url}/cli/login.sh -o atrium-login.sh\nATRIUM_TOKEN=$(sh atrium-login.sh)\n\n# Claude Code\nclaude mcp add --transport http atrium ${url} --header "Authorization: Bearer $ATRIUM_TOKEN"\n\n# Gemini CLI (~/.gemini/settings.json)\n{ "mcpServers": { "atrium": { "httpUrl": "${url}", "headers": { "Authorization": "Bearer <token>" } } } }`,
+      steps: [
+        <>For any command-line tool, on a machine without a browser or over SSH. The script only needs <Code>sh</Code> and <Code>curl</Code>; read it first if you like — it is short.</>,
+        <>It prints a code and a link: open <Code>{origin}/auth/device</Code> on your phone or laptop, sign in, enter the code, pick the workspace, read-only or full access and how long, then <strong>Allow</strong>.</>,
+        <>The script prints the token. Give it to your tool as an <Code>Authorization: Bearer</Code> header, as in the examples. Set <Code>ATRIUM_CLIENT_NAME</Code> to name the connection.</>,
+        <>Tools with built-in OAuth device sign-in find it on their own: the server advertises <Code>device_authorization_endpoint</Code>. Every connection is listed and can be revoked under <strong>Profile → API tokens</strong>.</>,
+      ],
+    },
     other: {
-      code: `Endpoint:   ${url}\nTransport:  Streamable HTTP (POST, stateless, JSON responses)\nAuth:       OAuth 2.1 with PKCE, discovered from the 401 response\n            or header  Authorization: Bearer atr_…`,
+      code: `Endpoint:   ${url}\nTransport:  Streamable HTTP (POST, stateless, JSON responses)\nAuth:       OAuth 2.1 with PKCE, discovered from the 401 response\n            OAuth device flow (RFC 8628) for terminals: ${url}/oauth/device_authorization\n            or header  Authorization: Bearer atr_…`,
       steps: [
         <>Any MCP client that supports remote (Streamable HTTP) servers can connect.</>,
         <>Clients with OAuth support discover sign-in automatically from the server’s <Code>WWW-Authenticate</Code> header.</>,

@@ -3760,6 +3760,21 @@ export const mcpOAuthApi = {
     api.post<{ redirect: string }>('/mcp/oauth/approve', { ...params, ...decision }, token),
 };
 
+export interface McpDeviceRequest {
+  clientName: string;
+  userCode: string;
+  workspace: { id: string; name: string } | null;
+  expiresAt: string;
+  expiryChoices: number[];
+}
+
+/** Approving a code shown by a command-line tool (OAuth device flow). */
+export const mcpDeviceApi = {
+  request: (userCode: string, token: string) => api.get<McpDeviceRequest>(`/mcp/oauth/device/request?user_code=${encodeURIComponent(userCode)}`, token),
+  approve: (userCode: string, decision: { approve: boolean; readOnly?: boolean; expiresInDays?: number }, token: string) =>
+    api.post<{ status: 'approved' | 'denied' }>('/mcp/oauth/device/approve', { user_code: userCode, ...decision }, token),
+};
+
 export const apiTokensApi = {
   list: (token: string) => api.get<ApiTokenRecord[]>('/api-tokens', token),
   create: (body: { name: string; expiresInDays: number; readOnly?: boolean }, token: string) =>

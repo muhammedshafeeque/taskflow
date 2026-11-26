@@ -8,6 +8,7 @@ import { Organization } from '../organizations/organization.model';
 import { AtriumApi } from './mcp.api';
 import { registerTools, type McpContext } from './mcp.tools';
 import { oauthRouter, resourceMetadataUrl, wellKnownRouter } from './mcpOAuth';
+import { cliLoginScript } from './cliLogin';
 
 type McpRequest = Request & { viaApiToken?: boolean; apiTokenReadOnly?: boolean };
 
@@ -28,6 +29,8 @@ const router = Router();
 
 router.use('/oauth', oauthRouter());
 router.use('/.well-known', wellKnownRouter());
+// Sign-in script for terminals without a browser: curl -fsSL <mcp-url>/cli/login.sh -o atrium-login.sh && sh atrium-login.sh
+router.get('/cli/login.sh', cliLoginScript);
 
 /** Tells MCP clients where to sign in when they have no (valid) token (RFC 9728). */
 function challenge(req: Request, res: Response, next: NextFunction) {
