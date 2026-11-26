@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { canAny } from '../../utils/moduleAccess';
 import { procurementApi } from '../../lib/api';
-import type { PurchaseOrder, CrmAccount } from '../../lib/api';
+import type { PurchaseOrder, CrmAccount, ProcurementSettings, ProcurementApprover } from '../../lib/api';
 import {
   ExportButton, Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, money, nameOf,
 } from '../../components/moduleKit';
@@ -14,12 +15,10 @@ const poStatusTone: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate' 
   draft: 'slate', pending_approval: 'amber', approved: 'blue', ordered: 'violet', received: 'green', cancelled: 'red',
 };
 
-const NEXT_STATUS: Record<string, { label: string; status: string }[]> = {
-  draft: [{ label: 'Submit', status: 'pending_approval' }],
-  pending_approval: [{ label: 'Approve', status: 'approved' }, { label: 'Reject', status: 'cancelled' }],
-  approved: [{ label: 'Mark ordered', status: 'ordered' }],
-  ordered: [{ label: 'Mark received', status: 'received' }],
-};
+function idOf(ref: string | { _id?: string } | undefined): string {
+  if (!ref) return '';
+  return typeof ref === 'string' ? ref : (ref._id ?? '');
+}
 
 function tableWrap(children: React.ReactNode) {
   return (
@@ -31,23 +30,83 @@ function tableWrap(children: React.ReactNode) {
 
 type Line = { description: string; quantity: number; unitPrice: number };
 
+const EMPTY_SETTINGS: ProcurementSettings = {
+  singleApproverLimit: null,
+  maxOrderAmount: null,
+  secondApproverIds: [],
+  approverLimits: [],
+};
+
 function PoList({ title, subtitle, fixedCategory }: { title: string; subtitle: string; fixedCategory?: string }) {
   const [linksId, setLinksId] = useRecordLinksParam('po');
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [rows, setRows] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<CrmAccount[]>([]);
+  const [settings, setSettings] = useState<ProcurementSettings>(EMPTY_SETTINGS);
+  const [approvers, setApprovers] = useState<ProcurementApprover[]>([]);
   const [editing, setEditing] = useState<{ _id?: string; title: string; vendorAccountId: string; category: string; currency: string; lines: Line[]; notes: string } | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsForm, setSettingsForm] = useState<{
+    singleApproverLimit: string;
+    maxOrderAmount: string;
+    secondApproverIds: string[];
+    approverLimits: Array<{ userId: string; maxAmount: string }>;
+  }>({ singleApproverLimit: '', maxOrderAmount: '', secondApproverIds: [], approverLimits: [] });
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
+  const [errMsg, setErrMsg] = useState('');
+
+  const canCreate = canAny(user, 'taskflow.procurement.po.create', 'taskflow.procurement.po.manage');
+  const canApprove = canAny(user, 'taskflow.procurement.po.approve', 'taskflow.procurement.po.manage');
+  const canManage = canAny(user, 'taskflow.procurement.po.manage');
+  const canSettings = canAny(user, 'taskflow.procurement.settings.manage', 'taskflow.procurement.po.manage');
 
   const load = useCallback(() => {
     if (!token) return;
     procurementApi.listPos(token, fixedCategory ? { category: fixedCategory } : undefined).then((r) => { setLoading(false); if (r.success && r.data) setRows(r.data); });
     procurementApi.listVendors(token).then((r) => r.success && r.data && setVendors(r.data));
-  }, [token, fixedCategory]);
+    procurementApi.settings(token).then((r) => r.success && r.data && setSettings(r.data));
+    if (canSettings) {
+      procurementApi.listApprovers(token).then((r) => r.success && r.data && setApprovers(r.data));
+    }
+  }, [token, fixedCategory, canSettings]);
   useEffect(load, [load]);
 
   const openNew = () => setEditing({ title: '', vendorAccountId: '', category: fixedCategory ?? 'hardware', currency: 'USD', lines: [{ description: '', quantity: 1, unitPrice: 0 }], notes: '' });
+
+  const openSettings = () => {
+    setSettingsForm({
+      singleApproverLimit: settings.singleApproverLimit != null ? String(settings.singleApproverLimit) : '',
+      maxOrderAmount: settings.maxOrderAmount != null ? String(settings.maxOrderAmount) : '',
+      secondApproverIds: [...settings.secondApproverIds],
+      approverLimits: settings.approverLimits
+        .filter((l) => l.userId)
+        .map((l) => ({ userId: l.userId!, maxAmount: String(l.maxAmount) })),
+    });
+    setSettingsOpen(true);
+  };
+
+  const saveSettings = async () => {
+    if (!token) return;
+    setErrMsg('');
+    const payload = {
+      singleApproverLimit: settingsForm.singleApproverLimit.trim() === '' ? null : Number(settingsForm.singleApproverLimit),
+      maxOrderAmount: settingsForm.maxOrderAmount.trim() === '' ? null : Number(settingsForm.maxOrderAmount),
+      secondApproverIds: settingsForm.secondApproverIds,
+      approverLimits: settingsForm.approverLimits
+        .filter((l) => l.userId && l.maxAmount.trim() !== '')
+        .map((l) => ({ userId: l.userId, maxAmount: Number(l.maxAmount) })),
+    };
+    const res = await procurementApi.updateSettings(payload, token);
+    if (!res.success) {
+      setErrMsg(res.message || 'Failed to save approval limits');
+      return;
+    }
+    if (res.data) setSettings(res.data);
+    setSettingsOpen(false);
+    setMsg('Approval limits saved.');
+    setTimeout(() => setMsg(''), 4000);
+  };
 
   const save = async () => {
     if (!token || !editing) return;
@@ -56,35 +115,103 @@ function PoList({ title, subtitle, fixedCategory }: { title: string; subtitle: s
     const res = editing._id ? await procurementApi.updatePo(editing._id, payload, token) : await procurementApi.createPo(payload, token);
     if (res.success) { setEditing(null); load(); } else alert(res.message);
   };
+
   const transition = async (id: string, status: string) => {
     if (!token) return;
+    setErrMsg('');
     const res = await procurementApi.transitionPo(id, status, token);
-    const prov = (res.data as { provisioned?: { assetsCreated: number; licensesCreated: number } } | undefined)?.provisioned;
-    if (prov && (prov.assetsCreated || prov.licensesCreated)) {
+    if (!res.success) {
+      setErrMsg(res.message || 'Status update failed');
+      return;
+    }
+    const data = res.data as (PurchaseOrder & { awaitingSecondApproval?: boolean; provisioned?: { assetsCreated: number; licensesCreated: number } }) | undefined;
+    if (data?.awaitingSecondApproval) {
+      setMsg('First approval recorded. A second approver is required to complete approval.');
+      setTimeout(() => setMsg(''), 6000);
+    } else if (data?.provisioned && (data.provisioned.assetsCreated || data.provisioned.licensesCreated)) {
       const parts = [
-        prov.assetsCreated ? `${prov.assetsCreated} asset${prov.assetsCreated > 1 ? 's' : ''}` : '',
-        prov.licensesCreated ? `${prov.licensesCreated} license${prov.licensesCreated > 1 ? 's' : ''}` : '',
+        data.provisioned.assetsCreated ? `${data.provisioned.assetsCreated} asset${data.provisioned.assetsCreated > 1 ? 's' : ''}` : '',
+        data.provisioned.licensesCreated ? `${data.provisioned.licensesCreated} license${data.provisioned.licensesCreated > 1 ? 's' : ''}` : '',
       ].filter(Boolean).join(' and ');
       setMsg(`Received — provisioned ${parts} into Assets.`);
       setTimeout(() => setMsg(''), 6000);
     }
     load();
   };
-  const remove = async (id: string) => { if (!token || !confirm('Delete PO?')) return; await procurementApi.removePo(id, token); load(); };
+
+  const remove = async (id: string) => {
+    if (!token || !confirm('Delete PO?')) return;
+    setErrMsg('');
+    const res = await procurementApi.removePo(id, token);
+    if (!res.success) setErrMsg(res.message || 'Failed to delete PO');
+    load();
+  };
 
   const lineTotal = editing ? editing.lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0) : 0;
 
+  const actionsFor = (p: PurchaseOrder) => {
+    const actions: Array<{ label: string; status: string; disabled?: boolean; title?: string }> = [];
+    const uid = user?.id ?? '';
+    const isCreator = Boolean(uid && idOf(p.requestedBy) === uid);
+    const isFirstApprover = Boolean(uid && idOf(p.firstApprovedBy) === uid);
+    const hasFirstApproval = Boolean(idOf(p.firstApprovedBy));
+
+    if (p.status === 'draft' && canCreate) {
+      actions.push({ label: 'Submit', status: 'pending_approval' });
+    } else if (p.status === 'pending_approval' && canApprove) {
+      const approveDisabled = isCreator || isFirstApprover;
+      const approveTitle = isCreator
+        ? 'The creator of a purchase order cannot approve it'
+        : isFirstApprover
+          ? 'A different user must provide the second approval'
+          : undefined;
+      actions.push({
+        label: hasFirstApproval ? '2nd Approve' : 'Approve',
+        status: 'approved',
+        disabled: approveDisabled,
+        title: approveTitle,
+      });
+      actions.push({ label: 'Reject', status: 'cancelled' });
+    } else if (p.status === 'approved' && canManage) {
+      actions.push({ label: 'Mark ordered', status: 'ordered' });
+    } else if (p.status === 'ordered' && canManage) {
+      actions.push({ label: 'Mark received', status: 'received' });
+    }
+    return actions;
+  };
+
   return (
-    <SectionPage title={title} subtitle={subtitle} toolbar={<div className="flex gap-2"><ExportButton rows={rows} filename="purchase-orders" columns={[
-      { header: 'PO', value: (r) => r.poNumber },
-      { header: 'Title', value: (r) => r.title },
-      { header: 'Vendor', value: (r) => nameOf(r.vendorAccountId, '') },
-      { header: 'Category', value: (r) => r.category },
-      { header: 'Status', value: (r) => r.status },
-      { header: 'Currency', value: (r) => r.currency },
-      { header: 'Total', value: (r) => r.total },
-    ]} /><PrimaryButton onClick={openNew}>+ New PO</PrimaryButton></div>}>
+    <SectionPage
+      title={title}
+      subtitle={subtitle}
+      toolbar={
+        <div className="flex gap-2">
+          {canSettings && <GhostButton onClick={openSettings}>Approval limits</GhostButton>}
+          <ExportButton rows={rows} filename="purchase-orders" columns={[
+            { header: 'PO', value: (r) => r.poNumber },
+            { header: 'Title', value: (r) => r.title },
+            { header: 'Vendor', value: (r) => nameOf(r.vendorAccountId, '') },
+            { header: 'Category', value: (r) => r.category },
+            { header: 'Status', value: (r) => r.status },
+            { header: 'Currency', value: (r) => r.currency },
+            { header: 'Total', value: (r) => r.total },
+          ]} />
+          {canCreate && <PrimaryButton onClick={openNew}>+ New PO</PrimaryButton>}
+        </div>
+      }
+    >
+      {(settings.singleApproverLimit != null || settings.maxOrderAmount != null) && (
+        <div className="mb-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-4 py-2 text-xs text-[color:var(--text-muted)] flex flex-wrap gap-4">
+          {settings.singleApproverLimit != null && (
+            <span>2nd approver required above: <strong className="text-[color:var(--text-primary)]">{money(settings.singleApproverLimit)}</strong></span>
+          )}
+          {settings.maxOrderAmount != null && (
+            <span>Max PO total: <strong className="text-[color:var(--text-primary)]">{money(settings.maxOrderAmount)}</strong></span>
+          )}
+        </div>
+      )}
       {msg && <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-600 dark:text-emerald-400">{msg}</div>}
+      {errMsg && <div className="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-500">{errMsg}</div>}
       {loading ? <ModuleLoader size="block" label="Loading purchase orders…" /> : rows.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)]">No purchase orders yet.</p>
       ) : (
@@ -96,7 +223,13 @@ function PoList({ title, subtitle, fixedCategory }: { title: string; subtitle: s
             <tbody>
               {rows.map((p) => (
                 <tr key={p._id} className="border-t border-[color:var(--border-subtle)] hover:bg-[color:var(--bg-page)]">
-                  <td className="px-4 py-2.5"><p className="font-medium">{p.title}</p><p className="text-[11px] text-[color:var(--text-muted)]">{p.poNumber} · {p.category}</p></td>
+                  <td className="px-4 py-2.5">
+                    <p className="font-medium">{p.title}</p>
+                    <p className="text-[11px] text-[color:var(--text-muted)]">
+                      {p.poNumber} · {p.category}
+                      {p.requestedBy && typeof p.requestedBy === 'object' && p.requestedBy.name ? ` · by ${p.requestedBy.name}` : ''}
+                    </p>
+                  </td>
                   <td className="px-4 py-2.5">
                     {p.vendorAccountId && typeof p.vendorAccountId === 'object' && p.vendorAccountId._id ? (
                       <Link to={`/crm/accounts/${p.vendorAccountId._id}`} className="text-[color:var(--accent)] hover:underline">
@@ -120,14 +253,29 @@ function PoList({ title, subtitle, fixedCategory }: { title: string; subtitle: s
                       </p>
                     )}
                   </td>
-                  <td className="px-4 py-2.5"><StatusPill label={p.status} tone={poStatusTone[p.status]} /></td>
+                  <td className="px-4 py-2.5">
+                    <StatusPill label={p.status} tone={poStatusTone[p.status]} />
+                    {p.status === 'pending_approval' && p.firstApprovedBy && typeof p.firstApprovedBy === 'object' && (
+                      <p className="text-[11px] text-[color:var(--text-muted)] mt-1">
+                        1st approved by {p.firstApprovedBy.name || p.firstApprovedBy.email || 'approver'}
+                      </p>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{money(p.total, p.currency)}</td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                    {(NEXT_STATUS[p.status] ?? []).map((t) => (
-                      <button key={t.status} onClick={() => transition(p._id, t.status)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">{t.label}</button>
+                    {actionsFor(p).map((t) => (
+                      <button
+                        key={t.status}
+                        disabled={t.disabled}
+                        title={t.title}
+                        onClick={() => transition(p._id, t.status)}
+                        className={`text-xs mr-3 ${t.disabled ? 'text-[color:var(--text-muted)] opacity-50 cursor-not-allowed' : 'text-[color:var(--accent)] hover:underline'}`}
+                      >
+                        {t.label}
+                      </button>
                     ))}
                     <button onClick={() => setLinksId(p._id)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Links</button>
-                    <button onClick={() => remove(p._id)} className="text-rose-500 hover:underline text-xs">Delete</button>
+                    {canManage && <button onClick={() => remove(p._id)} className="text-rose-500 hover:underline text-xs">Delete</button>}
                   </td>
                 </tr>
               ))}
@@ -173,6 +321,116 @@ function PoList({ title, subtitle, fixedCategory }: { title: string; subtitle: s
           <Field label="Notes"><TextArea rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field>
         </Modal>
       )}
+
+      {settingsOpen && (
+        <Modal
+          title="Purchase order approval limits"
+          onClose={() => setSettingsOpen(false)}
+          wide
+          footer={<><GhostButton onClick={() => setSettingsOpen(false)}>Cancel</GhostButton><PrimaryButton onClick={saveSettings}>Save limits</PrimaryButton></>}
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Two-step approval threshold (leave empty for 1 approver)">
+              <TextInput
+                type="number"
+                min={0}
+                placeholder="e.g. 1000"
+                value={settingsForm.singleApproverLimit}
+                onChange={(e) => setSettingsForm({ ...settingsForm, singleApproverLimit: e.target.value })}
+              />
+            </Field>
+            <Field label="Maximum PO amount (leave empty for unlimited)">
+              <TextInput
+                type="number"
+                min={0}
+                placeholder="e.g. 50000"
+                value={settingsForm.maxOrderAmount}
+                onChange={(e) => setSettingsForm({ ...settingsForm, maxOrderAmount: e.target.value })}
+              />
+            </Field>
+          </div>
+
+          <div className="mt-3">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-muted)] mb-1">
+              Designated 2nd approvers (optional — if none selected, any other approver can give 2nd approval)
+            </p>
+            <div className="max-h-36 overflow-y-auto rounded-lg border border-[color:var(--border-subtle)] p-2 space-y-1">
+              {approvers.length === 0 ? (
+                <p className="text-xs text-[color:var(--text-muted)]">No workspace members found.</p>
+              ) : (
+                approvers.map((u) => {
+                  const checked = settingsForm.secondApproverIds.includes(u._id);
+                  return (
+                    <label key={u._id} className="flex items-center gap-2 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...settingsForm.secondApproverIds, u._id]
+                            : settingsForm.secondApproverIds.filter((id) => id !== u._id);
+                          setSettingsForm({ ...settingsForm, secondApproverIds: next });
+                        }}
+                      />
+                      <span>{u.name}</span>
+                      <span className="text-[color:var(--text-muted)]">{u.email}</span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-muted)]">Per-approver amount limits</span>
+              <button
+                type="button"
+                onClick={() => setSettingsForm({ ...settingsForm, approverLimits: [...settingsForm.approverLimits, { userId: '', maxAmount: '' }] })}
+                className="text-xs text-[color:var(--accent)] hover:underline"
+              >
+                + Add limit
+              </button>
+            </div>
+            <div className="space-y-2">
+              {settingsForm.approverLimits.map((rule, idx) => (
+                <div key={idx} className="grid grid-cols-[1fr_140px_auto] gap-2 items-center">
+                  <Select
+                    value={rule.userId}
+                    onChange={(e) => {
+                      const next = [...settingsForm.approverLimits];
+                      next[idx] = { ...rule, userId: e.target.value };
+                      setSettingsForm({ ...settingsForm, approverLimits: next });
+                    }}
+                  >
+                    <option value="">Select user…</option>
+                    {approvers.map((u) => <option key={u._id} value={u._id}>{u.name}</option>)}
+                  </Select>
+                  <TextInput
+                    type="number"
+                    min={0}
+                    placeholder="Max amount"
+                    value={rule.maxAmount}
+                    onChange={(e) => {
+                      const next = [...settingsForm.approverLimits];
+                      next[idx] = { ...rule, maxAmount: e.target.value };
+                      setSettingsForm({ ...settingsForm, approverLimits: next });
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSettingsForm({ ...settingsForm, approverLimits: settingsForm.approverLimits.filter((_, j) => j !== idx) })}
+                    className="text-rose-500 text-sm px-2"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {linksId && (
         <RecordLinksDrawer type="purchase_order" id={linksId} title={rows.find((r) => r._id === linksId)?.title} onClose={() => setLinksId(null)} />
       )}

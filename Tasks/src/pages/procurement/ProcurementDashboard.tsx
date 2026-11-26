@@ -17,7 +17,7 @@ type Dash = {
   byStatus: { name: string; value: number }[];
   byCategory: { name: string; value: number }[];
   spendByVendor: { name: string; value: number }[];
-  pendingApprovalList: Array<{ _id: string; poNumber: string; title: string; vendor?: string; total: number; currency: string }>;
+  pendingApprovalList: Array<{ _id: string; poNumber: string; title: string; vendor?: string; total: number; currency: string; awaitingSecondApproval?: boolean }>;
 };
 
 export default function ProcurementDashboard() {
@@ -113,7 +113,13 @@ export default function ProcurementDashboard() {
             <ul className="divide-y divide-[color:var(--border-subtle)]">
               {data.pendingApprovalList.map((p) => (
                 <li key={p._id} className="flex items-center justify-between py-2.5 text-sm">
-                  <div><p className="font-medium">{p.title}</p><p className="text-[11px] text-[color:var(--text-muted)]">{p.poNumber} · {p.vendor || '—'}</p></div>
+                  <div>
+                    <p className="font-medium">{p.title}</p>
+                    <p className="text-[11px] text-[color:var(--text-muted)]">
+                      {p.poNumber} · {p.vendor || '—'}
+                      {p.awaitingSecondApproval ? ' · 1st approved, awaiting 2nd' : ''}
+                    </p>
+                  </div>
                   <span className="tabular-nums font-medium">{money(p.total, p.currency)}</span>
                 </li>
               ))}

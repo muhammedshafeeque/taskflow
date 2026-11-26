@@ -563,7 +563,10 @@ export function buildProcurementNav(user: NavUser): NavItem[] {
       'taskflow.procurement.dashboard.read',
       'taskflow.procurement.vendor.list',
       'taskflow.procurement.po.list',
-      'taskflow.procurement.license.list'
+      'taskflow.procurement.po.create',
+      'taskflow.procurement.po.approve',
+      'taskflow.procurement.license.list',
+      'taskflow.procurement.settings.manage'
     )
   ) {
     return nav;

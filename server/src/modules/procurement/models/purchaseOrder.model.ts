@@ -28,6 +28,8 @@ export interface IPurchaseOrder extends Document {
   contractId?: mongoose.Types.ObjectId;
   projectId?: mongoose.Types.ObjectId;
   requestedBy?: mongoose.Types.ObjectId;
+  firstApprovedBy?: mongoose.Types.ObjectId;
+  firstApprovedAt?: Date;
   approvedBy?: mongoose.Types.ObjectId;
   approvedAt?: Date;
   provisionedAt?: Date;
@@ -65,6 +67,8 @@ const purchaseOrderSchema = new Schema<IPurchaseOrder>(
     contractId: { type: Schema.Types.ObjectId, ref: 'CrmContract' },
     projectId: { type: Schema.Types.ObjectId, ref: 'Project' },
     requestedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    firstApprovedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    firstApprovedAt: { type: Date },
     approvedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     approvedAt: { type: Date },
     provisionedAt: { type: Date },

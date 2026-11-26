@@ -274,8 +274,14 @@ export const TASK_FLOW_PERMISSIONS = {
     PROCUREMENT: {
       DASHBOARD: { READ: 'taskflow.procurement.dashboard.read' },
       VENDOR: { LIST: 'taskflow.procurement.vendor.list', MANAGE: 'taskflow.procurement.vendor.manage' },
-      PO: { LIST: 'taskflow.procurement.po.list', CREATE: 'taskflow.procurement.po.create', MANAGE: 'taskflow.procurement.po.manage' },
+      PO: {
+        LIST: 'taskflow.procurement.po.list',
+        CREATE: 'taskflow.procurement.po.create',
+        APPROVE: 'taskflow.procurement.po.approve',
+        MANAGE: 'taskflow.procurement.po.manage',
+      },
       LICENSE: { LIST: 'taskflow.procurement.license.list', MANAGE: 'taskflow.procurement.license.manage' },
+      SETTINGS: { READ: 'taskflow.procurement.settings.read', MANAGE: 'taskflow.procurement.settings.manage' },
     },
     DOCUMENTS: {
       DASHBOARD: { READ: 'taskflow.documents.dashboard.read' },

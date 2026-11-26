@@ -252,9 +252,12 @@ export function oauthRouter() {
     oauth(async (req, res) => {
       const body = (req.body ?? {}) as Record<string, unknown>;
       const uris = Array.isArray(body.redirect_uris) ? body.redirect_uris : [];
-      const grants = Array.isArray(body.grant_types) ? body.grant_types.map(String) : ['authorization_code'];
-      if (!grants.length || grants.some((g) => g !== 'authorization_code' && g !== DEVICE_GRANT)) {
-        throw new OAuthError('invalid_client_metadata', `grant_types may be authorization_code and ${DEVICE_GRANT}`);
+      // Clients commonly ask for grants we don't offer (Claude sends ["authorization_code", "refresh_token"]).
+      // RFC 7591 §3.2.1 lets the server register only what it supports, so drop the rest instead of refusing.
+      const requested = Array.isArray(body.grant_types) ? body.grant_types.map(String) : ['authorization_code'];
+      const grants = [...new Set(requested.filter((g) => g === 'authorization_code' || g === DEVICE_GRANT))];
+      if (!grants.length) {
+        throw new OAuthError('invalid_client_metadata', `grant_types must include authorization_code or ${DEVICE_GRANT}`);
       }
       const deviceOnly = !grants.includes('authorization_code');
       if (deviceOnly ? uris.length > 0 : !uris.length || uris.length > 10 || !uris.every(validRedirectUri)) {

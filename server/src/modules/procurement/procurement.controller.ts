@@ -17,6 +17,19 @@ export async function getDashboard(req: Request & { user?: AuthPayload }, res: R
   res.json({ success: true, data: await proc.getProcurementDashboard(ws(req)) });
 }
 
+export async function getSettings(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  res.json({ success: true, data: await proc.getProcurementSettings(ws(req)) });
+}
+export async function updateSettings(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  res.json({ success: true, data: await proc.updateProcurementSettings(ws(req), req.body ?? {}) });
+}
+export async function listApprovers(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  res.json({ success: true, data: await proc.listProcurementApprovers(ws(req)) });
+}
+
 export async function listVendors(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
   res.json({ success: true, data: await proc.listVendors(ws(req)) });
@@ -36,7 +49,14 @@ export async function updatePurchaseOrder(req: Request & { user?: AuthPayload },
   res.json({ success: true, data: await proc.updatePurchaseOrder(req.params.id, ws(req), req.body) });
 }
 export async function transitionPurchaseOrder(req: Request & { user?: AuthPayload }, res: Response) {
-  res.json({ success: true, data: await proc.transitionPurchaseOrder(req.params.id, ws(req), req.body?.status, uid(req)) });
+  const userId = uid(req);
+  res.json({
+    success: true,
+    data: await proc.transitionPurchaseOrder(req.params.id, ws(req), req.body?.status, userId, {
+      roleId: req.user?.roleId,
+      permissions: req.user?.permissions ?? [],
+    }),
+  });
 }
 export async function deletePurchaseOrder(req: Request & { user?: AuthPayload }, res: Response) {
   res.json({ success: true, data: await proc.deletePurchaseOrder(req.params.id, ws(req)) });

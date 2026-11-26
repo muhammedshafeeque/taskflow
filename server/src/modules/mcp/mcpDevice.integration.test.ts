@@ -158,6 +158,25 @@ describe('signing in from a terminal (device flow)', () => {
     const bad = await json(await fetch(`${base}/api/mcp/oauth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ grant_types: ['password'] }) }));
     expect(bad.body.error).toBe('invalid_client_metadata');
   });
+
+  it('accepts Claude-style registrations that also ask for refresh_token (registers only supported grants)', async () => {
+    const reg = await json(
+      await fetch(`${base}/api/mcp/oauth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_name: 'Claude Code',
+          redirect_uris: ['http://localhost:33418/callback'],
+          grant_types: ['authorization_code', 'refresh_token'],
+          response_types: ['code'],
+          token_endpoint_auth_method: 'none',
+        }),
+      })
+    );
+    expect(reg.status).toBe(201);
+    expect(reg.body.grant_types).toEqual(['authorization_code']);
+    expect(reg.body.response_types).toEqual(['code']);
+  });
 });
 
 describe('sign-in script for terminals', () => {

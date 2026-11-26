@@ -3504,11 +3504,39 @@ export interface PurchaseOrder {
   taxTotal: number;
   total: number;
   expectedDate?: string;
+  requestedBy?: string | { _id: string; name?: string; email?: string };
+  firstApprovedBy?: string | { _id: string; name?: string; email?: string };
+  firstApprovedAt?: string;
+  approvedBy?: string | { _id: string; name?: string; email?: string };
+  approvedAt?: string;
   notes?: string;
+}
+
+export interface ProcurementApproverLimit {
+  userId?: string;
+  roleId?: string;
+  maxAmount: number;
+}
+
+export interface ProcurementSettings {
+  singleApproverLimit: number | null;
+  maxOrderAmount: number | null;
+  secondApproverIds: string[];
+  approverLimits: ProcurementApproverLimit[];
+}
+
+export interface ProcurementApprover {
+  _id: string;
+  name: string;
+  email: string;
 }
 
 export const procurementApi = {
   dashboard: (token: string) => api.get('/procurement/dashboard', token),
+  settings: (token: string) => api.get<ProcurementSettings>('/procurement/settings', token),
+  updateSettings: (data: Partial<ProcurementSettings>, token: string) =>
+    api.put<ProcurementSettings>('/procurement/settings', data, token),
+  listApprovers: (token: string) => api.get<ProcurementApprover[]>('/procurement/approvers', token),
   listVendors: (token: string) => api.get<CrmAccount[]>('/procurement/vendors', token),
   createVendor: (data: Record<string, unknown>, token: string) => api.post<CrmAccount>('/procurement/vendors', data, token),
   listPos: (token: string, params?: { status?: string; vendorAccountId?: string; category?: string }) => {
@@ -3517,7 +3545,8 @@ export const procurementApi = {
   },
   createPo: (data: Record<string, unknown>, token: string) => api.post<PurchaseOrder>('/procurement/pos', data, token),
   updatePo: (id: string, data: Record<string, unknown>, token: string) => api.patch<PurchaseOrder>(`/procurement/pos/${id}`, data, token),
-  transitionPo: (id: string, status: string, token: string) => api.patch<PurchaseOrder>(`/procurement/pos/${id}/status`, { status }, token),
+  transitionPo: (id: string, status: string, token: string) =>
+    api.patch<PurchaseOrder & { awaitingSecondApproval?: boolean }>(`/procurement/pos/${id}/status`, { status }, token),
   removePo: (id: string, token: string) => api.delete(`/procurement/pos/${id}`, token),
 };
 
