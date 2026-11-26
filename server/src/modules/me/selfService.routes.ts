@@ -22,6 +22,7 @@ import * as policy from '../hrms/policy.service';
 import { renderPayslipHtml } from '../hrms/payroll.service';
 import { createExpense } from '../accounts/accounts.service';
 import { notifyUser } from '../notifications/notificationDispatch.service';
+import { isApprovalChainEnabled } from '../approvals/approvals.service';
 import { usersWithPermission } from '../auth/usersWithPermission';
 import { getAccountsSettings } from '../ledger/ledger.service';
 
@@ -100,6 +101,8 @@ r.post(
       halfDay: Boolean(body.halfDay),
       reason: body.reason ? String(body.reason).slice(0, 1000) : undefined,
     });
+    // With a leave approval chain on, the chain has already told its approvers.
+    if (await isApprovalChainEnabled(requireWorkspaceId(req.activeOrganizationId), 'leave')) return ok(res, leave);
     // Approver: the manager's account, else HR's configured approvers, else anyone who can manage leave.
     const e = req.employee!;
     const manager = await managerUserIdOf(e);
@@ -274,7 +277,8 @@ r.post(
       },
       req.user!.id
     );
-    const approvers = await usersWithPermission(TASK_FLOW_PERMISSIONS.TASKFLOW.ACCOUNTS.EXPENSE.UPDATE, req.activeOrganizationId);
+    if (await isApprovalChainEnabled(requireWorkspaceId(req.activeOrganizationId), 'expense')) return ok(res, doc);
+    const approvers = await usersWithPermission(TASK_FLOW_PERMISSIONS.TASKFLOW.ACCOUNTS.EXPENSE.APPROVE, req.activeOrganizationId);
     await Promise.all(
       approvers
         .filter((u) => u !== req.user!.id)

@@ -8,6 +8,7 @@ import {
   ExportButton, Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, money, nameOf,
 } from '../../components/moduleKit';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
+import { PersonMultiSelect, PersonSelect, toPeople } from '../../components/people';
 import RecordLinksDrawer from '../../components/RecordLinksDrawer';
 import { useRecordLinksParam } from '../../hooks/useRecordLinksParam';
 
@@ -354,31 +355,14 @@ function PoList({ title, subtitle, fixedCategory }: { title: string; subtitle: s
             <p className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-muted)] mb-1">
               Designated 2nd approvers (optional — if none selected, any other approver can give 2nd approval)
             </p>
-            <div className="max-h-36 overflow-y-auto rounded-lg border border-[color:var(--border-subtle)] p-2 space-y-1">
-              {approvers.length === 0 ? (
-                <p className="text-xs text-[color:var(--text-muted)]">No workspace members found.</p>
-              ) : (
-                approvers.map((u) => {
-                  const checked = settingsForm.secondApproverIds.includes(u._id);
-                  return (
-                    <label key={u._id} className="flex items-center gap-2 text-xs cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => {
-                          const next = e.target.checked
-                            ? [...settingsForm.secondApproverIds, u._id]
-                            : settingsForm.secondApproverIds.filter((id) => id !== u._id);
-                          setSettingsForm({ ...settingsForm, secondApproverIds: next });
-                        }}
-                      />
-                      <span>{u.name}</span>
-                      <span className="text-[color:var(--text-muted)]">{u.email}</span>
-                    </label>
-                  );
-                })
-              )}
-            </div>
+            <PersonMultiSelect
+              values={settingsForm.secondApproverIds}
+              onChange={(v) => setSettingsForm({ ...settingsForm, secondApproverIds: v })}
+              people={toPeople(approvers)}
+              placeholder={approvers.length === 0 ? 'No workspace members found' : 'Search people…'}
+              disabled={approvers.length === 0}
+              aria-label="Designated second approvers"
+            />
           </div>
 
           <div className="mt-3">
@@ -395,17 +379,17 @@ function PoList({ title, subtitle, fixedCategory }: { title: string; subtitle: s
             <div className="space-y-2">
               {settingsForm.approverLimits.map((rule, idx) => (
                 <div key={idx} className="grid grid-cols-[1fr_140px_auto] gap-2 items-center">
-                  <Select
+                  <PersonSelect
                     value={rule.userId}
-                    onChange={(e) => {
+                    onChange={(v) => {
                       const next = [...settingsForm.approverLimits];
-                      next[idx] = { ...rule, userId: e.target.value };
+                      next[idx] = { ...rule, userId: v };
                       setSettingsForm({ ...settingsForm, approverLimits: next });
                     }}
-                  >
-                    <option value="">Select user…</option>
-                    {approvers.map((u) => <option key={u._id} value={u._id}>{u.name}</option>)}
-                  </Select>
+                    people={toPeople(approvers)}
+                    placeholder="Search approver…"
+                    aria-label="Approver"
+                  />
                   <TextInput
                     type="number"
                     min={0}

@@ -3565,6 +3565,17 @@ export interface AccountExpense {
   expenseDate: string;
   paidDate?: string;
   notes?: string;
+  submittedBy?: string | { _id: string; name?: string };
+  approvedBy?: string | { _id: string; name?: string };
+  firstApprovedBy?: string | { _id: string; name?: string };
+  firstApprovedAt?: string;
+}
+
+export interface ExpenseApprovalSettings {
+  singleApproverLimit: number | null;
+  maxClaimAmount: number | null;
+  secondApproverIds: string[];
+  approverLimits: Array<{ userId?: string; roleId?: string; maxAmount: number }>;
 }
 
 export const accountsApi = {
@@ -3582,6 +3593,111 @@ export const accountsApi = {
   createExpense: (data: Record<string, unknown>, token: string) => api.post<AccountExpense>('/accounts/expenses', data, token),
   updateExpense: (id: string, data: Record<string, unknown>, token: string) => api.patch<AccountExpense>(`/accounts/expenses/${id}`, data, token),
   removeExpense: (id: string, token: string) => api.delete(`/accounts/expenses/${id}`, token),
+  transitionExpense: (id: string, status: string, token: string) =>
+    api.patch<AccountExpense & { awaitingSecondApproval?: boolean }>(`/accounts/expenses/${id}/status`, { status }, token),
+  expenseApprovalSettings: (token: string) => api.get<ExpenseApprovalSettings>('/accounts/expenses/approval-settings', token),
+  updateExpenseApprovalSettings: (data: Partial<ExpenseApprovalSettings>, token: string) =>
+    api.put<ExpenseApprovalSettings>('/accounts/expenses/approval-settings', data, token),
+  listExpenseApprovers: (token: string) => api.get<ProcurementApprover[]>('/accounts/expenses/approvers', token),
+};
+
+// ── Approvals (shared approval engine) ─────────────────────────────────────────
+
+export type ApprovalRecordType = 'invoice' | 'quote' | 'purchase_order' | 'expense' | 'leave' | 'payroll';
+export type ApproverKind = 'manager' | 'role' | 'users' | 'permission';
+type PersonRef = string | { _id: string; name?: string; email?: string };
+
+export interface ApprovalPolicyStep {
+  name: string;
+  kind: ApproverKind;
+  level?: number;
+  roleId?: string;
+  userIds?: string[];
+  permission?: string;
+  aboveAmount: number | null;
+}
+
+export interface ApprovalPolicy {
+  recordType: ApprovalRecordType;
+  label: string;
+  mode: 'decision' | 'gate';
+  amountLabel: string;
+  enabled: boolean;
+  steps: ApprovalPolicyStep[];
+  fallbackUserIds: string[];
+  updatedAt: string | null;
+}
+
+export interface ApprovalRequestStep {
+  name: string;
+  kind: ApproverKind;
+  status: 'waiting' | 'pending' | 'approved' | 'rejected' | 'skipped';
+  approverIds: PersonRef[];
+  decidedBy?: PersonRef;
+  onBehalfOf?: PersonRef;
+  decidedAt?: string;
+  note?: string;
+}
+
+export interface ApprovalHistoryEntry {
+  at: string;
+  action: 'submitted' | 'approved' | 'rejected' | 'skipped' | 'cancelled' | 'restarted' | 'completed';
+  step?: number;
+  actorId?: PersonRef;
+  onBehalfOf?: PersonRef;
+  note?: string;
+}
+
+export interface ApprovalRequest {
+  _id: string;
+  recordType: ApprovalRecordType;
+  recordId: string;
+  title: string;
+  amount: number;
+  currency?: string;
+  link?: string;
+  requestedBy: PersonRef;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  steps: ApprovalRequestStep[];
+  currentStep: number;
+  history: ApprovalHistoryEntry[];
+  completedAt?: string;
+  createdAt: string;
+  /** Queue rows and detail: set when the viewer acts as someone's delegate. */
+  onBehalfOf?: string | null;
+  canDecide?: boolean;
+}
+
+export interface ApprovalDelegation {
+  _id: string;
+  fromUserId: PersonRef;
+  toUserId: PersonRef;
+  startsAt: string;
+  endsAt: string;
+  recordTypes: ApprovalRecordType[];
+  note?: string;
+  createdBy: string;
+}
+
+export const approvalsApi = {
+  queue: (token: string) => api.get<ApprovalRequest[]>('/approvals/queue', token),
+  requests: (params: { scope: 'mine' | 'decided' | 'all'; status?: string; recordType?: string }, token: string) => {
+    const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
+    return api.get<ApprovalRequest[]>(`/approvals/requests?${q}`, token);
+  },
+  request: (id: string, token: string) => api.get<ApprovalRequest>(`/approvals/requests/${id}`, token),
+  decide: (id: string, decision: 'approve' | 'reject', note: string, token: string) =>
+    api.post<{ request: ApprovalRequest; outcome: 'pending' | 'approved' | 'rejected' }>(`/approvals/requests/${id}/decision`, { decision, note }, token),
+  cancel: (id: string, note: string, token: string) => api.post<ApprovalRequest>(`/approvals/requests/${id}/cancel`, { note }, token),
+  delegations: (all: boolean, token: string) => api.get<ApprovalDelegation[]>(`/approvals/delegations${all ? '?all=1' : ''}`, token),
+  createDelegation: (data: { fromUserId?: string; toUserId: string; startsAt: string; endsAt: string; recordTypes: ApprovalRecordType[]; note?: string }, token: string) =>
+    api.post<ApprovalDelegation>('/approvals/delegations', data, token),
+  endDelegation: (id: string, token: string) => api.delete(`/approvals/delegations/${id}`, token),
+  people: (token: string) => api.get<ProcurementApprover[]>('/approvals/people', token),
+  roles: (token: string) => api.get<Array<{ _id: string; name: string }>>('/approvals/roles', token),
+  policies: (token: string) => api.get<ApprovalPolicy[]>('/approvals/policies', token),
+  savePolicy: (type: ApprovalRecordType, data: Partial<Pick<ApprovalPolicy, 'enabled' | 'steps' | 'fallbackUserIds'>>, token: string) =>
+    api.put<ApprovalPolicy>(`/approvals/policies/${type}`, data, token),
 };
 
 // ── Documents ──────────────────────────────────────────────────────────────────

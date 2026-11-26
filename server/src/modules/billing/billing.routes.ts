@@ -48,7 +48,7 @@ router.post(
   '/invoices/:id/email',
   requireAnyPermission([B.INVOICE.MANAGE]),
   asyncHandler(async (req, res) => {
-    const data = await emailInvoice(req.params.id, (req as { activeOrganizationId?: string }).activeOrganizationId, req.body ?? {});
+    const data = await emailInvoice(req.params.id, (req as { activeOrganizationId?: string }).activeOrganizationId, req.body ?? {}, (req as { user?: { id?: string } }).user?.id);
     res.json({ success: true, data });
   })
 );

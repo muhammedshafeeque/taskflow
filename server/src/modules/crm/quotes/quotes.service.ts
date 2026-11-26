@@ -1,4 +1,5 @@
 import { notifyUsers } from '../../notifications/domainNotify';
+import { assertApprovedOrSubmit } from '../../approvals/approvals.service';
 import mongoose from 'mongoose';
 import {
   CrmQuote,
@@ -359,6 +360,9 @@ export async function sendQuote(
     throw new ApiError(400, 'Cannot email an accepted, rejected, or expired quotation');
   }
   if (!quote.issueDate) throw new ApiError(400, 'Set the quotation’s issue date before sending it');
+  if (quote.status === 'draft') {
+    await assertApprovedOrSubmit(orgId, 'quote', id, opts?.userId ?? String(quote.createdBy), 'send this quotation');
+  }
   const accountName =
     quote.customerOrgId && typeof quote.customerOrgId === 'object' && 'name' in quote.customerOrgId
       ? String((quote.customerOrgId as { name?: string }).name ?? '')
@@ -456,6 +460,9 @@ export async function updateQuote(
   if (nextStatus === 'accepted' || nextStatus === 'rejected') {
     if (existing.status === 'accepted' || existing.status === 'rejected' || existing.status === 'expired') {
       throw new ApiError(400, 'This quotation is already closed');
+    }
+    if (existing.status === 'draft' && nextStatus === 'accepted') {
+      await assertApprovedOrSubmit(orgId, 'quote', id, userId ?? String(existing.createdBy), 'mark this quotation accepted');
     }
     const prev = existing.status;
     existing.status = nextStatus;

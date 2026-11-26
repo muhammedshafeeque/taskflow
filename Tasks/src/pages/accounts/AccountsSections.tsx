@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { canAny } from '../../utils/moduleAccess';
 import { accountsApi } from '../../lib/api';
-import type { AccountExpense, BillingInvoice } from '../../lib/api';
+import type { AccountExpense, BillingInvoice, ExpenseApprovalSettings, ProcurementApprover } from '../../lib/api';
 import {
   ExportButton, Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, money, nameOf,
 } from '../../components/moduleKit';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
+import { PersonMultiSelect, PersonSelect, toPeople } from '../../components/people';
 
 function tableWrap(children: React.ReactNode) {
   return (
@@ -116,39 +118,141 @@ export function AccountsInvoices() {
 
 // ── Expenses ─────────────────────────────────────────────────────────────────
 const EXPENSE_CATS = ['payroll', 'software', 'hardware', 'infrastructure', 'travel', 'marketing', 'office', 'professional_services', 'other'];
+const EDITABLE_STATUSES = ['draft', 'submitted', 'rejected'];
+const EMPTY_EXPENSE_SETTINGS: ExpenseApprovalSettings = { singleApproverLimit: null, maxClaimAmount: null, secondApproverIds: [], approverLimits: [] };
+type ExpenseSettingsForm = {
+  singleApproverLimit: string;
+  maxClaimAmount: string;
+  secondApproverIds: string[];
+  approverLimits: Array<{ userId: string; maxAmount: string }>;
+};
+
+function idOf(ref: string | { _id?: string } | undefined): string {
+  if (!ref) return '';
+  return typeof ref === 'string' ? ref : (ref._id ?? '');
+}
 
 export function AccountsExpenses() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [rows, setRows] = useState<AccountExpense[]>([]);
   const [editing, setEditing] = useState<Partial<AccountExpense> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<ExpenseApprovalSettings>(EMPTY_EXPENSE_SETTINGS);
+  const [approvers, setApprovers] = useState<ProcurementApprover[]>([]);
+  const [settingsForm, setSettingsForm] = useState<ExpenseSettingsForm | null>(null);
+  const [msg, setMsg] = useState('');
+  const [errMsg, setErrMsg] = useState('');
+
+  const canEdit = canAny(user, 'taskflow.accounts.expense.update');
+  const canCreate = canAny(user, 'taskflow.accounts.expense.create', 'taskflow.accounts.expense.update');
+  const canApprove = canAny(user, 'taskflow.accounts.expense.approve');
+  const canSettings = canAny(user, 'taskflow.accounts.chart.manage');
+
+  const flash = (text: string) => { setMsg(text); setTimeout(() => setMsg(''), 6000); };
 
   const load = useCallback(() => {
     if (!token) return;
     accountsApi.listExpenses(token).then((r) => { setLoading(false); if (r.success && r.data) setRows(r.data); });
-  }, [token]);
+    accountsApi.expenseApprovalSettings(token).then((r) => r.success && r.data && setSettings(r.data));
+    if (canSettings) accountsApi.listExpenseApprovers(token).then((r) => r.success && r.data && setApprovers(r.data));
+  }, [token, canSettings]);
   useEffect(load, [load]);
 
   const save = async () => {
     if (!token || !editing) return;
-    const res = editing._id ? await accountsApi.updateExpense(editing._id, editing, token) : await accountsApi.createExpense(editing, token);
-    if (res.success) { setEditing(null); load(); } else alert(res.message);
+    setErrMsg('');
+    // Status is changed only through the approval workflow, never from the edit form.
+    const { status, ...fields } = editing;
+    const res = editing._id
+      ? await accountsApi.updateExpense(editing._id, fields, token)
+      : await accountsApi.createExpense({ ...fields, status }, token);
+    if (res.success) { setEditing(null); load(); } else setErrMsg(res.message || 'Could not save the expense');
   };
-  const setStatus = async (id: string, status: string) => { if (!token) return; await accountsApi.updateExpense(id, { status }, token); load(); };
-  const remove = async (id: string) => { if (!token || !confirm('Delete expense?')) return; await accountsApi.removeExpense(id, token); load(); };
+  const setStatus = async (id: string, status: string) => {
+    if (!token) return;
+    setErrMsg('');
+    const res = await accountsApi.transitionExpense(id, status, token);
+    if (!res.success) { setErrMsg(res.message || 'Status update failed'); return; }
+    if (res.data?.awaitingSecondApproval) flash('First approval recorded. A second, different approver must approve this claim.');
+    load();
+  };
+  const remove = async (id: string) => {
+    if (!token || !confirm('Delete expense?')) return;
+    setErrMsg('');
+    const res = await accountsApi.removeExpense(id, token);
+    if (!res.success) setErrMsg(res.message || 'Could not delete the expense');
+    load();
+  };
+
+  const openSettings = () => setSettingsForm({
+    singleApproverLimit: settings.singleApproverLimit != null ? String(settings.singleApproverLimit) : '',
+    maxClaimAmount: settings.maxClaimAmount != null ? String(settings.maxClaimAmount) : '',
+    secondApproverIds: [...settings.secondApproverIds],
+    approverLimits: settings.approverLimits.filter((l) => l.userId).map((l) => ({ userId: l.userId!, maxAmount: String(l.maxAmount) })),
+  });
+  const saveSettings = async () => {
+    if (!token || !settingsForm) return;
+    setErrMsg('');
+    const num = (v: string) => (v.trim() === '' ? null : Number(v));
+    const res = await accountsApi.updateExpenseApprovalSettings({
+      singleApproverLimit: num(settingsForm.singleApproverLimit),
+      maxClaimAmount: num(settingsForm.maxClaimAmount),
+      secondApproverIds: settingsForm.secondApproverIds,
+      approverLimits: settingsForm.approverLimits
+        .filter((l) => l.userId && l.maxAmount.trim() !== '')
+        .map((l) => ({ userId: l.userId, maxAmount: Number(l.maxAmount) })),
+    }, token);
+    if (!res.success) { setErrMsg(res.message || 'Could not save approval limits'); return; }
+    if (res.data) setSettings(res.data);
+    setSettingsForm(null);
+    flash('Approval limits saved.');
+  };
+
+  const actionsFor = (x: AccountExpense) => {
+    const uid = user?.id ?? '';
+    const isClaimant = Boolean(uid && idOf(x.submittedBy) === uid);
+    const firstBy = idOf(x.firstApprovedBy);
+    const out: Array<{ label: string; status: string; tone: string; disabled?: boolean; title?: string }> = [];
+    if (x.status === 'draft' && (isClaimant || canEdit)) out.push({ label: 'Submit', status: 'submitted', tone: 'text-[color:var(--accent)]' });
+    if (x.status === 'submitted' && canApprove) {
+      const blocked = isClaimant
+        ? 'You cannot approve your own expense claim'
+        : firstBy && firstBy === uid
+          ? 'A different person must give the second approval'
+          : undefined;
+      out.push({ label: firstBy ? '2nd approve' : 'Approve', status: 'approved', tone: 'text-emerald-500', disabled: Boolean(blocked), title: blocked });
+      out.push({ label: 'Reject', status: 'rejected', tone: 'text-rose-500' });
+    }
+    if (x.status === 'approved' && canEdit) out.push({ label: 'Mark paid', status: 'paid', tone: 'text-emerald-500' });
+    if (x.status === 'rejected' && (isClaimant || canEdit)) out.push({ label: 'Reopen', status: 'draft', tone: 'text-[color:var(--accent)]' });
+    return out;
+  };
 
   const statusTone: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = { paid: 'green', approved: 'blue', submitted: 'amber', draft: 'slate', rejected: 'red' };
+  const people = toPeople(approvers);
 
   return (
-    <SectionPage title="Expenses" subtitle="Vendor bills, reimbursements, and recurring costs." toolbar={<div className="flex gap-2"><ExportButton rows={rows} filename="expenses" columns={[
-      { header: 'Reference', value: (r) => r.reference },
-      { header: 'Description', value: (r) => r.description },
-      { header: 'Category', value: (r) => r.category },
-      { header: 'Status', value: (r) => r.status },
-      { header: 'Date', value: (r) => new Date(r.expenseDate).toLocaleDateString() },
-      { header: 'Amount', value: (r) => r.amount },
-      { header: 'Currency', value: (r) => r.currency },
-    ]} /><PrimaryButton onClick={() => setEditing({ category: 'other', status: 'submitted', currency: 'USD', expenseDate: new Date().toISOString().slice(0, 10) })}>+ Add expense</PrimaryButton></div>}>
+    <SectionPage title="Expenses" subtitle="Vendor bills, reimbursements, and recurring costs." toolbar={<div className="flex gap-2">
+      {canSettings && <GhostButton onClick={openSettings}>Approval limits</GhostButton>}
+      <ExportButton rows={rows} filename="expenses" columns={[
+        { header: 'Reference', value: (r) => r.reference },
+        { header: 'Description', value: (r) => r.description },
+        { header: 'Category', value: (r) => r.category },
+        { header: 'Status', value: (r) => r.status },
+        { header: 'Date', value: (r) => new Date(r.expenseDate).toLocaleDateString() },
+        { header: 'Amount', value: (r) => r.amount },
+        { header: 'Currency', value: (r) => r.currency },
+      ]} />
+      {canCreate && <PrimaryButton onClick={() => setEditing({ category: 'other', status: 'submitted', currency: 'USD', expenseDate: new Date().toISOString().slice(0, 10) })}>+ Add expense</PrimaryButton>}
+    </div>}>
+      {(settings.singleApproverLimit != null || settings.maxClaimAmount != null) && (
+        <div className="mb-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-4 py-2 text-xs text-[color:var(--text-muted)] flex flex-wrap gap-4">
+          {settings.singleApproverLimit != null && <span>2nd approver required above: <strong className="text-[color:var(--text-primary)]">{money(settings.singleApproverLimit)}</strong></span>}
+          {settings.maxClaimAmount != null && <span>Max claim: <strong className="text-[color:var(--text-primary)]">{money(settings.maxClaimAmount)}</strong></span>}
+        </div>
+      )}
+      {msg && <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-600 dark:text-emerald-400">{msg}</div>}
+      {errMsg && <div className="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-500">{errMsg}</div>}
       {loading ? <ModuleLoader size="block" label="Loading expenses…" /> : rows.length === 0 ? (
         <p className="text-sm text-[color:var(--text-muted)]">No expenses yet.</p>
       ) : tableWrap(
@@ -176,13 +280,25 @@ export function AccountsExpenses() {
                 </td>
                 <td className="px-4 py-2.5 capitalize">{x.category.replace('_', ' ')}</td>
                 <td className="px-4 py-2.5 text-[color:var(--text-muted)]">{new Date(x.expenseDate).toLocaleDateString()}</td>
-                <td className="px-4 py-2.5"><StatusPill label={x.status} tone={statusTone[x.status]} /></td>
+                <td className="px-4 py-2.5">
+                  <StatusPill label={x.status} tone={statusTone[x.status]} />
+                  {x.status === 'submitted' && x.firstApprovedBy && <p className="text-[11px] text-[color:var(--text-muted)] mt-0.5">1 of 2 approvals</p>}
+                </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{money(x.amount, x.currency)}</td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                  {x.status === 'submitted' && <button onClick={() => setStatus(x._id, 'approved')} className="text-emerald-500 hover:underline text-xs mr-3">Approve</button>}
-                  {x.status === 'approved' && <button onClick={() => setStatus(x._id, 'paid')} className="text-emerald-500 hover:underline text-xs mr-3">Mark paid</button>}
-                  <button onClick={() => setEditing(x)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Edit</button>
-                  <button onClick={() => remove(x._id)} className="text-rose-500 hover:underline text-xs">Delete</button>
+                  {actionsFor(x).map((a) => (
+                    <button
+                      key={a.status}
+                      onClick={() => setStatus(x._id, a.status)}
+                      disabled={a.disabled}
+                      title={a.title}
+                      className={`${a.tone} hover:underline text-xs mr-3 disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed`}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                  {canEdit && EDITABLE_STATUSES.includes(x.status) && <button onClick={() => setEditing(x)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Edit</button>}
+                  {canEdit && <button onClick={() => remove(x._id)} className="text-rose-500 hover:underline text-xs">Delete</button>}
                 </td>
               </tr>
             ))}
@@ -199,11 +315,87 @@ export function AccountsExpenses() {
                 {EXPENSE_CATS.map((c) => <option key={c} value={c}>{c.replace('_', ' ')}</option>)}
               </Select>
             </Field>
-            <Field label="Amount"><TextInput type="number" value={editing.amount ?? 0} onChange={(e) => setEditing({ ...editing, amount: Number(e.target.value) })} /></Field>
+            <Field label="Amount"><TextInput type="number" min={0} value={editing.amount ?? 0} onChange={(e) => setEditing({ ...editing, amount: Number(e.target.value) })} /></Field>
             <Field label="Date"><TextInput type="date" value={(editing.expenseDate ?? '').slice(0, 10)} onChange={(e) => setEditing({ ...editing, expenseDate: e.target.value })} /></Field>
             <Field label="Currency"><TextInput value={editing.currency ?? 'USD'} onChange={(e) => setEditing({ ...editing, currency: e.target.value })} /></Field>
+            {!editing._id && (
+              <Field label="Save as">
+                <Select value={editing.status ?? 'submitted'} onChange={(e) => setEditing({ ...editing, status: e.target.value })}>
+                  <option value="submitted">Submitted for approval</option>
+                  <option value="draft">Draft</option>
+                </Select>
+              </Field>
+            )}
           </div>
           <Field label="Notes"><TextArea rows={2} value={editing.notes ?? ''} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field>
+          {editing._id && editing.status === 'submitted' && editing.firstApprovedBy && (
+            <p className="text-xs text-amber-500">Changing the amount clears the first approval, so the claim is reviewed again.</p>
+          )}
+        </Modal>
+      )}
+
+      {settingsForm && (
+        <Modal
+          title="Expense approval limits"
+          onClose={() => setSettingsForm(null)}
+          wide
+          footer={<><GhostButton onClick={() => setSettingsForm(null)}>Cancel</GhostButton><PrimaryButton onClick={saveSettings}>Save limits</PrimaryButton></>}
+        >
+          <p className="text-xs text-[color:var(--text-muted)] mb-3">Nobody can approve their own claim. Leave a field empty for no limit.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Two approvals needed above">
+              <TextInput type="number" min={0} placeholder="e.g. 500" value={settingsForm.singleApproverLimit} onChange={(e) => setSettingsForm({ ...settingsForm, singleApproverLimit: e.target.value })} />
+            </Field>
+            <Field label="Maximum claim amount">
+              <TextInput type="number" min={0} placeholder="e.g. 10000" value={settingsForm.maxClaimAmount} onChange={(e) => setSettingsForm({ ...settingsForm, maxClaimAmount: e.target.value })} />
+            </Field>
+          </div>
+          <div className="mt-3">
+            <Field label="Second approvers (optional; if empty, any other approver can give the 2nd approval)">
+              <PersonMultiSelect
+                values={settingsForm.secondApproverIds}
+                onChange={(v) => setSettingsForm({ ...settingsForm, secondApproverIds: v })}
+                people={people}
+                placeholder="Search people…"
+                aria-label="Second approvers"
+              />
+            </Field>
+          </div>
+          <div className="mt-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-muted)]">Per-approver limits</span>
+              <button
+                type="button"
+                onClick={() => setSettingsForm({ ...settingsForm, approverLimits: [...settingsForm.approverLimits, { userId: '', maxAmount: '' }] })}
+                className="text-xs text-[color:var(--accent)] hover:underline"
+              >
+                + Add limit
+              </button>
+            </div>
+            <div className="space-y-2">
+              {settingsForm.approverLimits.map((rule, idx) => {
+                const update = (patch: Partial<typeof rule>) => {
+                  const next = [...settingsForm.approverLimits];
+                  next[idx] = { ...rule, ...patch };
+                  setSettingsForm({ ...settingsForm, approverLimits: next });
+                };
+                return (
+                  <div key={idx} className="grid grid-cols-[1fr_140px_auto] gap-2 items-center">
+                    <PersonSelect value={rule.userId} onChange={(v) => update({ userId: v })} people={people} placeholder="Search approver…" aria-label="Approver" />
+                    <TextInput type="number" min={0} placeholder="Max amount" value={rule.maxAmount} onChange={(e) => update({ maxAmount: e.target.value })} />
+                    <button
+                      type="button"
+                      onClick={() => setSettingsForm({ ...settingsForm, approverLimits: settingsForm.approverLimits.filter((_, i) => i !== idx) })}
+                      className="text-xs text-rose-500 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                );
+              })}
+              {settingsForm.approverLimits.length === 0 && <p className="text-xs text-[color:var(--text-muted)]">No per-approver limits.</p>}
+            </div>
+          </div>
         </Modal>
       )}
     </SectionPage>

@@ -50,11 +50,11 @@ export async function listLeave(req: Request & { user?: AuthPayload }, res: Resp
   res.json({ success: true, data: await hrms.listLeave(ws(req), req.query as Record<string, string>, await hr(req)) });
 }
 export async function createLeave(req: Request & { user?: AuthPayload }, res: Response) {
-  res.status(201).json({ success: true, data: await hrms.createLeave(ws(req), req.body, await hr(req)) });
+  res.status(201).json({ success: true, data: await hrms.createLeave(ws(req), req.body, await hr(req), uid(req)) });
 }
 export async function decideLeave(req: Request & { user?: AuthPayload }, res: Response) {
   const status = req.body?.status as 'approved' | 'rejected' | 'cancelled';
-  res.json({ success: true, data: await hrms.decideLeave(req.params.id, ws(req), status, uid(req), false, await hr(req)) });
+  res.json({ success: true, data: await hrms.decideLeave(req.params.id, ws(req), status, uid(req), false, await hr(req), req.user?.permissions) });
 }
 
 export async function listAttendance(req: Request & { user?: AuthPayload }, res: Response) {

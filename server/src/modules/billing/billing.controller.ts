@@ -65,7 +65,7 @@ export async function createInvoice(req: Request & { user?: AuthPayload }, res: 
 }
 
 export async function updateInvoice(req: Request & { user?: AuthPayload }, res: Response) {
-  const data = await billing.updateInvoice(req.params.id, ws(req), req.body);
+  const data = await billing.updateInvoice(req.params.id, ws(req), req.body, uid(req));
   res.json({ success: true, data });
 }
 

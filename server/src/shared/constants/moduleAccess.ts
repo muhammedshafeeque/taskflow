@@ -123,6 +123,7 @@ export const MODULE_ACCESS: Record<ModuleId, readonly string[]> = {
     'taskflow.accounts.ledger.read',
     'taskflow.accounts.invoice.list',
     'taskflow.accounts.expense.list',
+    'taskflow.accounts.expense.approve',
     'taskflow.accounts.report.read',
     'taskflow.cost_report.view',
     'taskflow.accounts.journal.read',

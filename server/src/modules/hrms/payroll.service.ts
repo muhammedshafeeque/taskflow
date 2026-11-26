@@ -1,4 +1,5 @@
 import { autoPost, postPayroll } from '../ledger/ledger.service';
+import { assertApprovedOrSubmit } from '../approvals/approvals.service';
 import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
@@ -305,6 +306,10 @@ export async function setPayrollRunStatus(
 ) {
   const run = await getPayrollRunById(workspaceId, runId);
   if (status === 'finalized' && run.status !== 'draft') throw new ApiError(409, 'Only a draft can be finalized');
+  if (status === 'finalized') {
+    // With a payroll approval chain on, the run must be approved first (the first try sends it for approval).
+    await assertApprovedOrSubmit(String(run.taskflowOrganizationId), 'payroll', String(run._id), userId, 'finalize this payroll run');
+  }
   if (status === 'finalized') {
     // What the payslips pay must still be what the commission screen says: approved, same amount, held by this run.
     const lines = run.payslips.flatMap((p) => (p.commissions ?? []).filter((c) => c.paid));

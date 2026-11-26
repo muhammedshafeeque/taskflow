@@ -53,6 +53,23 @@ const accountsSettingsSchema = new Schema(
     autoPost: { type: Boolean, default: true },
     billNumberPrefix: { type: String, default: 'BILL-' },
     creditNotePrefix: { type: String, default: 'CN-' },
+    /** Expense claim approval limits (see accounts/expenseApproval.ts). Empty = one approver, no limit. */
+    expenseApproval: {
+      singleApproverLimit: { type: Number, default: null },
+      maxClaimAmount: { type: Number, default: null },
+      secondApproverIds: { type: [Schema.Types.ObjectId], ref: 'User', default: [] },
+      approverLimits: {
+        type: [
+          {
+            _id: false,
+            userId: { type: Schema.Types.ObjectId, ref: 'User' },
+            roleId: { type: Schema.Types.ObjectId, ref: 'Role' },
+            maxAmount: { type: Number, required: true, min: 0 },
+          },
+        ],
+        default: [],
+      },
+    },
   },
   { timestamps: true }
 );

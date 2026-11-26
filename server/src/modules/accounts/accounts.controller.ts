@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import type { AuthPayload } from '../../types/express';
 import { ApiError } from '../../utils/ApiError';
 import * as accounts from './accounts.service';
+import { listProcurementApprovers } from '../procurement/procurement.service';
 
 function ws(req: Request & { activeOrganizationId?: string }) {
   return req.activeOrganizationId;
@@ -37,7 +38,31 @@ export async function createExpense(req: Request & { user?: AuthPayload }, res: 
   res.status(201).json({ success: true, data: await accounts.createExpense(ws(req), req.body, uid(req)) });
 }
 export async function updateExpense(req: Request & { user?: AuthPayload }, res: Response) {
-  res.json({ success: true, data: await accounts.updateExpense(req.params.id, ws(req), req.body, uid(req)) });
+  uid(req);
+  res.json({ success: true, data: await accounts.updateExpense(req.params.id, ws(req), req.body ?? {}) });
+}
+export async function transitionExpense(req: Request & { user?: AuthPayload }, res: Response) {
+  const userId = uid(req);
+  res.json({
+    success: true,
+    data: await accounts.transitionExpense(req.params.id, ws(req), req.body?.status, {
+      userId,
+      roleId: req.user?.roleId,
+      permissions: req.user?.permissions ?? [],
+    }),
+  });
+}
+export async function getExpenseApprovalSettings(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  res.json({ success: true, data: await accounts.getExpenseApprovalSettings(ws(req)) });
+}
+export async function updateExpenseApprovalSettings(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  res.json({ success: true, data: await accounts.updateExpenseApprovalSettings(ws(req), req.body ?? {}) });
+}
+export async function listExpenseApprovers(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  res.json({ success: true, data: await listProcurementApprovers(ws(req)) });
 }
 export async function deleteExpense(req: Request & { user?: AuthPayload }, res: Response) {
   res.json({ success: true, data: await accounts.deleteExpense(req.params.id, ws(req)) });

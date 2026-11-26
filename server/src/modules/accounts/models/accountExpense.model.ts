@@ -30,6 +30,12 @@ export interface IAccountExpense extends Document {
   paidDate?: Date;
   submittedBy?: mongoose.Types.ObjectId;
   approvedBy?: mongoose.Types.ObjectId;
+  approvedAt?: Date;
+  /** First of two approvals, when the claim is above the two-step threshold. */
+  firstApprovedBy?: mongoose.Types.ObjectId;
+  firstApprovedAt?: Date;
+  rejectedBy?: mongoose.Types.ObjectId;
+  rejectedAt?: Date;
   notes?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -55,6 +61,11 @@ const accountExpenseSchema = new Schema<IAccountExpense>(
     paidDate: { type: Date },
     submittedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     approvedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    approvedAt: { type: Date },
+    firstApprovedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    firstApprovedAt: { type: Date },
+    rejectedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    rejectedAt: { type: Date },
     notes: { type: String },
     /** Uploaded receipt URLs (from /api/uploads). */
     receiptUrls: { type: [String], default: [] },

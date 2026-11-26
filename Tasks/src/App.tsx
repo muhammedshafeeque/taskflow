@@ -83,6 +83,7 @@ import Roadmap from './pages/Roadmap';
 import ProjectDashboard from './pages/ProjectDashboard';
 import ProjectSettings from './pages/ProjectSettings';
 import EstimateApprovals from './pages/EstimateApprovals';
+import Approvals from './pages/approvals/Approvals';
 import ProjectImport from './pages/ProjectImport';
 import ProjectAdoSync from './pages/ProjectAdoSync';
 import IssueLinkGraph from './pages/IssueLinkGraph';
@@ -521,6 +522,7 @@ function AppRoutes() {
         {/* Inbox & profile */}
         <Route element={<InboxModuleLayout />}>
         <Route path="/inbox" element={<Inbox />} />
+        <Route path="/approvals" element={<Approvals />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/profile/notifications" element={<NotificationPreferences />} />
         <Route path="/me" element={<SelfService />} />

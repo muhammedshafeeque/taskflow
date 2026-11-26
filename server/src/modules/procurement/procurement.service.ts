@@ -9,6 +9,13 @@ import { AssetLicense } from '../assets/models/assetLicense.model';
 import { OrganizationMember } from '../organizations/organizationMember.model';
 import { PurchaseOrder, IPurchaseOrderLine, type PoCategory, type PoStatus } from './models/purchaseOrder.model';
 import { ProcurementSettings } from './models/procurementSettings.model';
+import {
+  canDecideRecord,
+  cancelForRecord,
+  decideForRecord,
+  isApprovalChainEnabled,
+  submitForApproval,
+} from '../approvals/approvals.service';
 
 const P_PO = TASK_FLOW_PERMISSIONS.TASKFLOW.PROCUREMENT.PO;
 
@@ -337,6 +344,14 @@ export async function createPurchaseOrder(
       requestedBy: userId,
       notes: input.notes,
     });
+    if (initialStatus === 'pending_approval' && userId && (await isApprovalChainEnabled(orgId, 'purchase_order'))) {
+      try {
+        await submitForApproval(orgId, 'purchase_order', String(doc._id), userId);
+      } catch (err) {
+        await PurchaseOrder.updateOne({ _id: doc._id }, { $set: { status: 'draft' } });
+        throw err;
+      }
+    }
     return PurchaseOrder.findById(doc._id).populate(PO_POPULATE).lean();
   } catch (err) {
     if ((err as { code?: number }).code === 11000) throw new ApiError(409, 'PO number already exists');
@@ -453,6 +468,34 @@ export async function transitionPurchaseOrder(
 
   let awaitingSecondApproval = false;
 
+  // With an approval chain turned on (Approvals → chains), the chain decides instead of the limits below.
+  if (po.status === 'pending_approval' || nextStatus === 'pending_approval') {
+    if (await isApprovalChainEnabled(orgId, 'purchase_order')) {
+      if (!userId) throw new ApiError(401, 'Authentication required');
+      const chainActor = { userId, permissions: actor?.permissions };
+      const rejectsAsApprover = nextStatus === 'cancelled' && (await canDecideRecord(orgId, 'purchase_order', id, userId));
+      if (nextStatus === 'approved' || rejectsAsApprover) {
+        const r = await decideForRecord(orgId, 'purchase_order', id, chainActor, nextStatus === 'approved' ? 'approve' : 'reject');
+        const result = await PurchaseOrder.findById(po._id).populate(PO_POPULATE).lean();
+        return {
+          ...result,
+          provisioned: { assetsCreated: 0, licensesCreated: 0 },
+          awaitingSecondApproval: r.outcome === 'pending',
+          approvalRequestId: String(r.request._id),
+        } as typeof result & { provisioned: { assetsCreated: number; licensesCreated: number }; awaitingSecondApproval: boolean };
+      }
+      if (nextStatus === 'pending_approval') {
+        const settings = await getProcurementSettings(orgId);
+        if (settings.maxOrderAmount != null && po.total > settings.maxOrderAmount) {
+          throw new ApiError(400, `Purchase order total (${po.total}) exceeds the workspace limit (${settings.maxOrderAmount})`);
+        }
+        await submitForApproval(orgId, 'purchase_order', id, userId);
+      } else {
+        await cancelForRecord(orgId, 'purchase_order', id, userId, `Purchase order moved to ${nextStatus}`);
+      }
+    }
+  }
+
   if (nextStatus === 'pending_approval') {
     const settings = await getProcurementSettings(orgId);
     if (settings.maxOrderAmount != null && po.total > settings.maxOrderAmount) {
@@ -509,10 +552,27 @@ export async function transitionPurchaseOrder(
   } as typeof result & { provisioned: typeof provisioned; awaitingSecondApproval: boolean };
 }
 
+/** Approval chain finished (called by the approval engine). Rejected orders are cancelled, as before. */
+export async function applyPoChainOutcome(orgId: string, id: string, outcome: 'approved' | 'rejected', userId: string) {
+  const po = await PurchaseOrder.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId), status: 'pending_approval' });
+  if (!po) return;
+  po.firstApprovedBy = undefined;
+  po.firstApprovedAt = undefined;
+  if (outcome === 'approved') {
+    po.status = 'approved';
+    po.approvedBy = userId as never;
+    po.approvedAt = new Date();
+  } else {
+    po.status = 'cancelled';
+  }
+  await po.save();
+}
+
 export async function deletePurchaseOrder(id: string, workspaceId: string | null | undefined) {
   const orgId = requireWorkspaceId(workspaceId);
   const deleted = await PurchaseOrder.findOneAndDelete({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
   if (!deleted) throw new ApiError(404, 'Purchase order not found');
+  await cancelForRecord(orgId, 'purchase_order', id, undefined, 'Purchase order deleted');
   return { deleted: true };
 }
 

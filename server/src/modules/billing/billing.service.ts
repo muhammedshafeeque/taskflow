@@ -1,4 +1,5 @@
 import { sendCustomerEmail } from '../../services/email.service';
+import { assertApprovedOrSubmit, isApprovalChainEnabled } from '../approvals/approvals.service';
 import { autoPost, postInvoice, postPayment } from '../ledger/ledger.service';
 import { JournalEntry } from '../ledger/ledger.models';
 import mongoose from 'mongoose';
@@ -456,6 +457,9 @@ export async function createInvoice(
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
+  if (input.status != null && input.status !== 'draft' && (await isApprovalChainEnabled(orgId, 'invoice'))) {
+    throw new ApiError(400, 'Invoices need approval before they are sent: create it as a draft, then send it');
+  }
   await assertAccount(orgOid, input.accountId);
   const account = await CrmAccount.findOne({ _id: input.accountId, taskflowOrganizationId: orgOid }).lean();
   const lines = normalizeLines(input.lines);
@@ -493,12 +497,20 @@ export async function createInvoice(
 export async function updateInvoice(
   id: string,
   workspaceId: string | null | undefined,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  actorUserId?: string
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
   const existing = await BillingInvoice.findOne({ _id: id, taskflowOrganizationId: orgOid });
   if (!existing) throw new ApiError(404, 'Invoice not found');
+  if (existing.status === 'draft' && input.status != null && input.status !== 'draft' && input.status !== 'void') {
+    if (input.lines && totalsFromLines(normalizeLines(input.lines)).total !== existing.total) {
+      // Approval is for the amount that will be sent: save the new lines first, then send.
+      throw new ApiError(400, 'Save the changed invoice lines first, then send it');
+    }
+    await assertApprovedOrSubmit(orgId, 'invoice', id, actorUserId ?? (existing.createdBy ? String(existing.createdBy) : ''), 'send this invoice');
+  }
 
   if (input.lines) {
     existing.lines = normalizeLines(input.lines);
@@ -883,13 +895,15 @@ function escapeHtml(s: string): string {
 export async function emailInvoice(
   id: string,
   workspaceId: string | null | undefined,
-  input: { toEmail?: string; message?: string; pdfBase64?: string; companyName?: string }
+  input: { toEmail?: string; message?: string; pdfBase64?: string; companyName?: string },
+  actorUserId?: string
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
   const inv = await BillingInvoice.findOne({ _id: id, taskflowOrganizationId: orgOid });
   if (!inv) throw new ApiError(404, 'Invoice not found');
   if (inv.status === 'void') throw new ApiError(400, 'Cannot send a void invoice');
+  if (inv.status === 'draft') await assertApprovedOrSubmit(orgId, 'invoice', id, actorUserId ?? (inv.createdBy ? String(inv.createdBy) : ''), 'send this invoice');
   const to = String(input.toEmail ?? '').trim();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new ApiError(400, 'A valid recipient email is required');
   const outstanding = Math.round((inv.total - (inv.amountPaid ?? 0) - (inv.amountCredited ?? 0)) * 100) / 100;
@@ -906,6 +920,6 @@ ${payLink ? `<p><a href="${escapeHtml(payLink)}" style="display:inline-block;pad
     html,
     pdf ? [{ filename: `invoice-${inv.number}.pdf`, content: pdf, contentType: 'application/pdf', encoding: 'base64' }] : undefined
   );
-  if (inv.status === 'draft') return updateInvoice(id, orgId, { status: 'sent' });
+  if (inv.status === 'draft') return updateInvoice(id, orgId, { status: 'sent' }, actorUserId);
   return populateInvoice(inv._id);
 }

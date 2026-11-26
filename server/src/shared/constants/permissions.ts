@@ -213,6 +213,8 @@ export const TASK_FLOW_PERMISSIONS = {
         READ: 'taskflow.accounts.expense.read',
         CREATE: 'taskflow.accounts.expense.create',
         UPDATE: 'taskflow.accounts.expense.update',
+        /** Approve or reject submitted claims. Separate from UPDATE so editors cannot approve. */
+        APPROVE: 'taskflow.accounts.expense.approve',
       },
       REPORT: { READ: 'taskflow.accounts.report.read' },
       CHART: { MANAGE: 'taskflow.accounts.chart.manage' },
@@ -270,6 +272,12 @@ export const TASK_FLOW_PERMISSIONS = {
       PROFILE: { MANAGE: 'taskflow.resources.profile.manage' },
       SETTINGS: { MANAGE: 'taskflow.resources.settings.manage' },
       TEAM: { MANAGE: 'taskflow.resources.team.manage' },
+    },
+    /** Shared approval engine: chains per record type, one queue, delegations. Deciding needs no permission, only being the step's approver. */
+    APPROVALS: {
+      POLICY: { MANAGE: 'taskflow.approvals.policy.manage' },
+      REQUEST: { LIST_ALL: 'taskflow.approvals.request.list_all' },
+      DELEGATION: { MANAGE: 'taskflow.approvals.delegation.manage' },
     },
     PROCUREMENT: {
       DASHBOARD: { READ: 'taskflow.procurement.dashboard.read' },

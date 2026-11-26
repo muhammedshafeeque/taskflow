@@ -212,6 +212,7 @@ export function buildPortalAdminNav(user: NavUser): NavItem[] {
 export function buildInboxNav(_user: NavUser): NavItem[] {
   return [
     { to: '/inbox', label: 'Inbox', icon: <InboxIcon />, end: true },
+    { to: '/approvals', label: 'Approvals', icon: <IssuesIcon /> },
     ...(canAny(_user, 'taskflow.self.profile.read', 'taskflow.self.leave.apply', 'taskflow.self.attendance.mark', 'taskflow.self.payslip.read', 'taskflow.self.expense.claim', 'taskflow.self.asset.read', 'taskflow.self.directory.read')
       ? [{ to: '/me', label: 'Me (HR self-service)', icon: <UsersIcon /> }]
       : []),
@@ -287,6 +288,7 @@ export function buildAccountsNav(user: NavUser): NavItem[] {
       'taskflow.accounts.ledger.read',
       'taskflow.accounts.invoice.list',
       'taskflow.accounts.expense.list',
+      'taskflow.accounts.expense.approve',
       'taskflow.accounts.report.read',
       'taskflow.cost_report.view',
       'taskflow.accounts.journal.read',
@@ -304,7 +306,7 @@ export function buildAccountsNav(user: NavUser): NavItem[] {
   if (allow(user, 'taskflow.accounts.invoice.list', 'taskflow.accounts.invoice.read')) {
     nav.push({ to: '/accounts/invoices', label: 'Invoices', icon: <PackageIcon /> });
   }
-  if (allow(user, 'taskflow.accounts.expense.list', 'taskflow.accounts.expense.read')) {
+  if (allow(user, 'taskflow.accounts.expense.list', 'taskflow.accounts.expense.read', 'taskflow.accounts.expense.approve')) {
     nav.push({ to: '/accounts/expenses', label: 'Expenses', icon: <TimesheetIcon /> });
   }
   if (allow(user, 'taskflow.cost_report.view')) {

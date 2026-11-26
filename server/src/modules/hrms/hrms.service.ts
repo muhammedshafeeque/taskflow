@@ -1,4 +1,5 @@
 import { type Reach, assertReaches, employeeFilter, reaches } from './dataScope';
+import { cancelForRecord, decideForRecord, isApprovalChainEnabled, submitForApproval } from '../approvals/approvals.service';
 import mongoose from 'mongoose';
 import { applyLeaveUsage, getBalances, workingDaysFor } from './policy.service';
 import { HrmsLeaveType } from './models/hrmsPolicy.model';
@@ -263,7 +264,7 @@ export async function listLeave(
     .lean();
 }
 
-export async function createLeave(workspaceId: string | null | undefined, input: Record<string, unknown>, reach: Reach = null) {
+export async function createLeave(workspaceId: string | null | undefined, input: Record<string, unknown>, reach: Reach = null, actorUserId?: string) {
   assertReaches(reach, input.employeeId);
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
@@ -313,10 +314,49 @@ export async function createLeave(workspaceId: string | null | undefined, input:
     days,
     reason: input.reason,
   });
+  if (await isApprovalChainEnabled(orgId, 'leave')) {
+    try {
+      await submitForApproval(orgId, 'leave', String(doc._id), actorUserId ?? (employee.userId ? String(employee.userId) : ''));
+    } catch (err) {
+      // No request without someone to approve it: undo, so the balance isn't held by a stuck request.
+      await HrmsLeaveRequest.deleteOne({ _id: doc._id });
+      throw err;
+    }
+  }
   return HrmsLeaveRequest.findById(doc._id).populate('employeeId', 'name employeeCode department').lean();
 }
 
+/**
+ * Approve, reject or cancel a leave request. With a leave approval chain turned on (Approvals → chains),
+ * approve/reject act on the chain and the leave is decided when the chain finishes.
+ */
 export async function decideLeave(
+  id: string,
+  workspaceId: string | null | undefined,
+  status: 'approved' | 'rejected' | 'cancelled',
+  userId?: string,
+  /** Refuse a request someone has already decided. */
+  onlyPending = false,
+  reach: Reach = null,
+  permissions?: string[]
+) {
+  const orgId = requireWorkspaceId(workspaceId);
+  if (await isApprovalChainEnabled(orgId, 'leave')) {
+    const leave = await HrmsLeaveRequest.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) }).select('employeeId status').lean();
+    if (!leave || !reaches(reach, leave.employeeId)) throw new ApiError(404, 'Leave request not found');
+    if (status === 'cancelled') {
+      await cancelForRecord(orgId, 'leave', id, userId, 'Leave cancelled');
+    } else if (leave.status === 'pending') {
+      if (!userId) throw new ApiError(401, 'Authentication required');
+      await decideForRecord(orgId, 'leave', id, { userId, permissions }, status === 'approved' ? 'approve' : 'reject');
+      return HrmsLeaveRequest.findById(id).populate('employeeId', 'name employeeCode department').lean();
+    }
+  }
+  return applyLeaveDecision(id, orgId, status, userId, onlyPending, reach);
+}
+
+/** Write a leave decision and its balance effect. Used directly by the approval engine. */
+export async function applyLeaveDecision(
   id: string,
   workspaceId: string | null | undefined,
   status: 'approved' | 'rejected' | 'cancelled',

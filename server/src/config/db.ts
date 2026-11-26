@@ -7,6 +7,7 @@ import { migrateOrganizationTenancyIfNeeded } from '../migrations/migrateOrganiz
 import { migrateUserOAuthIndexesIfNeeded } from '../migrations/migrateUserOAuthIndexes';
 import { migrateProjectMemberCommentPermissionsIfNeeded } from '../migrations/migrateProjectMemberCommentPermissions';
 import { migrateAttendanceDaysIfNeeded } from '../migrations/migrateAttendanceDays';
+import { migrateExpenseApprovePermissionIfNeeded } from '../migrations/migrateExpenseApprovePermission';
 import { migrateSalesRolePermissionsIfNeeded } from '../migrations/migrateSalesRolePermissions';
 import { migrateDataScopesIfNeeded } from '../migrations/migrateDataScopes';
 import '../modules/projects/projectDesignation.model';
@@ -32,6 +33,7 @@ export async function connectDb(): Promise<void> {
   await migrateAttendanceDaysIfNeeded().catch((e) => console.error('[migrate] attendance days failed:', e));
   await migrateSalesRolePermissionsIfNeeded().catch((e) => console.error('[migrate] sales role permissions failed:', e));
   await migrateDataScopesIfNeeded().catch((e) => console.error('[migrate] data scopes failed:', e));
+  await migrateExpenseApprovePermissionIfNeeded().catch((e) => console.error('[migrate] expense approve permission failed:', e));
 }
 
 export async function disconnectDb(): Promise<void> {
