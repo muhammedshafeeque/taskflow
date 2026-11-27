@@ -25,6 +25,25 @@ export const inviteUserSchema = z.object({
     email: z.string().email(),
     designationId: z.string().min(1).optional().nullable(),
     roleId: z.string().min(1),
+    /** Existing accounts: also change their role to roleId (a role applies in every workspace). */
+    applyRole: z.boolean().optional(),
+    /** Connect the account to an HR employee record (AUT-35). Default: link the one unlinked employee with this email. */
+    employee: z
+      .discriminatedUnion('mode', [
+        z.object({ mode: z.literal('auto') }),
+        z.object({ mode: z.literal('none') }),
+        z.object({ mode: z.literal('link'), employeeId: z.string().min(1) }),
+        z.object({
+          mode: z.literal('create'),
+          employeeCode: z.string().max(40).optional(),
+          department: z.string().max(120).optional(),
+          designation: z.string().max(120).optional(),
+          joinedDate: z.string().max(40).optional(),
+          managerId: z.string().max(40).optional(),
+          level: z.string().max(60).optional(),
+        }),
+      ])
+      .optional(),
   }),
 });
 

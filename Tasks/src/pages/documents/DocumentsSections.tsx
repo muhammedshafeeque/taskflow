@@ -3,6 +3,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { documentsApi } from '../../lib/api';
 import type { DocumentRecord } from '../../lib/api';
 import DocumentHistoryModal from '../../components/documents/DocumentHistoryModal';
+import PolicyAcceptanceModal from '../../components/documents/PolicyAcceptanceModal';
+import { canAny } from '../../utils/moduleAccess';
 import {
   Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextArea, TextInput, money, nameOf,
 } from '../../components/moduleKit';
@@ -22,7 +24,9 @@ function tableWrap(children: React.ReactNode) {
 }
 
 function DocList({ kind, title, subtitle, isTemplate = false }: { kind: string; title: string; subtitle: string; isTemplate?: boolean }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const canAssignPolicies = kind === 'policy' && canAny(user, 'taskflow.documents.policy.manage');
+  const [acceptanceFor, setAcceptanceFor] = useState<string | null>(null);
   const [rows, setRows] = useState<DocumentRecord[]>([]);
   const [editing, setEditing] = useState<Partial<DocumentRecord> | null>(null);
   const [historyFor, setHistoryFor] = useState<DocumentRecord | null>(null);
@@ -75,6 +79,7 @@ function DocList({ kind, title, subtitle, isTemplate = false }: { kind: string; 
                       {d.status === 'sent' && <button onClick={() => setStatus(d._id, 'signed')} className="text-emerald-500 hover:underline text-xs mr-3">Mark signed</button>}
                     </>
                   )}
+                  {canAssignPolicies && <button onClick={() => setAcceptanceFor(d._id)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Acceptance</button>}
                   {!isTemplate && <button onClick={() => setHistoryFor(d)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Sign & history</button>}
                   <button onClick={() => setEditing(d)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Edit</button>
                   <button onClick={() => remove(d._id)} className="text-rose-500 hover:underline text-xs">Delete</button>
@@ -113,6 +118,7 @@ function DocList({ kind, title, subtitle, isTemplate = false }: { kind: string; 
           <Field label="Content"><TextArea rows={5} value={editing.content ?? ''} onChange={(e) => setEditing({ ...editing, content: e.target.value })} /></Field>
         </Modal>
       )}
+      {acceptanceFor && <PolicyAcceptanceModal docId={acceptanceFor} onClose={() => setAcceptanceFor(null)} />}
       {historyFor && token && (
         <DocumentHistoryModal doc={historyFor} token={token} canManage onClose={() => setHistoryFor(null)} onChanged={load} />
       )}
@@ -127,7 +133,7 @@ export function DocumentsSows() {
   return <DocList kind="sow" title="SOWs" subtitle="Statements of work and delivery scopes." />;
 }
 export function DocumentsPolicies() {
-  return <DocList kind="policy" title="Policies" subtitle="Company policies and process documentation." />;
+  return <DocList kind="policy" title="Policies" subtitle="Company policies and process documentation. Use Acceptance to choose who must read and accept each one; editing the text asks them again." />;
 }
 export function DocumentsTemplates() {
   return <DocList kind="template" title="Templates" subtitle="Reusable templates. Use a template to spin up a new draft proposal." isTemplate />;

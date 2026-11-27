@@ -5,6 +5,7 @@ import { requireAnyPermission } from '../../middleware/requirePermission';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as ctrl from './documents.controller';
+import * as policyAcceptance from './policyAcceptance';
 
 const D = TASK_FLOW_PERMISSIONS.TASKFLOW.DOCUMENTS;
 
@@ -19,6 +20,8 @@ const anyList = [D.PROPOSAL.LIST, D.SOW.LIST, D.POLICY.LIST, D.TEMPLATE.LIST, D.
 const anyManage = [D.PROPOSAL.MANAGE, D.SOW.MANAGE, D.POLICY.MANAGE, D.TEMPLATE.MANAGE];
 
 const router = Router();
+const policyRead = [D.POLICY.LIST, D.POLICY.MANAGE];
+type PolicyReq = Request & { activeOrganizationId?: string; user?: { id: string } };
 router.use(authMiddleware);
 
 router.get('/dashboard', requireAnyPermission(readAny), asyncHandler(ctrl.getDashboard));
@@ -29,6 +32,19 @@ router.post('/documents/:id/clone', requireAnyPermission(anyManage), asyncHandle
 router.delete('/documents/:id', requireAnyPermission(anyManage), asyncHandler(ctrl.deleteDocument));
 
 type WsReq = Request & { activeOrganizationId?: string; user?: { id: string; name?: string } };
+// Policy read-and-accept (AUT-36): who must accept, who has, and reminders.
+router.get('/policy-audience', requireAnyPermission([D.POLICY.MANAGE]), asyncHandler(async (req: PolicyReq, res: Response) => {
+  res.json({ success: true, data: await policyAcceptance.audienceOptions(req.activeOrganizationId) });
+}));
+router.get('/documents/:id/acceptance', requireAnyPermission(policyRead), asyncHandler(async (req: PolicyReq, res: Response) => {
+  res.json({ success: true, data: await policyAcceptance.acceptanceReport(req.activeOrganizationId, req.params.id) });
+}));
+router.put('/documents/:id/acceptance/assignment', requireAnyPermission([D.POLICY.MANAGE]), asyncHandler(async (req: PolicyReq, res: Response) => {
+  res.json({ success: true, data: await policyAcceptance.saveAssignment(req.activeOrganizationId, req.params.id, req.body ?? {}, req.user!.id) });
+}));
+router.post('/documents/:id/acceptance/remind', requireAnyPermission([D.POLICY.MANAGE]), asyncHandler(async (req: PolicyReq, res: Response) => {
+  res.json({ success: true, data: await policyAcceptance.remindNow(req.activeOrganizationId, req.params.id, req.user!.id) });
+}));
 router.get('/documents/:id/versions', requireAnyPermission(anyList), asyncHandler(async (req: WsReq, res: Response) => {
   res.json({ success: true, data: await signing.listVersions(req.activeOrganizationId, req.params.id) });
 }));

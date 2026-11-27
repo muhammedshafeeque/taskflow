@@ -5,6 +5,7 @@ import { canAny } from '../../utils/moduleAccess';
 import { crmApi, type CrmPipeline, type CrmWebhook } from '../../lib/api';
 import ConfirmModal from '../../components/ConfirmModal';
 import DiscountLimitsSection from './DiscountLimitsSection';
+import StageRulesSection from './StageRulesSection';
 import { Chip, CrmShell, EmptyState, Field, Notice, btnDanger, btnPrimary, btnSecondary, errorOf, inputCls } from './crmKit';
 
 type Stage = CrmPipeline['stages'][number];
@@ -15,6 +16,8 @@ const WEBHOOK_EVENTS = [
   'lead.converted',
   'deal.won',
   'quote.sent',
+  'quote.accepted',
+  'quote.rejected',
   'issue.created',
   'issue.updated',
   'issue.status_changed',
@@ -143,6 +146,8 @@ export default function CrmSettings() {
           />
         ))}
       </section>
+
+      <StageRulesSection onError={setError} />
 
       <DiscountLimitsSection onError={setError} />
 

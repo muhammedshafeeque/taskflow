@@ -17,6 +17,7 @@ import {
   FiMenu,
   FiX,
   FiLifeBuoy,
+  FiFileText,
 } from 'react-icons/fi';
 import AtriumLogo from './AtriumLogo';
 import { APP_NAME } from '../brand';
@@ -63,6 +64,9 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
     { to: '/portal/status-reports', label: 'Status reports', icon: <FiList /> },
   ];
 
+  if (userHasPermission(perms, CUSTOMER_PERMISSIONS.QUOTE.QUOTE.LIST)) {
+    navItems.push({ to: '/portal/quotes', label: 'Quotations', icon: <FiFileText /> });
+  }
   if (userHasPermission(perms, CUSTOMER_PERMISSIONS.LEGACY.REQUEST.APPROVE)) {
     navItems.push({ to: '/portal/approval-queue', label: 'Approval Queue', icon: <FiCheckSquare /> });
   }

@@ -13,6 +13,14 @@ import {
 } from './models/hrmsPeople.model';
 import { assertValidManager, managerUserIdOf } from './managers';
 import { createWithCode } from './employeeCode';
+import { Role } from '../roles/role.model';
+import { User } from '../auth/user.model';
+import { OrganizationMember } from '../organizations/organizationMember.model';
+import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
+import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
+import { withRuleGainCheck } from '../auth/accessProfile';
+import type { GrantActor } from '../auth/grantGuard';
+import { requestAccount } from './accountLink';
 import { assertCanSetPay, payAccessFor, withoutPay } from './payAccess';
 import { getHrSettings } from './policy.service';
 import { type Reach, assertReaches, assertReachesEveryone, employeeFilter, reaches } from './dataScope';
@@ -297,10 +305,24 @@ export async function addInterview(ws: string | null | undefined, candidateId: s
 export async function hireCandidate(
   ws: string | null | undefined,
   candidateId: string,
-  input: { employeeCode?: string; joinedDate?: string; annualCtc?: number; currency?: string; designation?: string; managerId?: string; onboardingTemplateId?: string },
+  input: {
+    employeeCode?: string;
+    joinedDate?: string;
+    annualCtc?: number;
+    currency?: string;
+    designation?: string;
+    managerId?: string;
+    onboardingTemplateId?: string;
+    /**
+     * The new hire's sign-in account (AUT-35). create: make it now (needs the add-users permission);
+     * request: ask someone who can add users. Either way an existing account with that email is linked.
+     */
+    account?: { action?: 'create' | 'request' | 'none'; roleId?: string };
+  },
   actorId: string,
   permissions: string[],
-  reach: Reach = null
+  reach: Reach = null,
+  actorRole?: string
 ) {
   const access = payAccessFor(permissions);
   assertCanSetPay({ annualCtc: input.annualCtc }, access);
@@ -323,6 +345,20 @@ export async function hireCandidate(
       ? await HrmsChecklistTemplate.findOne({ _id: input.onboardingTemplateId, taskflowOrganizationId: orgOid }).select('kind active').lean()
       : null;
     if (!template || template.kind !== 'onboarding' || template.active === false) throw new ApiError(400, 'Choose an active onboarding template');
+  }
+
+  const accountAction = input.account?.action ?? 'none';
+  if (accountAction !== 'none') {
+    if (!['create', 'request'].includes(accountAction)) throw new ApiError(400, 'Account action must be create, request or none');
+    if (!c.email) throw new ApiError(400, 'Add the candidate’s email before asking for an account');
+    const roleId = input.account?.roleId;
+    if (roleId && !(isId(roleId) && (await Role.exists({ _id: roleId })))) throw new ApiError(400, 'Choose a valid role for the account');
+    if (accountAction === 'create') {
+      if (!roleId) throw new ApiError(400, 'Choose the role for the new account');
+      if (actorRole !== 'admin' && !userHasPermission(permissions, TASK_FLOW_PERMISSIONS.AUTH.USER.CREATE)) {
+        throw new ApiError(403, 'Creating accounts needs the add users permission. Choose "request an account" instead.');
+      }
+    }
   }
 
   const job = await HrmsJobOpening.findById(c.jobId).lean();
@@ -362,7 +398,79 @@ export async function hireCandidate(
   const checklist = input.onboardingTemplateId
     ? await startChecklist(String(orgOid), { employeeId: String(employee._id), templateId: input.onboardingTemplateId }, actorId)
     : null;
-  return { employee: withoutPay(employee.toObject(), access), checklist };
+  const account = await setUpHireAccount(String(orgOid), employee, accountAction, input.account?.roleId, { id: actorId, permissions, role: actorRole });
+  const fresh = await HrmsEmployee.findById(employee._id).lean();
+  return { employee: withoutPay(fresh ?? employee.toObject(), access), checklist, account };
+}
+
+type HireAccountResult = {
+  status: 'created' | 'linked' | 'requested' | 'none' | 'failed';
+  userId?: string;
+  message?: string;
+  role?: { applied: boolean; requested: string; current: string; message?: string };
+};
+
+/**
+ * After a hire: connect the new employee to a sign-in account (AUT-35). The hire itself never fails
+ * because of this; anything that goes wrong is reported, and turned into a request for an account.
+ */
+async function setUpHireAccount(
+  orgId: string,
+  employee: { _id: unknown; name: string; email?: string | null },
+  action: 'create' | 'request' | 'none',
+  roleId: string | undefined,
+  actor: GrantActor
+): Promise<HireAccountResult> {
+  if (action === 'none' || !employee.email) return { status: 'none' };
+  const employeeId = String(employee._id);
+  const email = String(employee.email).toLowerCase().trim();
+  const linkUser = async (userId: string) => {
+    const orgOid = toOrgOid(orgId);
+    if (await HrmsEmployee.exists({ taskflowOrganizationId: orgOid, userId, _id: { $ne: employee._id } })) {
+      throw new ApiError(409, 'That account is already linked to another employee');
+    }
+    // The linked account can fall under team or level access rules: checked like any other link.
+    await withRuleGainCheck(
+      orgOid,
+      actor,
+      () => HrmsEmployee.updateOne({ _id: employee._id }, { $set: { userId: new mongoose.Types.ObjectId(userId), 'accountRequest.status': 'done', 'accountRequest.doneAt': new Date() } }),
+      () => HrmsEmployee.updateOne({ _id: employee._id }, { $unset: { userId: 1 } })
+    );
+  };
+  try {
+    if (action === 'create') {
+      const { invite } = await import('../users/users.service');
+      try {
+        const out = await invite({ name: employee.name, email, roleId: roleId! }, orgId, actor);
+        const userId = String((out.user as { _id: unknown })._id);
+        await linkUser(userId);
+        return { status: out.inviteKind === 'new_user' ? 'created' : 'linked', userId, role: out.role, message: out.inviteKind === 'new_user' ? 'Account created; a set-password email was sent.' : out.role.message };
+      } catch (err) {
+        // Already in this workspace: just connect them.
+        if (err instanceof ApiError && err.statusCode === 409 && /already a member/.test(err.message)) {
+          const u = await User.findOne({ email }).select('_id').lean();
+          if (u) {
+            await linkUser(String(u._id));
+            return { status: 'linked', userId: String(u._id), message: 'This person already had an account in this workspace; it is now linked.' };
+          }
+        }
+        throw err;
+      }
+    }
+    // request: an account that already exists in this workspace is linked straight away.
+    const existing = await User.findOne({ email }).select('_id').lean();
+    if (existing && (await OrganizationMember.exists({ organization: toOrgOid(orgId), user: existing._id, status: 'active' }))) {
+      await linkUser(String(existing._id));
+      return { status: 'linked', userId: String(existing._id), message: 'This person already had an account in this workspace; it is now linked.' };
+    }
+    await requestAccount(orgId, employeeId, roleId, actor.id, { name: employee.name, email });
+    return { status: 'requested', message: 'People who can add users were asked to create the account.' };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not set up the account';
+    // Don't lose it: ask for the account instead.
+    await requestAccount(orgId, employeeId, roleId, actor.id, { name: employee.name, email }).catch(() => undefined);
+    return { status: 'failed', message: `${message}. An account request was raised instead.` };
+  }
 }
 
 // ── Appraisals ───────────────────────────────────────────────────────────

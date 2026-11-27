@@ -121,6 +121,8 @@ export default function CrmDealDetail() {
 
   async function moveTo(stageId: string) {
     if (!token || !canUpdate || stageId === String(deal.stageId)) return;
+    // A lost deal needs a reason: the close form asks for it and parks the deal in the lost stage.
+    if (stages.find((s) => s._id === stageId)?.isLost) return setClosing('lost');
     const res = await crmApi.moveDealStage(deal._id, stageId, token);
     if (!res.success) setNotice(errorOf(res, 'Could not move the deal.'));
     load();
@@ -764,7 +766,7 @@ function CloseDealForm({
         }}
       >
         <Field label={won ? 'What won it?' : 'Why was it lost?'} hint="Shows up in the dashboard's loss-reason breakdown — keep it short and consistent.">
-          <input autoFocus className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={won ? 'e.g. Best technical fit' : 'e.g. Price, Timing, Went with competitor'} />
+          <input autoFocus required={!won} className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={won ? 'e.g. Best technical fit' : 'e.g. Price, Timing, Went with competitor'} />
         </Field>
         <Field label="Competition notes">
           <textarea rows={3} className={inputCls} value={competitor} onChange={(e) => setCompetitor(e.target.value)} placeholder="Who else was in the running, and anything worth remembering." />

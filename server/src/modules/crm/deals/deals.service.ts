@@ -119,6 +119,88 @@ export async function deleteDeal(id: string, workspaceId: string | null | undefi
   return { deleted: true };
 }
 
+type DealDoc = InstanceType<typeof CrmDeal>;
+type PipelineStage = { _id?: mongoose.Types.ObjectId; name?: string; order: number; probability?: number; isWon?: boolean; isLost?: boolean };
+
+/**
+ * Every route that wins, loses or reopens a deal goes through here (AUT-32), so they all run the same
+ * steps: the stage moves to the pipeline's won/lost stage, probability follows the stage, a lost deal
+ * must say why, the workspace's stage rules are checked, and then commission, alerts and webhooks fire.
+ *
+ * `stageId` moves to that stage (its won/lost flag decides the status); `status` alone closes or
+ * reopens the deal in its pipeline.
+ */
+async function moveDeal(
+  orgId: string,
+  deal: DealDoc,
+  target: { stageId?: string; status?: 'open' | 'won' | 'lost' },
+  opts: { winReason?: unknown; lossReason?: unknown; enforceRules?: boolean; probability?: number } = {}
+) {
+  const pipeline = await CrmPipeline.findOne({ _id: deal.pipelineId, taskflowOrganizationId: toOrgOid(orgId) }).lean();
+  const stages = ((pipeline?.stages ?? []) as PipelineStage[]).slice().sort((a, b) => a.order - b.order);
+  const openStages = stages.filter((st) => !st.isWon && !st.isLost);
+  let stage: PipelineStage | undefined;
+  if (target.stageId) {
+    stage = stages.find((st) => String(st._id) === String(target.stageId));
+    if (!stage) throw new ApiError(400, 'Invalid stage');
+  } else if (target.status === 'won') stage = stages.find((st) => st.isWon);
+  else if (target.status === 'lost') stage = stages.find((st) => st.isLost);
+  else if (target.status === 'open') {
+    const current = stages.find((st) => String(st._id) === String(deal.stageId));
+    stage = current && !current.isWon && !current.isLost ? current : openStages[0];
+  }
+  const status: 'open' | 'won' | 'lost' = stage ? (stage.isWon ? 'won' : stage.isLost ? 'lost' : 'open') : (target.status ?? deal.status);
+
+  if (opts.enforceRules && stage) {
+    const { getStageRules, assertDealMove } = await import('../stageRules');
+    assertDealMove((await getStageRules(orgId)).deals, stages, deal.stageId, stage._id);
+  }
+  const { requireReason } = await import('../stageRules');
+  if (status === 'lost') deal.lossReason = requireReason(opts.lossReason ?? deal.lossReason, 'lost');
+  if (opts.winReason !== undefined) deal.winReason = String(opts.winReason ?? '').trim() || undefined;
+
+  const previous = deal.status;
+  if (stage?._id) deal.stageId = stage._id;
+  deal.status = status;
+  deal.probability = opts.probability ?? stage?.probability ?? (status === 'won' ? 100 : status === 'lost' ? 0 : deal.probability);
+  await deal.save();
+  if (status !== previous) await afterStatusChange(orgId, deal, previous);
+  return deal;
+}
+
+/** Commission, alerts and webhooks when a deal's status changes. */
+async function afterStatusChange(orgId: string, deal: DealDoc, previous: string) {
+  const id = String(deal._id);
+  if (deal.status === 'won') void accrueDealCommission(id).catch((err) => console.error('[commission]', err));
+  else if (previous === 'won') void voidDealCommission(id).catch(() => undefined);
+  if (deal.status === 'won' || deal.status === 'lost') {
+    void notifyUsers([deal.ownerId], deal.status === 'won' ? 'crm_deal_won' : 'crm_deal_lost', {
+      title: `Deal ${deal.status}: ${deal.title}`,
+      body: deal.status === 'lost' && deal.lossReason ? `${deal.currency} ${deal.value} · ${deal.lossReason}` : `${deal.currency} ${deal.value}`,
+      link: `/crm/deals/${id}`,
+    });
+  }
+  if (deal.status === 'won') {
+    try {
+      const { dispatchWebhook } = await import('../ecosystem/ecosystem.service');
+      await dispatchWebhook(orgId, 'deal.won', { dealId: id, title: deal.title, value: deal.value });
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
+/**
+ * Win a deal from another module (project created, quotation accepted). Already won: nothing to do.
+ * A lost deal is won again when the customer accepts after all.
+ */
+export async function winDeal(orgId: string, dealId: unknown, winReason?: string) {
+  if (!dealId || !mongoose.isValidObjectId(String(dealId))) return null;
+  const deal = await CrmDeal.findOne({ _id: dealId, taskflowOrganizationId: toOrgOid(orgId) });
+  if (!deal || deal.status === 'won') return deal;
+  return moveDeal(orgId, deal, { status: 'won' }, { winReason: deal.winReason || winReason });
+}
+
 export async function updateDeal(id: string, workspaceId: string | null | undefined, input: Record<string, unknown>) {
   const orgId = requireWorkspaceId(workspaceId);
   const { pickUpdateFields } = await import('../../../utils/pickUpdateFields');
@@ -126,12 +208,10 @@ export async function updateDeal(id: string, workspaceId: string | null | undefi
     'title',
     'value',
     'currency',
-    'stageId',
     'pipelineId',
     'accountId',
     'contactId',
     'ownerId',
-    'status',
     'expectedCloseDate',
     'lineItems',
     'probability',
@@ -143,69 +223,49 @@ export async function updateDeal(id: string, workspaceId: string | null | undefi
   for (const k of ['ownerId', 'accountId', 'contactId', 'expectedCloseDate'] as const) {
     if (k in $set && !$set[k]) $set[k] = null;
   }
-  // Closing a deal from the detail screen also parks it in the pipeline's won/lost stage.
-  if ((input.status === 'won' || input.status === 'lost') && !input.stageId) {
-    const current = await CrmDeal.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) }).select('pipelineId').lean();
-    const pipeline = current ? await CrmPipeline.findById(current.pipelineId).lean() : null;
-    const stage = pipeline?.stages?.find((st) => (input.status === 'won' ? st.isWon : st.isLost));
-    if (stage) {
-      $set.stageId = stage._id;
-      $set.probability = stage.probability ?? (input.status === 'won' ? 100 : 0);
+  const deal = await CrmDeal.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
+  if (!deal) throw new ApiError(404, 'Deal not found');
+  const status = input.status === undefined ? undefined : String(input.status);
+  if (status !== undefined && !['open', 'won', 'lost'].includes(status)) throw new ApiError(400, 'Status must be open, won or lost');
+  const stageId = input.stageId ? String(input.stageId) : undefined;
+  const pipelineChanged = $set.pipelineId !== undefined && String($set.pipelineId) !== String(deal.pipelineId);
+  const statusChanged = status !== undefined && status !== deal.status;
+  const stageChanged = stageId !== undefined && stageId !== String(deal.stageId);
+
+  // A lost deal must keep a reason: clearing it is refused.
+  if ('lossReason' in $set && deal.status === 'lost' && !statusChanged && !String($set.lossReason ?? '').trim()) {
+    throw new ApiError(400, 'Say why the deal was lost');
+  }
+  deal.set($set);
+  if (pipelineChanged) {
+    // Moving to another pipeline: the stage must belong to it; rules compare stages within one pipeline.
+    deal.stageId = stageId ? new mongoose.Types.ObjectId(stageId) : deal.stageId;
+    await deal.save();
+    if (stageId || statusChanged) {
+      await moveDeal(orgId, deal, { stageId, status: status as 'open' | 'won' | 'lost' | undefined }, { lossReason: input.lossReason, enforceRules: false });
     }
-  }
-  const previous = await CrmDeal.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) }).select('status').lean();
-  const updated = await CrmDeal.findOneAndUpdate(
-    { _id: id, taskflowOrganizationId: toOrgOid(orgId) },
-    { $set },
-    { new: true }
-  ).lean();
-  if (!updated) throw new ApiError(404, 'Deal not found');
-  const statusChanged = !!input.status && input.status !== previous?.status;
-  if (statusChanged && input.status === 'won') void accrueDealCommission(String(updated._id)).catch((err) => console.error('[commission]', err));
-  else if (statusChanged && previous?.status === 'won') void voidDealCommission(String(updated._id)).catch(() => undefined);
-  if (statusChanged && (input.status === 'won' || input.status === 'lost')) {
-    void notifyUsers([updated.ownerId], input.status === 'won' ? 'crm_deal_won' : 'crm_deal_lost', {
-      title: `Deal ${input.status}: ${updated.title}`,
-      body: `${updated.currency} ${updated.value}`,
-      link: `/crm/deals/${updated._id}`,
+  } else if (statusChanged || stageChanged) {
+    await moveDeal(orgId, deal, { stageId: stageChanged ? stageId : undefined, status: status as 'open' | 'won' | 'lost' | undefined }, {
+      lossReason: input.lossReason,
+      enforceRules: true,
+      probability: input.probability !== undefined ? Number(input.probability) : undefined,
     });
+  } else {
+    await deal.save();
   }
-  return updated;
+  return CrmDeal.findById(deal._id).lean();
 }
 
-export async function moveDealStage(id: string, workspaceId: string | null | undefined, stageId: string) {
+export async function moveDealStage(
+  id: string,
+  workspaceId: string | null | undefined,
+  stageId: string,
+  opts: { lossReason?: unknown; winReason?: unknown } = {}
+) {
   const orgId = requireWorkspaceId(workspaceId);
   const deal = await CrmDeal.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
   if (!deal) throw new ApiError(404, 'Deal not found');
-  const pipeline = await CrmPipeline.findById(deal.pipelineId);
-  const stage = pipeline?.stages?.find((s) => String((s as { _id?: unknown })._id) === stageId);
-  if (!stage) throw new ApiError(400, 'Invalid stage');
-  deal.stageId = new mongoose.Types.ObjectId(stageId);
-  deal.probability = (stage as { probability?: number }).probability ?? deal.probability;
-  if ((stage as { isWon?: boolean }).isWon) deal.status = 'won';
-  else if ((stage as { isLost?: boolean }).isLost) deal.status = 'lost';
-  else deal.status = 'open';
-  const previousStatus = (await CrmDeal.findById(deal._id).select('status').lean())?.status;
-  await deal.save();
-  if (deal.status !== previousStatus) {
-    if (deal.status === 'won') void accrueDealCommission(String(deal._id)).catch((err) => console.error('[commission]', err));
-    else if (previousStatus === 'won') void voidDealCommission(String(deal._id)).catch(() => undefined);
-  }
-  if (deal.status !== previousStatus && (deal.status === 'won' || deal.status === 'lost')) {
-    void notifyUsers([deal.ownerId], deal.status === 'won' ? 'crm_deal_won' : 'crm_deal_lost', {
-      title: `Deal ${deal.status}: ${deal.title}`,
-      body: `${deal.currency} ${deal.value}`,
-      link: `/crm/deals/${deal._id}`,
-    });
-  }
-  if (deal.status === 'won') {
-    try {
-      const { dispatchWebhook } = await import('../ecosystem/ecosystem.service');
-      await dispatchWebhook(orgId, 'deal.won', { dealId: String(deal._id), title: deal.title, value: deal.value });
-    } catch {
-      /* best-effort */
-    }
-  }
+  await moveDeal(orgId, deal, { stageId }, { lossReason: opts.lossReason, winReason: opts.winReason, enforceRules: true });
   return deal.toObject();
 }
 
@@ -237,8 +297,9 @@ export async function createProjectFromDeal(
     { title: deal.title, description: `Created from deal: ${deal.title}`, customerOrgId: deal.customerOrgId ? String(deal.customerOrgId) : undefined }
   );
   deal.projectId = new mongoose.Types.ObjectId(projectId);
-  deal.status = 'won';
   await deal.save();
+  // Same steps as any other win: won stage, commission, alert and webhook (AUT-32).
+  await winDeal(orgId, deal._id, 'Delivery project created');
   // Links the customer, quotes, contracts and invoices of the deal to the project.
   await runCommercialHandoff({
     workspaceId: orgId,
@@ -248,7 +309,7 @@ export async function createProjectFromDeal(
     createPortalOrg: false,
   });
   const project = await Project.findById(projectId).lean();
-  return { deal: deal.toObject(), project };
+  return { deal: await CrmDeal.findById(deal._id).lean(), project };
 }
 
 export async function getForecast(workspaceId: string | null | undefined, scope: Record<string, unknown> = {}) {

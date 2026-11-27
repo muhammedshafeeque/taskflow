@@ -22,6 +22,8 @@ import { roleTreePermissions } from '../auth/accessProfile';
 import { assertCanAssignRole, assertCanGrant, assertCanManageAdmin, assertNotSelf, type GrantActor } from '../auth/grantGuard';
 import { adminReset as adminResetTwoFactor } from '../auth/twoFactor.service';
 import { logAudit } from '../auditLogs/logAudit';
+import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
+import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -332,6 +334,10 @@ export type InviteOutcome = {
   inviteKind: 'new_user' | 'workspace_join';
   status: 200 | 201;
   user: unknown;
+  /** Whether the chosen role is the one the person now has (AUT-35). */
+  role: { applied: boolean; requested: string; current: string; message?: string };
+  /** What happened with the HR employee record. */
+  employee: import('../hrms/accountLink').EmployeeLinkResult;
 };
 
 export async function invite(
@@ -357,6 +363,28 @@ export async function invite(
     }).lean();
     if (membership?.status === 'active') {
       throw new ApiError(409, 'User is already a member of this workspace');
+    }
+
+    // A person has one role, used in every workspace they belong to. Never change it silently (AUT-35):
+    // only when the inviter asks for it, and is allowed to change roles; otherwise say so clearly.
+    const currentRoleId = existing.roleId ? String(existing.roleId) : null;
+    const currentRole = currentRoleId ? await Role.findById(currentRoleId).select('name').lean() : null;
+    let roleResult: InviteOutcome['role'];
+    if (currentRoleId === String(input.roleId)) {
+      roleResult = { applied: true, requested: role.name, current: role.name };
+    } else if (input.applyRole) {
+      if (!userHasPermission(actor.permissions, TASK_FLOW_PERMISSIONS.AUTH.USER.CHANGE_ROLE) && actor.role !== 'admin') {
+        throw new ApiError(403, "Changing an existing person's role needs the change role permission");
+      }
+      await update(String(existingId), { roleId: String(input.roleId) } as UpdateUserBody, actor, true);
+      roleResult = { applied: true, requested: role.name, current: role.name, message: `Role changed from ${currentRole?.name ?? 'none'} to ${role.name}. It applies in every workspace they belong to.` };
+    } else {
+      roleResult = {
+        applied: false,
+        requested: role.name,
+        current: currentRole?.name ?? 'none',
+        message: `${(existing as { name?: string }).name ?? 'This person'} already has an account with the role ${currentRole?.name ?? 'none'}, which applies in every workspace. Their role was not changed to ${role.name}; change it in Users if they should have it.`,
+      };
     }
 
     await upsertActiveOrgMember(organizationId, existingId);
@@ -405,9 +433,11 @@ export async function invite(
       organizationId
     );
 
-    logAudit({ userId: actor.id, action: 'user.workspace.add', resourceType: 'user', resourceId: existingUserId, meta: { organizationId } });
+    logAudit({ userId: actor.id, action: 'user.workspace.add', resourceType: 'user', resourceId: existingUserId, meta: { organizationId, roleApplied: roleResult.applied } });
+    const { connectEmployee } = await import('../hrms/accountLink');
+    const employee = await connectEmployee(String(organizationId), { id: existingUserId, email: normalizedEmail, name: (existing as { name?: string }).name ?? input.name.trim() }, input.employee, actor);
     const doc = await User.findById(existingId).select('-password').populate('roleId', 'name').lean();
-    return { inviteKind: 'workspace_join', status: 200, user: doc ?? existing };
+    return { inviteKind: 'workspace_join', status: 200, user: doc ?? existing, role: roleResult, employee };
   }
 
   if (process.env.MAX_USERS && parseInt(process.env.MAX_USERS) > 0) {
@@ -468,8 +498,10 @@ export async function invite(
 
   await addUserToWorkspaceProjectsIfFullAccess(String(user._id), user.permissions || [], organizationId);
 
+  const { connectEmployee } = await import('../hrms/accountLink');
+  const employee = await connectEmployee(String(organizationId), { id: String(user._id), email: normalizedEmail, name: input.name.trim() }, input.employee, actor);
   const doc = await User.findById(user._id).select('-password').populate('roleId', 'name').lean();
-  return { inviteKind: 'new_user', status: 201, user: doc ?? user.toObject() };
+  return { inviteKind: 'new_user', status: 201, user: doc ?? user.toObject(), role: { applied: true, requested: role.name, current: role.name }, employee };
 }
 
 /** Turn off someone's 2FA so they can sign in again. Weakening an admin's sign-in is reserved for admins. */

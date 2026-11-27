@@ -1,3 +1,4 @@
+import { Role } from '../roles/role.model';
 import { Router, type Request, type Response } from 'express';
 import { requireAnyPermission } from '../../middleware/requirePermission';
 import { asyncHandler } from '../../utils/asyncHandler';
@@ -87,10 +88,16 @@ r.get('/jobs/:id/candidates', asyncHandler(async (req: R, res) => ok(res, await 
 r.post('/candidates', requireAnyPermission([H.RECRUITMENT.MANAGE]), asyncHandler(async (req: R, res) => ok(res, await people.saveCandidate(ws(req), req.body ?? {}, undefined, await hr(req)))));
 r.patch('/candidates/:id', requireAnyPermission([H.RECRUITMENT.MANAGE]), asyncHandler(async (req: R, res) => ok(res, await people.saveCandidate(ws(req), req.body ?? {}, req.params.id, await hr(req)))));
 r.post('/candidates/:id/interviews', requireAnyPermission([H.RECRUITMENT.MANAGE]), asyncHandler(async (req: R, res) => ok(res, await people.addInterview(ws(req), req.params.id, req.body ?? {}, req.user!.id, await hr(req)))));
+/** Roles a hirer can suggest for the new hire's account (AUT-35): names only. */
+r.get(
+  '/hire/account-roles',
+  requireAnyPermission([H.RECRUITMENT.MANAGE]),
+  asyncHandler(async (_req: R, res) => ok(res, (await Role.find().select('name').sort({ name: 1 }).lean()).map((x) => ({ _id: String(x._id), name: x.name }))))
+);
 r.post(
   '/candidates/:id/hire',
   requireAnyPermission([H.RECRUITMENT.MANAGE]),
-  asyncHandler(async (req: R, res) => ok(res, await people.hireCandidate(ws(req), req.params.id, req.body ?? {}, req.user!.id, req.user!.permissions ?? [], await hr(req))))
+  asyncHandler(async (req: R, res) => ok(res, await people.hireCandidate(ws(req), req.params.id, req.body ?? {}, req.user!.id, req.user!.permissions ?? [], await hr(req), req.user!.role)))
 );
 
 // Appraisals

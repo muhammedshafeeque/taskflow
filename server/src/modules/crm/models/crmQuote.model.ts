@@ -3,6 +3,10 @@ import mongoose, { Document, Schema } from 'mongoose';
 export type CrmQuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
 export type CrmQuoteBillingType = 'fixed' | 'hourly' | 'milestone';
 
+/** Steps run after a quotation is accepted, in order (AUT-33). */
+export const QUOTE_HANDOFF_STEPS = ['account', 'contract', 'invoice', 'delivery', 'deal'] as const;
+export type QuoteHandoffStep = (typeof QUOTE_HANDOFF_STEPS)[number];
+
 export interface ICrmQuoteLine {
   /** Feature / module / deliverable name */
   description: string;
@@ -64,6 +68,29 @@ export interface ICrmQuote extends Document {
   notes?: string;
   createdBy: mongoose.Types.ObjectId;
   projectId?: mongoose.Types.ObjectId;
+  /**
+   * What happened after acceptance (AUT-33): each step of the handoff to billing and delivery, so a
+   * failure is visible and can be retried without duplicates.
+   */
+  handoff?: {
+    status: 'done' | 'failed';
+    steps: Array<{ key: QuoteHandoffStep; status: 'done' | 'failed' | 'skipped'; at: Date; refId?: string; error?: string }>;
+    failedStep?: QuoteHandoffStep;
+    error?: string;
+    attempts: number;
+    lastAttemptAt: Date;
+  };
+  /** How the quotation was accepted or rejected (AUT-32): by staff, or by the customer online. */
+  response?: {
+    decision: 'accepted' | 'rejected';
+    via: 'staff' | 'link' | 'portal';
+    name?: string;
+    email?: string;
+    note?: string;
+    at: Date;
+    userId?: mongoose.Types.ObjectId;
+    customerUserId?: mongoose.Types.ObjectId;
+  };
   /** Audit trail of status / send / content changes */
   history: ICrmQuoteHistoryEntry[];
   createdAt: Date;
@@ -108,6 +135,50 @@ const crmQuoteSchema = new Schema<ICrmQuote>(
     notes: { type: String },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     projectId: { type: Schema.Types.ObjectId, ref: 'Project' },
+    handoff: {
+      type: new Schema(
+        {
+          status: { type: String, enum: ['done', 'failed'], required: true },
+          steps: {
+            type: [
+              new Schema(
+                {
+                  key: { type: String, enum: QUOTE_HANDOFF_STEPS, required: true },
+                  status: { type: String, enum: ['done', 'failed', 'skipped'], required: true },
+                  at: { type: Date, required: true },
+                  refId: String,
+                  error: String,
+                },
+                { _id: false }
+              ),
+            ],
+            default: [],
+          },
+          failedStep: { type: String, enum: QUOTE_HANDOFF_STEPS },
+          error: String,
+          attempts: { type: Number, default: 0 },
+          lastAttemptAt: Date,
+        },
+        { _id: false }
+      ),
+      default: undefined,
+    },
+    response: {
+      type: new Schema(
+        {
+          decision: { type: String, enum: ['accepted', 'rejected'], required: true },
+          via: { type: String, enum: ['staff', 'link', 'portal'], required: true },
+          name: String,
+          email: String,
+          note: String,
+          at: { type: Date, required: true },
+          userId: { type: Schema.Types.ObjectId, ref: 'User' },
+          customerUserId: { type: Schema.Types.ObjectId, ref: 'CustomerUser' },
+        },
+        { _id: false }
+      ),
+      default: undefined,
+    },
     history: {
       type: [
         {

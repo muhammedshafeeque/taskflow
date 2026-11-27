@@ -1591,16 +1591,48 @@ export interface User {
   permissionOverrides?: { granted: string[]; revoked: string[] };
 }
 
+export type InviteEmployeeChoice =
+  | { mode: 'auto' }
+  | { mode: 'none' }
+  | { mode: 'link'; employeeId: string }
+  | { mode: 'create'; employeeCode?: string; department?: string; designation?: string; joinedDate?: string; managerId?: string; level?: string };
+
 export interface InviteUserBody {
   name: string;
   email: string;
   roleId: string;
+  /** Existing accounts: also change their role (a role applies in every workspace). */
+  applyRole?: boolean;
+  /** Connect to an HR employee record (AUT-35). */
+  employee?: InviteEmployeeChoice;
+}
+
+export interface EmployeeLinkResult {
+  status: 'linked' | 'created' | 'already_linked' | 'match_found' | 'none' | 'failed';
+  employeeId?: string;
+  message?: string;
 }
 
 /** Successful `/auth/users/invite` response includes `inviteKind` alongside `data`. */
 export type InviteUserApiResponse = ApiResponse<User> & {
   inviteKind?: 'new_user' | 'workspace_join';
+  role?: { applied: boolean; requested: string; current: string; message?: string };
+  employee?: EmployeeLinkResult;
 };
+
+/** A new hire waiting for a sign-in account (AUT-35). */
+export interface AccountRequest {
+  employeeId: string;
+  name: string;
+  email?: string;
+  designation?: string;
+  department?: string;
+  joinedDate?: string;
+  roleId: string | null;
+  roleName: string | null;
+  requestedBy: string | null;
+  requestedAt: string;
+}
 
 export interface UpdateUserBody {
   name?: string;
@@ -1620,6 +1652,8 @@ export const usersApi = {
     api.post<User>('/auth/users/invite', body, token) as Promise<InviteUserApiResponse>,
   updatePermissions: (id: string, overrides: { granted: string[]; revoked: string[] }, token: string) =>
     api.patch<User>(`/auth/users/${id}/permissions`, overrides, token),
+  accountRequests: (token: string) => api.get<AccountRequest[]>('/auth/users/account-requests', token),
+  dismissAccountRequest: (employeeId: string, token: string) => api.post(`/auth/users/account-requests/${employeeId}/cancel`, {}, token),
 };
 
 /** Catalog entries for role / user permission pickers (matches server ALL_PERMISSIONS). */
@@ -2610,6 +2644,66 @@ export interface CustomerOrgMatch {
   reasons: LeadDuplicateReason[];
 }
 
+/** How leads and deals may move between stages (AUT-32). */
+export interface CrmStageRules {
+  leads: { allowSkip: boolean; allowBack: boolean };
+  deals: { allowSkip: boolean; allowBack: boolean };
+  updatedAt: string | null;
+}
+
+export type QuoteHandoffStep = 'account' | 'contract' | 'invoice' | 'delivery' | 'deal';
+/** What happened after a quotation was accepted (AUT-33): each step to billing and delivery. */
+export interface CrmQuoteHandoff {
+  status: 'done' | 'failed';
+  steps: Array<{ key: QuoteHandoffStep; status: 'done' | 'failed' | 'skipped'; at: string; refId?: string; error?: string }>;
+  failedStep?: QuoteHandoffStep;
+  error?: string;
+  attempts: number;
+  lastAttemptAt: string;
+}
+
+/** How a quotation was accepted or rejected: by staff, or by the customer online. */
+export interface CrmQuoteResponse {
+  decision: 'accepted' | 'rejected';
+  via: 'staff' | 'link' | 'portal';
+  name?: string;
+  email?: string;
+  note?: string;
+  at: string;
+}
+
+/** A quotation as the customer sees it (secure link or portal). */
+export interface CustomerQuoteView {
+  _id: string;
+  title: string;
+  status: 'sent' | 'accepted' | 'rejected' | 'expired';
+  company: string;
+  customer: string;
+  issueDate?: string;
+  validUntil?: string;
+  currency: string;
+  lineItems: Array<{ description: string; billingType?: string; quantity?: number; unitPrice?: number; discountPercent?: number; taxRate?: number; amount?: number }>;
+  subtotal: number;
+  discountAmount?: number;
+  taxTotal?: number;
+  total: number;
+  notes?: string;
+  canRespond: boolean;
+  response: Pick<CrmQuoteResponse, 'decision' | 'via' | 'name' | 'at' | 'note'> | null;
+}
+
+export const publicQuoteApi = {
+  get: (token: string) => api.get<CustomerQuoteView>(`/public/quotes/${encodeURIComponent(token)}`),
+  respond: (token: string, body: { decision: 'accept' | 'reject'; name: string; email?: string; note?: string }) =>
+    api.post<CustomerQuoteView>(`/public/quotes/${encodeURIComponent(token)}/respond`, body),
+};
+
+export const customerQuotesApi = {
+  list: (token: string) => api.get<CustomerQuoteView[]>('/customer/quotes', token),
+  respond: (id: string, body: { decision: 'accept' | 'reject'; note?: string }, token: string) =>
+    api.post<CustomerQuoteView>(`/customer/quotes/${id}/respond`, body, token),
+};
+
 /** Quotation discount limits (AUT-31). `myLimit` null = not limited. */
 export interface CrmDiscountPolicy {
   enabled: boolean;
@@ -2745,6 +2839,8 @@ export interface CrmQuote {
   issueDate?: string;
   validUntil?: string;
   projectId?: string;
+  handoff?: CrmQuoteHandoff;
+  response?: CrmQuoteResponse;
   history?: CrmQuoteHistoryEntry[];
   createdBy?: string | { _id: string; name?: string; email?: string };
   createdAt?: string;
@@ -3003,7 +3099,13 @@ export const crmApi = {
   createDeal: (data: Partial<CrmDeal>, token: string) => api.post<CrmDeal>('/crm/deals', data, token),
   updateDeal: (id: string, data: Partial<CrmDeal>, token: string) => api.patch<CrmDeal>(`/crm/deals/${id}`, data, token),
   deleteDeal: (id: string, token: string) => api.delete(`/crm/deals/${id}`, token),
-  moveDealStage: (id: string, stageId: string, token: string) => api.post(`/crm/deals/${id}/move-stage`, { stageId }, token),
+  moveDealStage: (id: string, stageId: string, token: string, extra?: { lossReason?: string; winReason?: string }) =>
+    api.post(`/crm/deals/${id}/move-stage`, { stageId, ...extra }, token),
+  stageRules: (token: string) => api.get<CrmStageRules>('/crm/stage-rules', token),
+  saveStageRules: (data: Partial<Pick<CrmStageRules, 'leads' | 'deals'>>, token: string) => api.put<CrmStageRules>('/crm/stage-rules', data, token),
+  retryQuoteHandoff: (id: string, token: string) =>
+    api.post<{ quote: CrmQuote; handoff: { status: 'done' | 'failed'; failedStep?: QuoteHandoffStep; error?: string } }>(`/crm/quotes/${id}/handoff/retry`, {}, token),
+  quoteResponseLink: (id: string, token: string) => api.get<{ url: string }>(`/crm/quotes/${id}/response-link`, token),
   discountPolicy: (token: string) => api.get<CrmDiscountPolicy>('/crm/discount-policy', token),
   saveDiscountPolicy: (data: Partial<Pick<CrmDiscountPolicy, 'enabled' | 'defaultMaxPercent' | 'roleLimits' | 'levelLimits'>>, token: string) =>
     api.put<CrmDiscountPolicy>('/crm/discount-policy', data, token),

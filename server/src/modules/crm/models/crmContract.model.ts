@@ -11,6 +11,8 @@ export interface ICrmContract extends Document {
   customerOrgId?: mongoose.Types.ObjectId;
   dealId?: mongoose.Types.ObjectId;
   projectId?: mongoose.Types.ObjectId;
+  /** The accepted quotation this draft contract was made from (one contract per quotation). */
+  quoteId?: mongoose.Types.ObjectId;
   title: string;
   kind: CrmContractKind;
   value: number;
@@ -40,6 +42,7 @@ const crmContractSchema = new Schema<ICrmContract>(
     customerOrgId: { type: Schema.Types.ObjectId, ref: 'CustomerOrg', index: true },
     dealId: { type: Schema.Types.ObjectId, ref: 'CrmDeal' },
     projectId: { type: Schema.Types.ObjectId, ref: 'Project' },
+    quoteId: { type: Schema.Types.ObjectId, ref: 'CrmQuote' },
     title: { type: String, required: true },
     kind: { type: String, enum: ['msa', 'retainer', 'amc', 'hourly', 'other'], default: 'other', index: true },
     value: { type: Number, default: 0 },
@@ -67,5 +70,8 @@ const crmContractSchema = new Schema<ICrmContract>(
 
 crmContractSchema.index({ taskflowOrganizationId: 1, kind: 1, status: 1 });
 crmContractSchema.index({ taskflowOrganizationId: 1, renewalDate: 1 });
+
+// Retrying a quotation's handoff must never make a second contract for it (AUT-33).
+crmContractSchema.index({ quoteId: 1 }, { unique: true, partialFilterExpression: { quoteId: { $type: 'objectId' } } });
 
 export const CrmContract = mongoose.model<ICrmContract>('CrmContract', crmContractSchema);

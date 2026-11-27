@@ -14,7 +14,8 @@ import {
   FULL_PROJECT_ROLE_PERMISSION_CODES,
 } from '../../constants/permissions';
 import { mapLegacyProjectOrGlobalPermissions } from '../../shared/constants/legacyPermissionMap';
-import { PROJECT_PERMISSIONS as PROJECT_PERMISSION_CODES } from '../../shared/constants/permissions';
+import { PROJECT_PERMISSIONS as PROJECT_PERMISSION_CODES, TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
+import { usersWithPermission } from '../auth/usersWithPermission';
 import * as inboxService from '../inbox/inbox.service';
 import { renderProjectInviteEmail } from '../../services/email.service';
 import { env } from '../../config/env';
@@ -400,12 +401,12 @@ export async function acceptInvitation(invitationId: string, userId: string): Pr
     metadata: { projectId, inviteeId, invitationId },
   }).catch(() => {});
 
-  const superAdminRole = await Role.findOne({ name: 'Super Admin' }).select('_id').lean();
-  if (superAdminRole) {
-    const superAdmins = await User.find({ roleId: superAdminRole._id }).select('_id').lean();
-    const recipientIds = superAdmins
-      .map((u) => u._id.toString())
-      .filter((id) => id !== inviterId);
+  // People who oversee every project hear about it too: found by permission, never by a role's name (AUT-34).
+  const projectDoc = await Project.findById(projectId).select('taskflowOrganizationId').lean();
+  const workspaceId = projectDoc?.taskflowOrganizationId ? String(projectDoc.taskflowOrganizationId) : null;
+  const overseers = await usersWithPermission(TASK_FLOW_PERMISSIONS.TASKFLOW.PROJECT.LIST_ALL, workspaceId);
+  {
+    const recipientIds = [...new Set(overseers)].filter((id) => id !== inviterId && id !== userId);
     const superAdminBody = `${inviteeName} accepted an invitation to the project "${projectName}".`;
     for (const toUserId of recipientIds) {
       await inboxService.createMessage({

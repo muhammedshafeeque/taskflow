@@ -1,4 +1,6 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
+import { listAccountRequests, cancelAccountRequest } from '../hrms/accountLink';
+import { requireWorkspaceId } from '../crm/crmWorkspace';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import { requirePermission } from '../../middleware/requirePermission';
 import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
@@ -20,6 +22,21 @@ router.use(authMiddleware);
 router.use(requireTaskflowUser);
 
 router.get('/', requirePermission(TASK_FLOW_PERMISSIONS.AUTH.USER.LIST), asyncHandler(getUsers));
+// New hires waiting for an account (AUT-35): hiring asked, someone who adds users creates it.
+router.get(
+  '/account-requests',
+  requirePermission(TASK_FLOW_PERMISSIONS.AUTH.USER.CREATE),
+  asyncHandler(async (req: Request & { activeOrganizationId?: string }, res: Response) => {
+    res.json({ success: true, data: await listAccountRequests(requireWorkspaceId(req.activeOrganizationId)) });
+  })
+);
+router.post(
+  '/account-requests/:employeeId/cancel',
+  requirePermission(TASK_FLOW_PERMISSIONS.AUTH.USER.CREATE),
+  asyncHandler(async (req: Request & { activeOrganizationId?: string; user?: { id: string } }, res: Response) => {
+    res.json({ success: true, data: await cancelAccountRequest(requireWorkspaceId(req.activeOrganizationId), req.params.employeeId, req.user!.id) });
+  })
+);
 router.get('/:id', ...userIdParamHandler, requirePermission(TASK_FLOW_PERMISSIONS.AUTH.USER.READ), asyncHandler(getUserById));
 router.post('/invite', requirePermission(TASK_FLOW_PERMISSIONS.AUTH.USER.CREATE), ...inviteUserHandler);
 router.patch('/:id', requirePermission(TASK_FLOW_PERMISSIONS.AUTH.USER.UPDATE), updateUserHandler);

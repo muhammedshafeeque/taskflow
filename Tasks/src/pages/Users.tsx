@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { usersApi, rolesApi, type User, type Role, type UpdateUserBody } from '../lib/api';
+import { usersApi, rolesApi, type User, type Role, type UpdateUserBody, type AccountRequest, type InviteEmployeeChoice } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/dateFormat';
 import { EditIcon, RolesIcon } from '../components/icons/NavigationIcons';
 import { userHasPermission } from '../utils/permissions';
@@ -45,7 +45,10 @@ export default function Users() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', roleId: '' });
+  const emptyForm = { name: '', email: '', roleId: '', applyRole: false, employeeMode: 'auto' as 'auto' | 'create' | 'none' | 'link', employeeId: '', department: '', designation: '' };
+  const [form, setForm] = useState(emptyForm);
+  const [inviteNotice, setInviteNotice] = useState<{ tone: 'ok' | 'warn'; lines: string[] } | null>(null);
+  const [requests, setRequests] = useState<AccountRequest[]>([]);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
@@ -67,6 +70,19 @@ export default function Users() {
   const canListRoles = userHasPermission(tfPerms, TASK_FLOW_PERMISSIONS.AUTH.ROLE.MANAGE_ALL);
   const canSetAccountType = currentUser?.role === 'admin' && editUser?._id !== currentUser?.id;
   const atLicenseLimit = false; // license != null && license.maxUsers != null && license.userCount >= license.maxUsers;
+
+  function loadRequests() {
+    if (!token || !canInvite) return;
+    void usersApi.accountRequests(token).then((r) => r.success && r.data && setRequests(r.data));
+  }
+
+  useEffect(loadRequests, [token, workspaceKey, canInvite]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function inviteFor(r: AccountRequest) {
+    setError('');
+    setForm({ ...emptyForm, name: r.name, email: r.email ?? '', roleId: r.roleId ?? '', employeeMode: 'link', employeeId: r.employeeId });
+    setShowInvite(true);
+  }
 
   function loadUsers() {
     if (!token) return;
@@ -145,19 +161,36 @@ export default function Users() {
     }
     setSubmitting(true);
     setError('');
+    const employee: InviteEmployeeChoice =
+      form.employeeMode === 'link'
+        ? { mode: 'link', employeeId: form.employeeId }
+        : form.employeeMode === 'create'
+          ? { mode: 'create', department: form.department.trim() || undefined, designation: form.designation.trim() || undefined }
+          : { mode: form.employeeMode };
     const res = await usersApi.invite(
       {
         name: form.name.trim(),
         email: form.email.trim(),
         roleId: form.roleId,
+        applyRole: form.applyRole || undefined,
+        employee,
       },
       token
     );
     setSubmitting(false);
     if (res.success) {
       setShowInvite(false);
-      setForm({ name: '', email: '', roleId: '' });
+      setForm(emptyForm);
+      // Say what happened: the role (an existing account keeps its own unless asked) and the HR record.
+      const lines: string[] = [res.inviteKind === 'workspace_join' ? `${form.name.trim()} already had an account and was added to this workspace.` : `Invite sent to ${form.email.trim()}.`];
+      if (res.role?.message) lines.push(res.role.message);
+      const emp = res.employee;
+      if (emp?.status === 'linked' || emp?.status === 'already_linked') lines.push('Linked to their employee record in HR.');
+      else if (emp?.status === 'created') lines.push('Employee record created in HR and linked.');
+      else if (emp?.message) lines.push(emp.message);
+      setInviteNotice({ tone: res.role?.applied === false || emp?.status === 'failed' || emp?.status === 'match_found' ? 'warn' : 'ok', lines });
       loadUsers();
+      loadRequests();
       // if (token && (userHasPermission(tfPerms, TASK_FLOW_PERMISSIONS.TASKFLOW.LICENSE.VIEW) || currentUser?.role === 'admin')) {
       //   adminApi.getLicense(token).then((r) => r.success && r.data && setLicense(r.data));
       // }
@@ -239,7 +272,7 @@ export default function Users() {
               onClick={() => {
                 setShowInvite(true);
                 setError('');
-                setForm({ name: '', email: '', roleId: '' });
+                setForm(emptyForm);
               }}
               disabled={atLicenseLimit}
               title={atLicenseLimit ? 'User limit reached' : undefined}
@@ -250,6 +283,48 @@ export default function Users() {
           )}
         </div>
       </div>
+
+      {inviteNotice && (
+        <div
+          role="status"
+          className={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${inviteNotice.tone === 'warn' ? 'border-amber-500/40 bg-amber-500/5' : 'border-emerald-500/40 bg-emerald-500/5'}`}
+        >
+          <div className="space-y-1">{inviteNotice.lines.map((l, i) => <p key={i}>{l}</p>)}</div>
+          <button type="button" className="text-xs text-[color:var(--text-muted)] hover:underline" onClick={() => setInviteNotice(null)}>Dismiss</button>
+        </div>
+      )}
+
+      {canInvite && requests.length > 0 && (
+        <section aria-label="Accounts requested for new hires" className="rounded-xl border border-[color:var(--accent)]/30 bg-[color:var(--accent)]/5 px-4 py-3 space-y-2">
+          <p className="text-sm font-semibold">New hires waiting for an account</p>
+          <ul className="divide-y divide-[color:var(--border-subtle)]">
+            {requests.map((r) => (
+              <li key={r.employeeId} className="py-2 flex flex-wrap items-center justify-between gap-2 text-sm">
+                <div className="min-w-0">
+                  <p className="font-medium">{r.name} <span className="text-[color:var(--text-muted)] font-normal">{r.email}</span></p>
+                  <p className="text-[12px] text-[color:var(--text-muted)]">
+                    {[r.designation, r.department, r.roleName ? `suggested role ${r.roleName}` : null, r.requestedBy ? `asked by ${r.requestedBy}` : null].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" className="btn-primary px-3 py-1.5 rounded-lg text-xs" onClick={() => inviteFor(r)}>Create account</button>
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 rounded-lg border border-[color:var(--border-subtle)] text-xs"
+                    onClick={async () => {
+                      if (!token) return;
+                      await usersApi.dismissAccountRequest(r.employeeId, token);
+                      loadRequests();
+                    }}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="flex flex-col sm:flex-row gap-3">
         <input
@@ -415,7 +490,7 @@ export default function Users() {
                 onClick={() => {
                   setShowInvite(true);
                   setError('');
-                  setForm({ name: '', email: '', roleId: '' });
+                  setForm(emptyForm);
                 }}
                 className="btn-primary mt-4 px-4 py-2 rounded-lg text-sm"
               >
@@ -438,9 +513,9 @@ export default function Users() {
             <div className="p-6 lg:p-8">
               <h2 className="text-lg font-semibold text-[color:var(--text-primary)] mb-2">Invite user</h2>
               <p className="text-sm text-[color:var(--text-muted)] mb-6">
-                If this email is not registered yet, they receive a temporary password by email and must change it on first
-                login. If they already have an account, they are added to this workspace and notified by email, inbox, and any
-                connected channels — no new password is sent.
+                If this email is not registered yet, they get an email with a link to set their password. If they already have
+                an account, they are added to this workspace and notified; no new password is sent, and they keep their own
+                role unless you change it below (a role applies in every workspace).
               </p>
               <form onSubmit={handleInvite} className="space-y-4">
                 {error && (
@@ -485,6 +560,38 @@ export default function Users() {
                       </option>
                     ))}
                   </select>
+                </div>
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" className="mt-0.5" checked={form.applyRole} onChange={(e) => setForm((f) => ({ ...f, applyRole: e.target.checked }))} />
+                  <span>
+                    If they already have an account, change their role to this one too
+                    <span className="block text-[12px] text-[color:var(--text-muted)]">Their role applies in every workspace they belong to.</span>
+                  </span>
+                </label>
+                <div>
+                  <label className="block text-sm font-medium text-[color:var(--text-primary)] mb-1.5">Employee record in HR</label>
+                  {form.employeeMode === 'link' ? (
+                    <p className="text-sm text-[color:var(--text-muted)]">
+                      Links to the new hire's employee record.{' '}
+                      <button type="button" className="text-[color:var(--accent)] hover:underline" onClick={() => setForm((f) => ({ ...f, employeeMode: 'auto', employeeId: '' }))}>Change</button>
+                    </p>
+                  ) : (
+                    <select
+                      value={form.employeeMode}
+                      onChange={(e) => setForm((f) => ({ ...f, employeeMode: e.target.value as typeof f.employeeMode }))}
+                      className="w-full px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
+                    >
+                      <option value="auto">Link the employee with this email, if there is one</option>
+                      <option value="create">Create an employee record for them</option>
+                      <option value="none">Don't connect to HR</option>
+                    </select>
+                  )}
+                  {form.employeeMode === 'create' && (
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <input value={form.department} onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))} placeholder="Department" aria-label="Department" className="px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm" />
+                      <input value={form.designation} onChange={(e) => setForm((f) => ({ ...f, designation: e.target.value }))} placeholder="Designation" aria-label="Designation" className="px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm" />
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-3 pt-2">
                   <button

@@ -33,6 +33,8 @@ export interface IBillingInvoice extends Document {
   customerOrgId?: mongoose.Types.ObjectId;
   subscriptionId?: mongoose.Types.ObjectId;
   contractId?: mongoose.Types.ObjectId;
+  /** The accepted quotation this draft invoice was made from (one invoice per quotation). */
+  sourceQuoteId?: mongoose.Types.ObjectId;
   projectId?: mongoose.Types.ObjectId;
   number: string;
   status: BillingInvoiceStatus;
@@ -91,6 +93,7 @@ const billingInvoiceSchema = new Schema<IBillingInvoice>(
     customerOrgId: { type: Schema.Types.ObjectId, ref: 'CustomerOrg', index: true },
     subscriptionId: { type: Schema.Types.ObjectId, ref: 'BillingSubscription' },
     contractId: { type: Schema.Types.ObjectId, ref: 'CrmContract' },
+    sourceQuoteId: { type: Schema.Types.ObjectId, ref: 'CrmQuote' },
     projectId: { type: Schema.Types.ObjectId, ref: 'Project' },
     number: { type: String, required: true },
     status: {
@@ -130,6 +133,8 @@ const billingInvoiceSchema = new Schema<IBillingInvoice>(
 );
 
 billingInvoiceSchema.index({ taskflowOrganizationId: 1, number: 1 }, { unique: true });
+// Retrying a quotation's handoff must never make a second invoice for it (AUT-33).
+billingInvoiceSchema.index({ sourceQuoteId: 1 }, { unique: true, partialFilterExpression: { sourceQuoteId: { $type: 'objectId' } } });
 billingInvoiceSchema.index({ taskflowOrganizationId: 1, status: 1, dueDate: 1 });
 
 export const BillingInvoice = mongoose.model<IBillingInvoice>('BillingInvoice', billingInvoiceSchema);

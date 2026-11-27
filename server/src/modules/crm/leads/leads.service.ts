@@ -448,6 +448,11 @@ export async function createLead(
   await applyCampaignAttribution(orgId, fields);
   const title = String(fields.title ?? '').trim();
   if (!title) throw new ApiError(400, 'Title is required');
+  if (fields.status === 'converted') throw new ApiError(400, 'Convert the lead to a deal to mark it converted');
+  if (fields.status === 'unqualified') {
+    const { requireReason } = await import('../stageRules');
+    fields.disqualifyReason = userId ? requireReason(fields.disqualifyReason, 'unqualified') : String(fields.disqualifyReason ?? '').trim() || 'Marked unqualified by automated capture';
+  }
   // People get a warning with the match and must confirm; automated capture (bots, web forms) is never blocked.
   if (opts.checkDuplicates && bool(input.ignoreDuplicates) !== true) {
     const leads = await findLeadDuplicates(orgId, duplicateCandidate(fields));
@@ -499,6 +504,24 @@ export async function updateLead(
     throw new ApiError(400, 'Converted leads cannot change status');
   }
   const fields = pickLeadFields(input, { allowStatus: existing.status !== 'converted' });
+  const nextStatus = fields.status as CrmLeadStatus | undefined;
+  if (nextStatus && nextStatus !== existing.status) {
+    // People follow the workspace's stage rules (AUT-32); automated capture (no user) may set any stage.
+    if (userId) {
+      const { getStageRules, assertLeadMove } = await import('../stageRules');
+      assertLeadMove((await getStageRules(orgId)).leads, existing.status as CrmLeadStatus, nextStatus);
+    } else if (nextStatus === 'converted') {
+      delete fields.status;
+    }
+  }
+  const becomingUnqualified = nextStatus === 'unqualified' && existing.status !== 'unqualified';
+  const clearingReason = existing.status === 'unqualified' && !nextStatus && input.disqualifyReason !== undefined;
+  if (becomingUnqualified || clearingReason) {
+    // An unqualified lead says why; automated capture records that it decided.
+    const given = fields.disqualifyReason ?? (input.disqualifyReason === undefined ? existing.disqualifyReason : undefined);
+    const { requireReason } = await import('../stageRules');
+    fields.disqualifyReason = userId ? requireReason(given, 'unqualified') : String(given ?? '').trim() || 'Marked unqualified by automated capture';
+  }
   await applyCampaignAttribution(orgId, fields);
   const score = applyScore(fields, existing.toObject() as unknown as Record<string, unknown>);
   fields.score = score;

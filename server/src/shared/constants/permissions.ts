@@ -493,6 +493,14 @@ export const CUSTOMER_PERMISSIONS = {
     },
   },
 
+  /** Quotations sent to the customer's organisation (AUT-32). */
+  QUOTE: {
+    QUOTE: {
+      LIST: 'customer.quote.quote.list',
+      RESPOND: 'customer.quote.quote.respond',
+    },
+  },
+
   MEMBER: {
     ORG_MEMBER: {
       READ: 'customer.member.org_member.read',

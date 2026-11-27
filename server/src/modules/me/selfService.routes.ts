@@ -25,6 +25,7 @@ import { notifyUser } from '../notifications/notificationDispatch.service';
 import { isApprovalChainEnabled } from '../approvals/approvals.service';
 import { usersWithPermission } from '../auth/usersWithPermission';
 import { getAccountsSettings } from '../ledger/ledger.service';
+import * as policyAcceptance from '../documents/policyAcceptance';
 
 /**
  * Self-service for any employee: everything here is scoped to the signed-in
@@ -61,6 +62,17 @@ const ok = (res: Response, data: unknown) => res.json({ success: true, data });
 
 export const selfServiceRouter = Router();
 const r = selfServiceRouter;
+
+// Policies to read and accept (AUT-36). Anyone with self-service sees the ones assigned to them.
+const anySelf = Object.values(S).flatMap((g) => Object.values(g as Record<string, string>));
+r.get('/policies', requireAnyPermission(anySelf), loadEmployee, asyncHandler(async (req: R, res) => ok(res, await policyAcceptance.myPolicies(req.activeOrganizationId, req.employee!))));
+r.get('/policies/:id', requireAnyPermission(anySelf), loadEmployee, asyncHandler(async (req: R, res) => ok(res, await policyAcceptance.myPolicy(req.activeOrganizationId, req.employee!, req.params.id))));
+r.post(
+  '/policies/:id/accept',
+  requireAnyPermission(anySelf),
+  loadEmployee,
+  asyncHandler(async (req: R, res) => ok(res, await policyAcceptance.acceptPolicy(req.activeOrganizationId, req.employee!, req.user!.id, req.params.id, (req.body as { version?: unknown } | undefined)?.version)))
+);
 
 r.get(
   '/profile',

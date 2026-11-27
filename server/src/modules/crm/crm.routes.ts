@@ -93,6 +93,11 @@ router.get(
 );
 router.put('/discount-policy', requirePermission(P.SETTINGS.MANAGE), asyncHandler(crm.updateDiscountPolicyHandler));
 router.get('/quotes', requirePermission(P.QUOTE.LIST), asyncHandler(crm.listQuotes));
+router.get('/quotes/:id/response-link', requirePermission(P.QUOTE.UPDATE), asyncHandler(crm.getQuoteResponseLink));
+router.post('/quotes/:id/handoff/retry', requirePermission(P.QUOTE.UPDATE), asyncHandler(crm.retryQuoteHandoff));
+// Stage rules (AUT-32): readable by anyone working leads or deals, changed by CRM settings managers.
+router.get('/stage-rules', requireAnyPermission([P.LEAD.LIST, P.DEAL.LIST, P.SETTINGS.MANAGE]), asyncHandler(crm.getStageRulesHandler));
+router.put('/stage-rules', requirePermission(P.SETTINGS.MANAGE), asyncHandler(crm.updateStageRulesHandler));
 router.post('/quotes', requirePermission(P.QUOTE.CREATE), asyncHandler(crm.createQuote));
 router.get('/quotes/:id', requireAnyPermission([P.QUOTE.READ, P.QUOTE.LIST]), asyncHandler(crm.getQuote));
 router.patch('/quotes/:id', requirePermission(P.QUOTE.UPDATE), asyncHandler(crm.updateQuote));

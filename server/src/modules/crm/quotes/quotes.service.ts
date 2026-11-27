@@ -1,6 +1,7 @@
 import { notifyUsers } from '../../notifications/domainNotify';
 import { assertApprovedOrSubmit, assertDiscountApprovedOrSubmit, isApprovalChainEnabled } from '../../approvals/approvals.service';
 import { overDiscountLimit } from './discountLimits';
+import { logAudit } from '../../auditLogs/logAudit';
 import mongoose from 'mongoose';
 import {
   CrmQuote,
@@ -8,6 +9,8 @@ import {
   type CrmQuoteHistoryAction,
   type ICrmQuote,
   type ICrmQuoteLine,
+  QUOTE_HANDOFF_STEPS,
+  type QuoteHandoffStep,
 } from '../models/crmQuote.model';
 import { CrmDeal } from '../models/crmDeal.model';
 import { CrmLead } from '../models/crmLead.model';
@@ -387,6 +390,8 @@ export async function sendQuote(
   const customMessage = opts?.message?.trim()
     ? `<p>${opts.message.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
     : '';
+  const { quoteResponseUrl } = await import('./customerQuotes');
+  const respondUrl = quoteResponseUrl(id);
   const html = tfEmailWrap(
     `${customMessage}
     <p>Please find your quotation: <strong>${quote.title}</strong>${
@@ -403,7 +408,9 @@ export async function sendQuote(
     <p>Issue date: ${calendarDay(quote.issueDate)}</p>
     ${quote.validUntil ? `<p>Valid until: ${calendarDay(quote.validUntil)}</p>` : ''}
     ${quote.notes ? `<p>${quote.notes}</p>` : ''}
-    ${opts?.pdfBase64 ? '<p>A PDF copy of this quotation is attached.</p>' : ''}`,
+    ${opts?.pdfBase64 ? '<p>A PDF copy of this quotation is attached.</p>' : ''}
+    <p><a href="${respondUrl}" style="display:inline-block;padding:10px 18px;background:#4f46e5;color:#fff;border-radius:8px;text-decoration:none">Review and accept online</a></p>
+    <p style="font-size:12px;color:#666">You can accept or decline this quotation from that page.</p>`,
     'indigo'
   );
 
@@ -467,6 +474,96 @@ async function gateQuote(
   if (over) await assertDiscountApprovedOrSubmit(orgId, id, actorUserId, action, over);
 }
 
+export type QuoteResponder =
+  | { via: 'staff'; userId?: string }
+  | { via: 'link' | 'portal'; name?: string; email?: string; customerUserId?: string };
+
+/**
+ * Accept or reject a quotation (AUT-32). Staff, the customer's secure link and the customer portal
+ * all come through here, so acceptance always runs the same steps: the discount/approval gate, the
+ * draft contract and invoice, the deal moved to Won (with commission and alerts), and notifications.
+ */
+export async function respondToQuote(
+  orgId: string,
+  quote: InstanceType<typeof CrmQuote>,
+  decision: 'accepted' | 'rejected',
+  who: QuoteResponder,
+  note?: string
+) {
+  if (quote.status === 'accepted' || quote.status === 'rejected' || quote.status === 'expired') {
+    throw new ApiError(400, `This quotation is already ${quote.status}`);
+  }
+  const byCustomer = who.via !== 'staff';
+  if (byCustomer) {
+    if (quote.status !== 'sent') throw new ApiError(400, 'This quotation is not open for a response');
+    if (quote.validUntil && new Date(quote.validUntil).getTime() < startOfToday().getTime()) {
+      throw new ApiError(400, 'This quotation has expired. Please contact us for an updated one.');
+    }
+  }
+  if (decision === 'accepted') {
+    const actor = who.via === 'staff' ? who.userId ?? String(quote.createdBy) : String(quote.createdBy);
+    try {
+      await gateQuote(orgId, quote, actor, 'mark this quotation accepted');
+    } catch (err) {
+      // The customer never sees internal approval details.
+      if (byCustomer && err instanceof ApiError && (err.statusCode === 409 || err.statusCode === 400)) {
+        throw new ApiError(409, 'This quotation is being reviewed on our side. We will be in touch shortly.');
+      }
+      throw err;
+    }
+  }
+  const cleanNote = note ? String(note).trim().slice(0, 2000) || undefined : undefined;
+  const prev = quote.status;
+  quote.status = decision;
+  quote.response = {
+    decision,
+    via: who.via,
+    at: new Date(),
+    note: cleanNote,
+    ...(who.via === 'staff'
+      ? { userId: who.userId && mongoose.isValidObjectId(who.userId) ? new mongoose.Types.ObjectId(who.userId) : undefined }
+      : {
+          name: who.name ? String(who.name).trim().slice(0, 200) : undefined,
+          email: who.email ? String(who.email).trim().toLowerCase().slice(0, 200) : undefined,
+          customerUserId: who.customerUserId && mongoose.isValidObjectId(who.customerUserId) ? new mongoose.Types.ObjectId(who.customerUserId) : undefined,
+        }),
+  };
+  const by = byCustomer ? ` by ${quote.response.name || quote.response.email || 'the customer'} (${who.via === 'link' ? 'online link' : 'customer portal'})` : '';
+  pushHistory(quote, 'status_changed', `Status changed from ${prev} to ${decision}${by}`, who.via === 'staff' ? who.userId : undefined, {
+    from: prev,
+    to: decision,
+    via: who.via,
+    ...(cleanNote ? { note: cleanNote } : {}),
+  });
+  await quote.save();
+
+  const orgIdStr = orgId;
+  const deal = quote.dealId ? await CrmDeal.findById(quote.dealId).select('ownerId').lean() : null;
+  const staffActor = who.via === 'staff' ? who.userId : undefined;
+  let converted: QuoteHandoffSummary | undefined;
+  if (decision === 'accepted') {
+    // Contract, invoice, delivery links and the deal won. Failures are kept on the quote and shown,
+    // never hidden (AUT-33); the acceptance itself stands.
+    converted = await runQuoteHandoff(orgIdStr, quote, staffActor);
+    void notifyUsers([quote.createdBy, deal?.ownerId], 'crm_quote_accepted', { title: `Quote accepted${by}: ${quote.title}`, body: `${quote.currency} ${quote.total}`, link: `/crm/quotes/${quote._id}` }, staffActor);
+  } else if (byCustomer) {
+    void notifyUsers([quote.createdBy, deal?.ownerId], 'crm_quote_rejected', { title: `Quote rejected${by}: ${quote.title}`, body: cleanNote ?? '', link: `/crm/quotes/${quote._id}` });
+  }
+  try {
+    const { dispatchWebhook } = await import('../ecosystem/ecosystem.service');
+    await dispatchWebhook(orgIdStr, decision === 'accepted' ? 'quote.accepted' : 'quote.rejected', { quoteId: String(quote._id), title: quote.title, via: who.via });
+  } catch {
+    /* best-effort */
+  }
+  return { ...quote.toObject(), converted };
+}
+
+function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 export async function updateQuote(
   id: string,
   workspaceId: string | null | undefined,
@@ -479,29 +576,7 @@ export async function updateQuote(
 
   const nextStatus = input.status as string | undefined;
   if (nextStatus === 'accepted' || nextStatus === 'rejected') {
-    if (existing.status === 'accepted' || existing.status === 'rejected' || existing.status === 'expired') {
-      throw new ApiError(400, 'This quotation is already closed');
-    }
-    if (nextStatus === 'accepted') {
-      await gateQuote(orgId, existing, userId ?? String(existing.createdBy), 'mark this quotation accepted');
-    }
-    const prev = existing.status;
-    existing.status = nextStatus;
-    pushHistory(
-      existing,
-      'status_changed',
-      `Status changed from ${prev} to ${nextStatus}`,
-      userId,
-      { from: prev, to: nextStatus }
-    );
-    await existing.save();
-    let converted: { contractId?: string; invoiceId?: string } | undefined;
-    if (nextStatus === 'accepted') {
-      converted = await convertAcceptedQuote(existing, orgId);
-      const deal = existing.dealId ? await CrmDeal.findById(existing.dealId).select('ownerId').lean() : null;
-      void notifyUsers([existing.createdBy, deal?.ownerId], 'crm_quote_accepted', { title: `Quote accepted: ${existing.title}`, body: `${existing.currency} ${existing.total}`, link: `/crm/quotes/${existing._id}` }, userId);
-    }
-    return { ...existing.toObject(), converted };
+    return respondToQuote(orgId, existing, nextStatus, { via: 'staff', userId }, input.responseNote ? String(input.responseNote) : undefined);
   }
 
   // Content edits allowed until accepted (draft or sent)
@@ -580,125 +655,218 @@ export async function updateQuote(
   return existing.toObject();
 }
 
+type HandoffQuote = InstanceType<typeof CrmQuote>;
+type StepResult = { status: 'done' | 'skipped'; refId?: string };
+export type QuoteHandoffSummary = {
+  status: 'done' | 'failed';
+  contractId?: string;
+  invoiceId?: string;
+  handoff?: unknown;
+  failedStep?: QuoteHandoffStep;
+  error?: string;
+};
+
+const STEP_LABEL: Record<QuoteHandoffStep, string> = {
+  account: 'billing account',
+  contract: 'draft contract',
+  invoice: 'draft invoice',
+  delivery: 'link to the customer and project',
+  deal: 'deal marked won',
+};
+
+const isDuplicateKey = (err: unknown) => (err as { code?: number } | null)?.code === 11000;
+
 /**
- * When a quote is accepted, spin up a draft contract and a draft invoice from
- * its line items so sales hands off cleanly to delivery and finance. Best-effort:
- * a failure here never blocks the quote acceptance.
+ * After a quotation is accepted, hand it off to billing and delivery (AUT-33):
+ *   account  → the customer's CRM billing account
+ *   contract → one draft contract for the quotation
+ *   invoice  → one draft invoice for the quotation
+ *   delivery → customer, deal, quote and contract linked to the deal's project (if it has one)
+ *   deal     → the deal moved to Won (same steps as any other win, AUT-32)
+ * Each step first looks for what an earlier attempt already made, so running it again never
+ * duplicates anything. The result of every step is kept on the quotation; a failure stops the run,
+ * is logged and audited, and the quote and deal owners are told. The quotation stays accepted (the
+ * customer did accept it) and the failed step can be retried from the quote page.
  */
-async function convertAcceptedQuote(
-  quote: {
-    _id: unknown;
-    title: string;
-    accountId?: unknown;
-    customerOrgId?: unknown;
-    dealId?: unknown;
-    leadId?: unknown;
-    currency?: string;
-    subtotal?: number;
-    taxTotal?: number;
-    total?: number;
-    discountAmount?: number;
-    lineItems?: {
-      description: string;
-      quantity?: number;
-      unitPrice?: number;
-      taxRate?: number;
-      amount?: number;
-      billingType?: string;
-    }[];
-    createdBy?: unknown;
-  },
-  orgId: string
-  ): Promise<{ contractId?: string; invoiceId?: string; handoff?: unknown }> {
-  const result: { contractId?: string; invoiceId?: string; handoff?: unknown } = {};
+export async function runQuoteHandoff(orgId: string, quote: HandoffQuote, actorUserId?: string): Promise<QuoteHandoffSummary> {
   const orgOid = toOrgOid(orgId);
-  if (!quote.customerOrgId && !quote.accountId) return result;
-  try {
-    // Customers that came in through lead conversion have a portal organisation; billing needs its CRM account.
-    if (!quote.accountId && quote.customerOrgId) {
+  const steps: NonNullable<HandoffQuote['handoff']>['steps'] = [];
+  const summary: QuoteHandoffSummary = { status: 'done' };
+  let contractId: mongoose.Types.ObjectId | undefined;
+  const hasCustomer = Boolean(quote.customerOrgId || quote.accountId);
+
+  const run: Record<QuoteHandoffStep, () => Promise<StepResult>> = {
+    account: async () => {
+      if (quote.accountId || !quote.customerOrgId) return { status: quote.accountId ? 'done' : 'skipped', refId: quote.accountId ? String(quote.accountId) : undefined };
+      // Customers that came in through lead conversion have a portal organisation; billing needs its CRM account.
       const { syncCrmAccountFromCustomerOrg } = await import('../crmBridge.service');
       quote.accountId = new mongoose.Types.ObjectId(await syncCrmAccountFromCustomerOrg(String(quote.customerOrgId), orgId));
       await CrmQuote.updateOne({ _id: quote._id }, { $set: { accountId: quote.accountId } });
-    }
-    const { hourlyRateFromQuoteLines } = await import('../commercialHandoff.service');
-    const hourlyRate = hourlyRateFromQuoteLines(quote.lineItems);
-    const contractValue = quote.total ?? quote.subtotal ?? 0;
-    const contract = await CrmContract.create({
-      taskflowOrganizationId: orgOid,
-      accountId: quote.accountId,
-      customerOrgId: quote.customerOrgId,
-      dealId: quote.dealId || undefined,
-      title: quote.title,
-      kind: 'other',
-      value: contractValue,
-      currency: quote.currency ?? 'USD',
-      billingCycle: 'one_time',
-      startDate: new Date(),
-      status: 'draft',
-      hourlyRate,
-    });
-    result.contractId = String(contract._id);
+      return { status: 'done', refId: String(quote.accountId) };
+    },
+    contract: async () => {
+      if (!hasCustomer) return { status: 'skipped' };
+      let contract: { _id: unknown } | null = await CrmContract.findOne({ taskflowOrganizationId: orgOid, quoteId: quote._id }).select('_id').lean();
+      if (!contract) {
+        const { hourlyRateFromQuoteLines } = await import('../commercialHandoff.service');
+        try {
+          contract = (
+            await CrmContract.create({
+              taskflowOrganizationId: orgOid,
+              quoteId: quote._id,
+              accountId: quote.accountId,
+              customerOrgId: quote.customerOrgId,
+              dealId: quote.dealId || undefined,
+              title: quote.title,
+              kind: 'other',
+              value: quote.total ?? quote.subtotal ?? 0,
+              currency: quote.currency ?? 'USD',
+              billingCycle: 'one_time',
+              startDate: new Date(),
+              status: 'draft',
+              hourlyRate: hourlyRateFromQuoteLines(quote.lineItems),
+            })
+          ).toObject();
+        } catch (err) {
+          // Another attempt made it at the same moment: use that one.
+          if (!isDuplicateKey(err)) throw err;
+          contract = await CrmContract.findOne({ quoteId: quote._id }).select('_id').lean();
+        }
+      }
+      contractId = contract!._id as mongoose.Types.ObjectId;
+      summary.contractId = String(contractId);
+      return { status: 'done', refId: summary.contractId };
+    },
+    invoice: async () => {
+      if (!quote.accountId) return { status: 'skipped' };
+      let invoice: { _id: unknown } | null = await BillingInvoice.findOne({ taskflowOrganizationId: orgOid, sourceQuoteId: quote._id }).select('_id').lean();
+      if (!invoice) {
+        const lines = (quote.lineItems ?? []).map((l) => {
+          const quantity = l.quantity ?? 1;
+          const unitPrice = l.unitPrice ?? 0;
+          const taxRate = l.taxRate ?? 0;
+          const discountPercent = (l as { discountPercent?: number }).discountPercent ?? 0;
+          const billingType = (l as { billingType?: string }).billingType ?? 'fixed';
+          const amount = round2(quantity * unitPrice * (1 - Math.min(100, Math.max(0, discountPercent)) / 100));
+          return {
+            description: l.description,
+            quantity,
+            unitPrice,
+            taxRate,
+            amount,
+            billingType,
+            category: (l as { category?: string }).category,
+            discountPercent,
+            sourceType: 'manual' as const,
+          };
+        });
+        const subtotal = round2(lines.reduce((sum, l) => sum + l.amount, 0));
+        const taxTotal = quote.taxTotal ?? round2(lines.reduce((sum, l) => sum + l.amount * (l.taxRate / 100), 0));
+        const total = quote.total ?? round2(subtotal + taxTotal);
+        const { nextInvoiceNumber } = await import('../../billing/billing.service');
+        try {
+          invoice = (
+            await BillingInvoice.create({
+              taskflowOrganizationId: orgOid,
+              sourceQuoteId: quote._id,
+              accountId: quote.accountId,
+              customerOrgId: quote.customerOrgId || undefined,
+              contractId,
+              number: await nextInvoiceNumber(orgOid),
+              status: 'draft',
+              issueDate: new Date(),
+              currency: quote.currency ?? 'USD',
+              lines,
+              subtotal,
+              taxTotal,
+              total,
+              amountPaid: 0,
+              notes: `Generated from accepted quote "${quote.title}"`,
+            })
+          ).toObject();
+        } catch (err) {
+          if (!isDuplicateKey(err) || !(await BillingInvoice.exists({ sourceQuoteId: quote._id }))) throw err;
+          invoice = await BillingInvoice.findOne({ sourceQuoteId: quote._id }).select('_id').lean();
+        }
+      }
+      summary.invoiceId = String(invoice!._id);
+      return { status: 'done', refId: summary.invoiceId };
+    },
+    delivery: async () => {
+      if (!hasCustomer && !quote.dealId) return { status: 'skipped' };
+      const { runCommercialHandoff } = await import('../commercialHandoff.service');
+      summary.handoff = await runCommercialHandoff({
+        workspaceId: orgId,
+        userId: actorUserId || String(quote.createdBy ?? ''),
+        customerOrgId: quote.customerOrgId ? String(quote.customerOrgId) : undefined,
+        dealId: quote.dealId ? String(quote.dealId) : undefined,
+        leadId: quote.leadId ? String(quote.leadId) : undefined,
+        quoteId: String(quote._id),
+        contractId: summary.contractId,
+        projectTitle: quote.title,
+        createPortalOrg: false,
+      });
+      const projectId = (summary.handoff as { projectId?: string } | undefined)?.projectId;
+      return { status: 'done', refId: projectId };
+    },
+    deal: async () => {
+      if (!quote.dealId) return { status: 'skipped' };
+      const { winDeal } = await import('../deals/deals.service');
+      const deal = await winDeal(orgId, quote.dealId, quote.response?.via && quote.response.via !== 'staff' ? 'Customer accepted the quotation' : 'Quotation accepted');
+      return deal ? { status: 'done', refId: String(deal._id) } : { status: 'skipped' };
+    },
+  };
 
-    const lines = (quote.lineItems ?? []).map((l) => {
-      const quantity = l.quantity ?? 1;
-      const unitPrice = l.unitPrice ?? 0;
-      const taxRate = l.taxRate ?? 0;
-      const discountPercent = (l as { discountPercent?: number }).discountPercent ?? 0;
-      const billingType = (l as { billingType?: string }).billingType ?? 'fixed';
-      const gross = quantity * unitPrice;
-      const amount = round2(gross * (1 - Math.min(100, Math.max(0, discountPercent)) / 100));
-      return {
-        description: l.description,
-        quantity,
-        unitPrice,
-        taxRate,
-        amount,
-        billingType,
-        category: (l as { category?: string }).category,
-        discountPercent,
-        sourceType: 'manual' as const,
-      };
-    });
-    const subtotal = round2(lines.reduce((s, l) => s + l.amount, 0));
-    const taxTotal = quote.taxTotal ?? round2(lines.reduce((s, l) => s + l.amount * (l.taxRate / 100), 0));
-    const total = quote.total ?? round2(subtotal + taxTotal);
-    const { nextInvoiceNumber } = await import('../../billing/billing.service');
-    if (quote.accountId) {
-    const invoice = await BillingInvoice.create({
-      taskflowOrganizationId: orgOid,
-      accountId: quote.accountId,
-      customerOrgId: quote.customerOrgId || undefined,
-      contractId: contract._id,
-      number: await nextInvoiceNumber(orgOid),
-      status: 'draft',
-      issueDate: new Date(),
-      currency: quote.currency ?? 'USD',
-      lines,
-      subtotal,
-      taxTotal,
-      total,
-      amountPaid: 0,
-      notes: `Generated from accepted quote "${quote.title}"`,
-    });
-    result.invoiceId = String(invoice._id);
+  for (const key of QUOTE_HANDOFF_STEPS) {
+    try {
+      const r = await run[key]();
+      steps.push({ key, status: r.status, at: new Date(), refId: r.refId });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      steps.push({ key, status: 'failed', at: new Date(), error: message.slice(0, 500) });
+      summary.status = 'failed';
+      summary.failedStep = key;
+      summary.error = message.slice(0, 500);
+      console.error(`[quote handoff] quote ${String(quote._id)} failed at ${key}:`, err);
+      break;
     }
-
-    const { runCommercialHandoff } = await import('../commercialHandoff.service');
-    result.handoff = await runCommercialHandoff({
-      workspaceId: orgId,
-      userId: String(quote.createdBy ?? ''),
-      customerOrgId: quote.customerOrgId ? String(quote.customerOrgId) : undefined,
-      dealId: quote.dealId ? String(quote.dealId) : undefined,
-      leadId: quote.leadId ? String(quote.leadId) : undefined,
-      quoteId: String(quote._id),
-      contractId: result.contractId,
-      projectTitle: quote.title,
-      createPortalOrg: false,
-    });
-  } catch {
-    /* best-effort conversion */
   }
-  return result;
+
+  const attempts = (quote.handoff?.attempts ?? 0) + 1;
+  quote.handoff = { status: summary.status, steps, failedStep: summary.failedStep, error: summary.error, attempts, lastAttemptAt: new Date() };
+  await CrmQuote.updateOne({ _id: quote._id }, { $set: { handoff: quote.handoff } });
+  logAudit({
+    userId: actorUserId || String(quote.createdBy ?? ''),
+    action: summary.status === 'done' ? 'crm.quote.handoff' : 'crm.quote.handoff_failed',
+    resourceType: 'crm_quote',
+    resourceId: String(quote._id),
+    meta: { attempts, failedStep: summary.failedStep, error: summary.error, contractId: summary.contractId, invoiceId: summary.invoiceId },
+  });
+  if (summary.status === 'failed') {
+    const deal = quote.dealId ? await CrmDeal.findById(quote.dealId).select('ownerId').lean() : null;
+    void notifyUsers([quote.createdBy, deal?.ownerId], 'crm_quote_handoff_failed', {
+      title: `Accepted quote needs attention: ${quote.title}`,
+      body: `The ${STEP_LABEL[summary.failedStep!]} step failed: ${summary.error}. Open the quote to retry.`,
+      link: `/crm/quotes/${quote._id}`,
+    });
+  }
+  return summary;
+}
+
+/** Run the handoff of an accepted quotation again, from the start; finished steps are found, not redone. */
+export async function retryQuoteHandoff(id: string, workspaceId: string | null | undefined, userId: string) {
+  const orgId = requireWorkspaceId(workspaceId);
+  const quote = await CrmQuote.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
+  if (!quote) throw new ApiError(404, 'Quote not found');
+  if (quote.status !== 'accepted') throw new ApiError(400, 'Only accepted quotations are handed off');
+  if (quote.handoff?.status !== 'failed') throw new ApiError(409, 'Nothing to retry: the handoff of this quotation has not failed');
+  const summary = await runQuoteHandoff(orgId, quote, userId);
+  pushHistory(quote, 'updated', summary.status === 'done' ? 'Handoff retried and completed' : `Handoff retried; ${STEP_LABEL[summary.failedStep!]} failed again`, userId, {
+    handoff: summary.status,
+    failedStep: summary.failedStep,
+  });
+  await CrmQuote.updateOne({ _id: quote._id }, { $set: { history: quote.history } });
+  return { quote: await CrmQuote.findById(quote._id).lean(), handoff: summary };
 }
 
 export async function deleteQuote(id: string, workspaceId: string | null | undefined) {

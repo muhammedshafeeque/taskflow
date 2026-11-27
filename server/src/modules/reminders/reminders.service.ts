@@ -423,6 +423,8 @@ export async function remindTimesheets(now = new Date()): Promise<number> {
   return sent;
 }
 
+import { remindPendingPolicies } from '../documents/policyAcceptance';
+
 export const REMINDER_JOBS = {
   timesheets: remindTimesheets,
   issueDueDates: remindIssueDueDates,
@@ -436,6 +438,7 @@ export const REMINDER_JOBS = {
   mailSync: syncAllMailAccounts,
   employeeExits: () => closeDueExits(),
   jobChanges: () => applyDueJobChanges(),
+  policyAcceptance: () => remindPendingPolicies(),
 } as const;
 
 export type ReminderJobName = keyof typeof REMINDER_JOBS;

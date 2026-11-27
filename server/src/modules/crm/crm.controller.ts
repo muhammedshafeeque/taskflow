@@ -19,6 +19,8 @@ import * as dashboardService from './dashboard/dashboard.service';
 import * as campaignsService from './campaigns/campaigns.service';
 import * as ecosystemService from './ecosystem/ecosystem.service';
 import { discountLimitFor, getDiscountPolicy, saveDiscountPolicy } from './quotes/discountLimits';
+import { getStageRules, saveStageRules } from './stageRules';
+import { quoteResponseUrl } from './quotes/customerQuotes';
 import { Role } from '../roles/role.model';
 import { HrmsSettings } from '../hrms/models/hrmsPolicy.model';
 import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
@@ -414,9 +416,9 @@ export async function updateDeal(req: Request & { user?: AuthPayload }, res: Res
 }
 
 export async function moveDealStage(req: Request & { user?: AuthPayload }, res: Response) {
-  const body = req.body as { stageId?: string };
+  const body = req.body as { stageId?: string; lossReason?: string; winReason?: string };
   await assertDealInReach(ws(req), await crmReachFor(req), req.params.id);
-  const data = await dealsService.moveDealStage(req.params.id, ws(req), String(body.stageId));
+  const data = await dealsService.moveDealStage(req.params.id, ws(req), String(body.stageId), { lossReason: body.lossReason, winReason: body.winReason });
   res.json({ success: true, data });
 }
 
@@ -437,6 +439,32 @@ export async function createProjectFromDeal(req: Request & { user?: AuthPayload 
     leadId: body.leadId,
   });
   res.status(201).json({ success: true, data });
+}
+
+/** Stage rules for leads and deals (AUT-32). */
+export async function getStageRulesHandler(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const orgId = ws(req);
+  if (!orgId) throw new ApiError(400, 'Choose a workspace');
+  res.json({ success: true, data: await getStageRules(orgId) });
+}
+
+export async function updateStageRulesHandler(req: Request & { user?: AuthPayload }, res: Response) {
+  res.json({ success: true, data: await saveStageRules(ws(req), (req.body ?? {}) as Record<string, unknown>, uid(req)) });
+}
+
+/** Run the failed handoff of an accepted quotation again (AUT-33). */
+export async function retryQuoteHandoff(req: Request & { user?: AuthPayload }, res: Response) {
+  const data = await quotesService.retryQuoteHandoff(req.params.id, ws(req), uid(req));
+  res.json({ success: true, data });
+}
+
+/** The customer's accept/decline link for a sent quotation, for staff to share another way. */
+export async function getQuoteResponseLink(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const quote = await quotesService.getQuote(req.params.id, ws(req));
+  if ((quote as { status?: string }).status !== 'sent') throw new ApiError(400, 'Send the quotation before sharing its link');
+  res.json({ success: true, data: { url: quoteResponseUrl(req.params.id) } });
 }
 
 /** Quotation discount limits, plus the viewer's own limit (null = not limited). */

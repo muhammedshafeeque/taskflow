@@ -20,6 +20,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import { PersonSelect, toPeople } from '../../components/people';
 import { Avatar } from '../../components/dashboard/PmWidgets';
 import DealFormModal from './DealFormModal';
+import LossReasonModal from './LossReasonModal';
 import {
   Chip,
   CrmShell,
@@ -198,11 +199,18 @@ export default function CrmDeals() {
   const overdue = open.filter((d) => (daysUntil(d.expectedCloseDate) ?? 0) < 0).length;
   const currency = deals?.[0]?.currency;
 
-  const moveDeal = async (dealId: string, stageId: string) => {
+  const [losing, setLosing] = useState<{ deal: CrmDeal; stageId: string } | null>(null);
+  const moveDeal = async (dealId: string, stageId: string, lossReason?: string) => {
     if (!token) return;
+    // A lost deal needs a reason: ask before moving it.
+    if (!lossReason && stages.find((s) => s._id === stageId)?.isLost) {
+      const deal = deals?.find((d) => d._id === dealId);
+      if (deal) setLosing({ deal, stageId });
+      return;
+    }
     const prev = deals;
     setDeals((list) => (list ?? []).map((d) => (d._id === dealId ? { ...d, stageId } : d)));
-    const res = await crmApi.moveDealStage(dealId, stageId, token);
+    const res = await crmApi.moveDealStage(dealId, stageId, token, lossReason ? { lossReason } : undefined);
     if (!res.success) {
       setDeals(prev);
       setNotice(errorOf(res, 'Could not move the deal.'));
@@ -428,6 +436,17 @@ export default function CrmDeals() {
           else load();
         }}
       />
+      {losing && (
+        <LossReasonModal
+          title={losing.deal.title}
+          onCancel={() => setLosing(null)}
+          onConfirm={async (reason) => {
+            const l = losing;
+            setLosing(null);
+            await moveDeal(l.deal._id, l.stageId, reason);
+          }}
+        />
+      )}
       <ConfirmModal
         open={!!deleting}
         title="Delete deal?"

@@ -59,6 +59,7 @@ export async function updateDocument(
   const orgId = requireWorkspaceId(workspaceId);
   const doc = await DocumentRecord.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
   if (!doc) throw new ApiError(404, 'Document not found');
+  const before = { version: doc.version ?? 1, status: doc.status };
   if (doc.status === 'signed' && ('content' in input || 'title' in input)) {
     throw new ApiError(409, 'Signed documents cannot be edited — clone it to make a new version');
   }
@@ -76,6 +77,9 @@ export async function updateDocument(
     if (doc.status === 'signed' && prev !== 'signed') doc.signedAt = new Date();
   }
   await doc.save();
+  // A new policy version (or publishing it) asks the people it is assigned to again (AUT-36).
+  const { onPolicyChanged } = await import('./policyAcceptance');
+  await onPolicyChanged(orgId, doc.toObject() as never, before).catch((err) => console.error('[policy] notify failed', err));
   return doc.toObject();
 }
 

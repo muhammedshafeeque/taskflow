@@ -640,7 +640,8 @@ export default function CrmLeadDetail() {
                   disabled={busy}
                   onChange={(e) => void setStatus(e.target.value)}
                 >
-                  {LEAD_STATUSES.filter((s) => s.id !== 'converted').map((s) => (
+                  {/* Unqualified needs a reason: use the box below. */}
+                  {LEAD_STATUSES.filter((s) => s.id !== 'converted' && (s.id !== 'unqualified' || lead.status === 'unqualified')).map((s) => (
                     <option key={s.id} value={s.id}>{s.label}</option>
                   ))}
                 </select>
@@ -649,15 +650,16 @@ export default function CrmLeadDetail() {
                 <div className="space-y-2">
                   <input
                     className={inputClass}
-                    placeholder="Disqualify reason"
+                    placeholder="Why is it unqualified? (required)"
+                    aria-label="Reason the lead is unqualified"
                     value={unqualifyReason}
                     onChange={(e) => setUnqualifyReason(e.target.value)}
                   />
                   <button
                     type="button"
-                    disabled={busy}
-                    onClick={() => void setStatus('unqualified', { disqualifyReason: unqualifyReason.trim() || undefined })}
-                    className="text-sm text-red-400 hover:underline"
+                    disabled={busy || !unqualifyReason.trim()}
+                    onClick={() => void setStatus('unqualified', { disqualifyReason: unqualifyReason.trim() })}
+                    className="text-sm text-red-400 hover:underline disabled:opacity-50 disabled:no-underline"
                   >
                     Mark unqualified
                   </button>

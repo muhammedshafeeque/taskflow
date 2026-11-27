@@ -216,6 +216,8 @@ import MonitorSetup from './pages/monitor/MonitorSetup';
 import MonitorTelemetry from './pages/monitor/MonitorTelemetry';
 import MonitorAlerts from './pages/monitor/MonitorAlerts';
 import PublicSign from './pages/PublicSign';
+import PublicQuote from './pages/PublicQuote';
+import PortalQuotes from './pages/portal/PortalQuotes';
 import { I18nProvider } from './i18n/I18nProvider';
 import { UploadProgressTray } from './components/attachment/UploadProgress';
 import { WhatsNewChecker } from './components/WhatsNewModal';
@@ -245,6 +247,7 @@ function AppRoutes() {
       <Route path="/developers/mcp" element={<McpDocs />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/sign/:token" element={<PublicSign />} />
+      <Route path="/quote/:token" element={<PublicQuote />} />
       <Route path="/rate/:token" element={<PublicRate />} />
       <Route path="/status/:slug" element={<PublicStatus />} />
       <Route path="/reset-password" element={<ResetPassword />} />
@@ -263,6 +266,7 @@ function AppRoutes() {
         <Route path="/portal/roles" element={<PortalRoles />} />
         <Route path="/portal/projects" element={<PortalProjects />} />
         <Route path="/portal/tickets" element={<PortalTickets />} />
+        <Route path="/portal/quotes" element={<PortalQuotes />} />
         <Route path="/portal/tickets/:id" element={<PortalTicketDetail />} />
         <Route path="/portal/approval-queue" element={<PortalApprovalQueue />} />
         <Route path="/portal/status-reports" element={<PortalStatusReports />} />
@@ -526,6 +530,7 @@ function AppRoutes() {
         <Route path="/profile" element={<Profile />} />
         <Route path="/profile/notifications" element={<NotificationPreferences />} />
         <Route path="/me" element={<SelfService />} />
+        <Route path="/me/policies/:id" element={<SelfService />} />
         <Route path="/employees/me" element={<Employee360 />} />
         </Route>
 

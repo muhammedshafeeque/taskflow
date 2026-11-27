@@ -9,6 +9,8 @@ export const WORKSPACE_WEBHOOK_EVENTS = [
   'lead.converted',
   'deal.won',
   'quote.sent',
+  'quote.accepted',
+  'quote.rejected',
   'issue.created',
   'issue.updated',
   'issue.status_changed',

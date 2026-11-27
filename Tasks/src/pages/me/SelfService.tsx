@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { api, uploadFile } from '../../lib/api';
 import { canAny } from '../../utils/moduleAccess';
@@ -474,15 +475,97 @@ function TeamTab({ team, reload }: { team: Team; reload: () => void }) {
   );
 }
 
+type MyPolicy = { documentId: string; title: string; summary?: string; version: number; status: 'pending' | 'new_version' | 'accepted'; acceptedAt: string | null };
+
+/** Policies HR asked me to read and accept (AUT-36). */
+function PoliciesTab({ list, reload, openId }: { list: MyPolicy[]; reload: () => void; openId: string | null }) {
+  const { token } = useAuth();
+  const [open, setOpenId] = useState<string | null>(openId);
+  const [doc, setDoc] = useState<(MyPolicy & { content: string; fileUrl: string | null }) | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const setOpen = (id: string | null) => {
+    setDoc(null);
+    setError('');
+    setOpenId(id);
+  };
+  useEffect(() => {
+    if (!token || !open) return;
+    void api.get<MyPolicy & { content: string; fileUrl: string | null }>(`/me/hr/policies/${open}`, token).then((r) => (r.success && r.data ? setDoc(r.data) : setError(r.message ?? 'Could not open the policy')));
+  }, [token, open]);
+  const accept = async () => {
+    if (!token || !doc) return;
+    setBusy(true);
+    const r = await api.post<MyPolicy>(`/me/hr/policies/${doc.documentId}/accept`, { version: doc.version }, token);
+    setBusy(false);
+    if (!r.success) return setError(r.message ?? 'Could not accept');
+    setOpen(null);
+    reload();
+  };
+  const label = { pending: 'To accept', new_version: 'New version to accept', accepted: 'Accepted' } as const;
+  return (
+    <Card title="Policies">
+      {list.length === 0 ? (
+        <p className="text-sm text-[color:var(--text-muted)]">No policies have been assigned to you.</p>
+      ) : (
+        <Table
+          head={['Policy', 'Version', 'Status', '']}
+          rows={list.map((p) => [
+            <span key="t" className="font-medium">{p.title}</span>,
+            `v${p.version}`,
+            <StatusPill key="s" label={p.status === 'accepted' && p.acceptedAt ? `${label[p.status]} ${fmtDate(p.acceptedAt)}` : label[p.status]} tone={p.status === 'accepted' ? 'green' : 'amber'} />,
+            <GhostButton key="o" onClick={() => setOpen(p.documentId)}>{p.status === 'accepted' ? 'Read' : 'Read and accept'}</GhostButton>,
+          ])}
+        />
+      )}
+      {open && (
+        <Modal
+          title={doc?.title ?? 'Policy'}
+          onClose={() => setOpen(null)}
+          wide
+          footer={
+            <>
+              <GhostButton onClick={() => setOpen(null)}>Close</GhostButton>
+              {doc && doc.status !== 'accepted' && <PrimaryButton onClick={accept} disabled={busy}>I have read and accept version {doc.version}</PrimaryButton>}
+            </>
+          }
+        >
+          {error && <p className="text-sm text-red-500" role="alert">{error}</p>}
+          {doc && (
+            <div className="space-y-3">
+              {doc.status === 'new_version' && <p className="text-sm text-amber-500">This policy has changed since you accepted it. Please read version {doc.version}.</p>}
+              {doc.summary && <p className="text-sm text-[color:var(--text-muted)]">{doc.summary}</p>}
+              <div className="max-h-[50vh] overflow-y-auto whitespace-pre-wrap rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] p-4 text-sm">{doc.content || 'No text.'}</div>
+              {doc.fileUrl && <a className="text-sm text-[color:var(--accent)] hover:underline" href={doc.fileUrl} target="_blank" rel="noreferrer">Open the attached file</a>}
+            </div>
+          )}
+        </Modal>
+      )}
+    </Card>
+  );
+}
+
 export default function SelfService() {
   const { user } = useAuth();
+  const { id: policyParam } = useParams<{ id?: string }>();
   const team = useGet<Team>('/me/hr/team');
+  const policies = useGet<MyPolicy[]>('/me/hr/policies');
   const manages = (team.data?.people.length ?? 0) > 0;
-  const tabs: Array<{ id: string; label: string }> = [...TABS.filter((t) => canAny(user, t.perm)), ...(manages ? [{ id: 'team', label: 'My team' }] : [])];
-  const [tab, setTab] = useState<string>(() => new URLSearchParams(window.location.search).get('tab') ?? tabs[0]?.id ?? 'profile');
+  const toAccept = (policies.data ?? []).filter((p) => p.status !== 'accepted').length;
+  const tabs: Array<{ id: string; label: string }> = [
+    ...TABS.filter((t) => canAny(user, t.perm)),
+    ...((policies.data?.length ?? 0) > 0 ? [{ id: 'policies', label: toAccept ? `Policies (${toAccept})` : 'Policies' }] : []),
+    ...(manages ? [{ id: 'team', label: 'My team' }] : []),
+  ];
+  const [tab, setTab] = useState<string>(() => (policyParam ? 'policies' : new URLSearchParams(window.location.search).get('tab') ?? tabs[0]?.id ?? 'profile'));
   const active = tabs.find((t) => t.id === tab) ?? tabs[0];
   return (
-    <SectionPage title="Me" subtitle="Your leave, attendance, payslips, expense claims and more.">
+    <SectionPage title="Me" subtitle="Your leave, attendance, payslips, expense claims, policies and more.">
+      {toAccept > 0 && active?.id !== 'policies' && (
+        <button type="button" onClick={() => setTab('policies')} className="w-full text-left rounded-xl border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm">
+          You have {toAccept} {toAccept === 1 ? 'policy' : 'policies'} to read and accept. <span className="text-[color:var(--accent)]">Open</span>
+        </button>
+      )}
       {tabs.length === 0 ? (
         <Card>
           <p className="text-sm text-[color:var(--text-muted)]">Self-service isn't enabled for your role. An administrator can grant the "Self-service" permissions.</p>
@@ -508,6 +591,7 @@ export default function SelfService() {
           {active?.id === 'assets' && <AssetsTab />}
           {active?.id === 'directory' && <DirectoryTab />}
           {active?.id === 'team' && team.data && <TeamTab team={team.data} reload={team.reload} />}
+          {active?.id === 'policies' && policies.data && <PoliciesTab list={policies.data} reload={policies.reload} openId={policyParam ?? null} />}
         </>
       )}
     </SectionPage>

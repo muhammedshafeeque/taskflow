@@ -33,7 +33,7 @@ export async function updateUser(req: Request, res: Response): Promise<void> {
 
 export async function inviteUser(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
   const result = await usersService.invite(req.body, req.activeOrganizationId, grantActorOf(req));
-  res.status(result.status).json({ success: true, inviteKind: result.inviteKind, data: result.user });
+  res.status(result.status).json({ success: true, inviteKind: result.inviteKind, data: result.user, role: result.role, employee: result.employee });
 }
 
 export async function updatePermissionOverrides(req: Request, res: Response): Promise<void> {
