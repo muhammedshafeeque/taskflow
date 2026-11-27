@@ -11,6 +11,17 @@ import { ApiError } from '../../../utils/ApiError';
 import { escapeRegex } from '../../../utils/safeUrl';
 import { requireWorkspaceId, toOrgOid } from '../crmWorkspace';
 import { logAudit } from '../../auditLogs/logAudit';
+import { CrmQuote } from '../models/crmQuote.model';
+import { RecordLink } from '../../links/recordLink.model';
+import { DocumentRecord } from '../../documents/models/documentRecord.model';
+import { MailMessage } from '../../mail/models/mail.models';
+import {
+  findCustomerOrgMatches,
+  findLeadDuplicates,
+  normEmail,
+  normPhone,
+  type DuplicateCandidate,
+} from './leadDuplicates';
 import {
   computeLeadScore,
   CRM_LEAD_COMPANY_SIZES,
@@ -269,6 +280,56 @@ async function syncLeadFollowUp(
   });
 }
 
+/** A lead by id, or the lead it was merged into when that id was merged away. */
+async function findLeadOrMerged(orgId: string, id: string) {
+  if (!mongoose.isValidObjectId(id)) return null;
+  const orgOid = toOrgOid(orgId);
+  return (
+    (await CrmLead.findOne({ _id: id, taskflowOrganizationId: orgOid })) ??
+    (await CrmLead.findOne({ taskflowOrganizationId: orgOid, mergedLeadIds: new mongoose.Types.ObjectId(id) }))
+  );
+}
+
+function duplicateCandidate(src: Record<string, unknown>): DuplicateCandidate {
+  return {
+    contactEmail: str(src.contactEmail),
+    contactPhone: str(src.contactPhone),
+    companyName: str(src.companyName),
+    website: str(src.website),
+    additionalContacts: Array.isArray(src.additionalContacts)
+      ? (src.additionalContacts as Array<Record<string, unknown>>).map((c) => ({ email: str(c?.email), phone: str(c?.phone) }))
+      : [],
+  };
+}
+
+/** Likely duplicate leads and matching customer organisations for unsaved lead details. */
+export async function checkLeadDuplicates(
+  workspaceId: string | null | undefined,
+  input: Record<string, unknown>
+) {
+  const orgId = requireWorkspaceId(workspaceId);
+  const candidate = duplicateCandidate(input);
+  const excludeId = str(input.excludeId);
+  const [leads, customerOrgs] = await Promise.all([
+    findLeadDuplicates(orgId, candidate, { excludeIds: excludeId ? [excludeId] : [] }),
+    findCustomerOrgMatches(orgId, candidate),
+  ]);
+  return { leads, customerOrgs };
+}
+
+/** Likely duplicates of a saved lead, and the customer organisations it could convert into. */
+export async function getLeadDuplicates(id: string, workspaceId: string | null | undefined) {
+  const orgId = requireWorkspaceId(workspaceId);
+  const lead = await findLeadOrMerged(orgId, id);
+  if (!lead) throw new ApiError(404, 'Lead not found');
+  const candidate = duplicateCandidate(lead.toObject() as unknown as Record<string, unknown>);
+  const [leads, customerOrgs] = await Promise.all([
+    findLeadDuplicates(orgId, candidate, { excludeIds: [String(lead._id)] }),
+    findCustomerOrgMatches(orgId, candidate),
+  ]);
+  return { leads, customerOrgs };
+}
+
 export async function listLeads(
   workspaceId: string | null | undefined,
   opts: {
@@ -360,7 +421,9 @@ export async function getLeadStats(workspaceId: string | null | undefined) {
 
 export async function getLead(id: string, workspaceId: string | null | undefined) {
   const orgId = requireWorkspaceId(workspaceId);
-  const lead = await CrmLead.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) })
+  const found = await findLeadOrMerged(orgId, id);
+  if (!found) throw new ApiError(404, 'Lead not found');
+  const lead = await CrmLead.findById(found._id)
     .populate(LEAD_POPULATE)
     .populate('customerOrgId', 'name status contactEmail')
     .populate('dealId', 'title status value currency')
@@ -373,13 +436,26 @@ export async function getLead(id: string, workspaceId: string | null | undefined
 export async function createLead(
   workspaceId: string | null | undefined,
   input: Record<string, unknown>,
-  userId?: string
+  userId?: string,
+  opts: { checkDuplicates?: boolean } = {}
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const fields = pickLeadFields(input, { allowStatus: true });
   await applyCampaignAttribution(orgId, fields);
   const title = String(fields.title ?? '').trim();
   if (!title) throw new ApiError(400, 'Title is required');
+  // People get a warning with the match and must confirm; automated capture (bots, web forms) is never blocked.
+  if (opts.checkDuplicates && bool(input.ignoreDuplicates) !== true) {
+    const leads = await findLeadDuplicates(orgId, duplicateCandidate(fields));
+    if (leads.length) {
+      const customerOrgs = await findCustomerOrgMatches(orgId, duplicateCandidate(fields));
+      throw new ApiError(409, 'This looks like a lead you already have', {
+        code: 'duplicate_lead',
+        leads,
+        customerOrgs,
+      });
+    }
+  }
   const status = (fields.status as CrmLeadStatus | undefined) ?? 'new';
   const score = applyScore({ ...fields, title, status });
   const doc = await CrmLead.create({
@@ -413,7 +489,7 @@ export async function updateLead(
   userId?: string
 ) {
   const orgId = requireWorkspaceId(workspaceId);
-  const existing = await CrmLead.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
+  const existing = await findLeadOrMerged(orgId, id);
   if (!existing) throw new ApiError(404, 'Lead not found');
   if (existing.status === 'converted' && normalizeLeadStatus(input.status) && normalizeLeadStatus(input.status) !== 'converted') {
     throw new ApiError(400, 'Converted leads cannot change status');
@@ -437,7 +513,7 @@ export async function updateLead(
     delete fields.campaignId;
   }
   const updated = await CrmLead.findOneAndUpdate(
-    { _id: id, taskflowOrganizationId: toOrgOid(orgId) },
+    { _id: existing._id, taskflowOrganizationId: toOrgOid(orgId) },
     { $set: fields, ...(Object.keys(unset).length ? { $unset: unset } : {}) },
     { new: true }
   )
@@ -449,7 +525,7 @@ export async function updateLead(
       userId,
       action: 'crm.lead.update',
       resourceType: 'crm_lead',
-      resourceId: id,
+      resourceId: String(existing._id),
       meta: { status: updated.status },
     });
     if (fields.status && fields.status !== prevStatus) {
@@ -550,6 +626,10 @@ export async function convertLead(
       adminEmail?: string;
     };
     contactId?: string;
+    /** Refuse (409) to create a new organisation when matching ones exist, unless ignoreDuplicates. */
+    checkDuplicates?: boolean;
+    /** Create a new organisation even though matching ones exist. */
+    ignoreDuplicates?: boolean;
   } = {}
 ) {
   const orgId = requireWorkspaceId(workspaceId);
@@ -568,6 +648,20 @@ export async function convertLead(
   if (createPortalOrg) {
     const email = (opts.portalOrg?.adminEmail || opts.portalOrg?.contactEmail || lead.contactEmail || '').trim();
     if (!email) throw new ApiError(400, 'Customer email is required to create a portal organisation');
+    if (opts.checkDuplicates && opts.ignoreDuplicates !== true) {
+      const customerOrgs = await findCustomerOrgMatches(orgId, {
+        ...duplicateCandidate(lead.toObject() as unknown as Record<string, unknown>),
+        orgName: opts.portalOrg?.name,
+        contactEmail: lead.contactEmail || opts.portalOrg?.contactEmail || opts.portalOrg?.adminEmail,
+        contactPhone: lead.contactPhone || opts.portalOrg?.contactPhone,
+      });
+      if (customerOrgs.length) {
+        throw new ApiError(409, 'This customer may already have an organisation', {
+          code: 'duplicate_customer_org',
+          customerOrgs,
+        });
+      }
+    }
   }
 
   await upsertPeopleFromLead(orgId, lead);
@@ -671,6 +765,195 @@ export async function convertLead(
     contact: primaryContact?.toObject?.() ?? primaryContact,
     handoff,
   };
+}
+
+/** Plain fields copied from the merged lead only where the kept lead has no value. */
+const MERGE_FILL_FIELDS = [
+  'contactName', 'contactEmail', 'contactPhone', 'jobTitle', 'companyName', 'website', 'industry',
+  'companySize', 'country', 'techStack', 'estimatedBudget', 'timeline', 'decisionRole', 'campaign',
+  'campaignId', 'competitor', 'nextFollowUpAt', 'assigneeId', 'accountId', 'customerOrgId',
+] as const;
+
+type MergeContact = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  jobTitle?: string;
+  decisionRole?: string;
+  contactId?: mongoose.Types.ObjectId;
+};
+
+/** Same person: same email, else same phone, else same name with neither email nor phone. */
+function contactKey(c: MergeContact): string {
+  const e = normEmail(c.email);
+  if (e) return `e:${e}`;
+  const p = normPhone(c.phone);
+  if (p) return `p:${p}`;
+  return `n:${String(c.name ?? '').trim().toLowerCase()}`;
+}
+
+/**
+ * Merge `sourceId` into `targetId`: the kept lead fills its blanks from the other, gains its
+ * contacts, tags, services and notes, and takes over its activities, quotations, deals, links,
+ * documents and emails. The merged lead is deleted; its id keeps resolving to the kept lead.
+ */
+export async function mergeLeads(
+  targetId: string,
+  sourceId: string,
+  workspaceId: string | null | undefined,
+  userId: string
+) {
+  const orgId = requireWorkspaceId(workspaceId);
+  const orgOid = toOrgOid(orgId);
+  if (!mongoose.isValidObjectId(sourceId)) throw new ApiError(400, 'Choose the lead to merge');
+  if (String(targetId) === String(sourceId)) throw new ApiError(400, 'A lead cannot be merged into itself');
+  const [target, source] = await Promise.all([
+    CrmLead.findOne({ _id: targetId, taskflowOrganizationId: orgOid }),
+    CrmLead.findOne({ _id: sourceId, taskflowOrganizationId: orgOid }),
+  ]);
+  if (!target) throw new ApiError(404, 'Lead not found');
+  if (!source) throw new ApiError(404, 'Lead to merge not found');
+  if (source.status === 'converted') {
+    throw new ApiError(400, 'A converted lead cannot be merged away. Merge the other lead into it instead.');
+  }
+
+  const t = target as unknown as Record<string, unknown>;
+  const src = source.toObject() as unknown as Record<string, unknown>;
+  const filled: string[] = [];
+  for (const key of MERGE_FILL_FIELDS) {
+    const cur = t[key];
+    const next = src[key];
+    const empty = cur == null || cur === '';
+    if (empty && next != null && next !== '') {
+      target.set(key, next);
+      filled.push(key);
+    }
+  }
+
+  target.tags = [...new Set([...(target.tags ?? []), ...(source.tags ?? [])])];
+  target.serviceInterest = [...new Set([...(target.serviceInterest ?? []), ...(source.serviceInterest ?? [])])];
+  target.ndaRequired = Boolean(target.ndaRequired || source.ndaRequired);
+  target.rfpReceived = Boolean(target.rfpReceived || source.rfpReceived);
+
+  // Everyone on the merged lead becomes a contact here, without repeating the kept lead's people.
+  const seen = new Set<string>();
+  const primary: MergeContact = { name: target.contactName, email: target.contactEmail, phone: target.contactPhone };
+  if (primary.name || primary.email || primary.phone) seen.add(contactKey(primary));
+  const contacts: MergeContact[] = [];
+  const pushContact = (c: MergeContact) => {
+    if (!c.name && !c.email && !c.phone) return;
+    const key = contactKey(c);
+    if (seen.has(key)) return;
+    seen.add(key);
+    contacts.push(c);
+  };
+  const plain = (c: MergeContact): MergeContact => ({
+    ...(c.name ? { name: c.name } : {}),
+    ...(c.email ? { email: c.email } : {}),
+    ...(c.phone ? { phone: c.phone } : {}),
+    ...(c.jobTitle ? { jobTitle: c.jobTitle } : {}),
+    ...(c.decisionRole ? { decisionRole: c.decisionRole } : {}),
+    ...(c.contactId ? { contactId: c.contactId } : {}),
+  });
+  for (const c of target.additionalContacts ?? []) pushContact(plain(c));
+  pushContact({
+    name: source.contactName,
+    email: source.contactEmail,
+    phone: source.contactPhone,
+    jobTitle: source.jobTitle,
+    decisionRole: source.decisionRole,
+  });
+  for (const c of source.additionalContacts ?? []) pushContact(plain(c));
+  target.set('additionalContacts', contacts.map(plain));
+
+  if (source.notes?.trim() && source.notes.trim() !== target.notes?.trim()) {
+    target.notes = [target.notes?.trim(), `Merged from "${source.title}":\n${source.notes.trim()}`]
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
+  const mergedIds = new Map<string, mongoose.Types.ObjectId>();
+  for (const x of [...(target.mergedLeadIds ?? []), source._id as mongoose.Types.ObjectId, ...(source.mergedLeadIds ?? [])]) {
+    mergedIds.set(String(x), x);
+  }
+  target.mergedLeadIds = [...mergedIds.values()];
+  target.score = applyScore({}, target.toObject() as unknown as Record<string, unknown>);
+  await target.save();
+
+  const fromId = source._id as mongoose.Types.ObjectId;
+  const toId = target._id as mongoose.Types.ObjectId;
+
+  // The merged lead's own reminder would duplicate the kept lead's.
+  await CrmActivity.updateMany(
+    {
+      taskflowOrganizationId: orgOid,
+      relatedType: 'lead',
+      relatedId: fromId,
+      type: 'follow_up',
+      completedAt: { $exists: false },
+      subject: { $regex: `^${AUTO_FOLLOW_PREFIX}` },
+    },
+    { $set: { completedAt: new Date() } }
+  );
+  await Promise.all([
+    CrmActivity.updateMany({ taskflowOrganizationId: orgOid, relatedType: 'lead', relatedId: fromId }, { $set: { relatedId: toId } }),
+    CrmQuote.updateMany({ taskflowOrganizationId: orgOid, leadId: fromId }, { $set: { leadId: toId } }),
+    CrmDeal.updateMany({ taskflowOrganizationId: orgOid, leadId: fromId }, { $set: { leadId: toId } }),
+    DocumentRecord.updateMany({ taskflowOrganizationId: orgOid, entityType: 'lead', entityId: fromId }, { $set: { entityId: toId } }),
+    MailMessage.updateMany(
+      { taskflowOrganizationId: orgOid, links: { $elemMatch: { type: 'lead', id: fromId } } },
+      { $set: { 'links.$[l].id': toId } },
+      { arrayFilters: [{ 'l.type': 'lead', 'l.id': fromId }] }
+    ),
+  ]);
+  await moveRecordLinks(orgOid, fromId, toId);
+
+  await CrmLead.deleteOne({ _id: fromId });
+
+  await logLeadActivity(
+    orgId,
+    toId,
+    userId,
+    `Merged lead "${source.title}"`,
+    filled.length ? `Filled from the merged lead: ${filled.join(', ')}` : undefined
+  );
+  logAudit({
+    userId,
+    action: 'crm.lead.merge',
+    resourceType: 'crm_lead',
+    resourceId: String(toId),
+    meta: { mergedLeadId: String(fromId), mergedTitle: source.title, filled },
+  });
+  await syncLeadFollowUp(orgId, target, userId);
+  await upsertPeopleFromLead(orgId, target);
+  return getLead(String(toId), orgId);
+}
+
+/** Re-point explicit graph edges; an edge the kept lead already has is dropped, not doubled. */
+async function moveRecordLinks(
+  orgOid: mongoose.Types.ObjectId,
+  fromId: mongoose.Types.ObjectId,
+  toId: mongoose.Types.ObjectId
+) {
+  const links = await RecordLink.find({
+    taskflowOrganizationId: orgOid,
+    $or: [
+      { fromType: 'lead', fromId },
+      { toType: 'lead', toId: fromId },
+    ],
+  });
+  for (const link of links) {
+    if (link.fromType === 'lead' && String(link.fromId) === String(fromId)) link.fromId = toId;
+    if (link.toType === 'lead' && String(link.toId) === String(fromId)) link.toId = toId;
+    const selfLoop = link.fromType === link.toType && String(link.fromId) === String(link.toId);
+    try {
+      if (selfLoop) await link.deleteOne();
+      else await link.save();
+    } catch (err) {
+      if ((err as { code?: number }).code === 11000) await link.deleteOne();
+      else throw err;
+    }
+  }
 }
 
 export function leadCatalog() {

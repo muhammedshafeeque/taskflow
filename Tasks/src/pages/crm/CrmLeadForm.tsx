@@ -13,8 +13,10 @@ import {
   type CrmCampaign,
   type CrmContact,
   type CrmLead,
+  type LeadDuplicateResult,
   type User,
 } from '../../lib/api';
+import { CustomerOrgMatchList, DuplicateLeadList } from './LeadDuplicates';
 import { toIsoDatePart } from '../../lib/dateFormat';
 import {
   LEAD_COMPANY_SIZES,
@@ -276,6 +278,9 @@ export default function CrmLeadForm() {
   const [useExistingOrg, setUseExistingOrg] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [dupes, setDupes] = useState<LeadDuplicateResult | null>(null);
+  /** The server refused to create because of the matches below; next save confirms. */
+  const [dupeConfirm, setDupeConfirm] = useState(false);
   const [loading, setLoading] = useState(isEdit);
   const [links, setLinks] = useState<{ customerOrgId?: string; dealId?: string; orgName?: string; dealTitle?: string }>(
     {}
@@ -435,15 +440,61 @@ export default function CrmLeadForm() {
     });
   }
 
+  // Look for likely duplicates while the contact details are typed.
+  const dupeKey = JSON.stringify([
+    form.contactEmail.trim(),
+    form.contactPhone.trim(),
+    form.companyName.trim(),
+    form.website.trim(),
+    form.additionalContacts.map((c) => [c.email.trim(), c.phone.trim()]),
+  ]);
+  useEffect(() => {
+    if (!token || converted || loading) return;
+    const timer = window.setTimeout(() => {
+      const p = toPayload(form);
+      crmApi
+        .checkLeadDuplicates(
+          {
+            contactEmail: p.contactEmail,
+            contactPhone: p.contactPhone,
+            companyName: p.companyName,
+            website: p.website,
+            additionalContacts: p.additionalContacts,
+            excludeId: id,
+          },
+          token
+        )
+        .then((res) => {
+          if (res.success && res.data) setDupes(res.data);
+        });
+    }, 500);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dupeKey covers the fields that are checked
+  }, [token, dupeKey, id, converted, loading]);
+
+  useEffect(() => {
+    setDupeConfirm(false);
+  }, [dupeKey]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!token || !form.title.trim()) return;
     setSaving(true);
     setError('');
     const payload = toPayload(form);
-    const res = isEdit && id ? await crmApi.updateLead(id, payload, token) : await crmApi.createLead(payload, token);
+    const res =
+      isEdit && id
+        ? await crmApi.updateLead(id, payload, token)
+        : await crmApi.createLead({ ...payload, ...(dupeConfirm ? { ignoreDuplicates: true } : {}) }, token);
     setSaving(false);
     if (!res.success || !res.data) {
+      const data = res.data as unknown as (LeadDuplicateResult & { code?: string }) | undefined;
+      if (res.status === 409 && data?.code === 'duplicate_lead') {
+        setDupes({ leads: data.leads ?? [], customerOrgs: data.customerOrgs ?? [] });
+        setDupeConfirm(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
       setError((res as { message?: string }).message ?? 'Could not save lead');
       return;
     }
@@ -484,7 +535,7 @@ export default function CrmLeadForm() {
               disabled={saving || converted}
               className="btn-primary px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50"
             >
-              {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create lead'}
+              {saving ? 'Saving…' : isEdit ? 'Save changes' : dupeConfirm ? 'Create anyway' : 'Create lead'}
             </button>
           </div>
         </div>
@@ -493,6 +544,32 @@ export default function CrmLeadForm() {
       <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-5">
         {error && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>
+        )}
+
+        {!converted && dupes && (dupes.leads.length > 0 || dupes.customerOrgs.length > 0) && (
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-amber-200">
+                {dupes.leads.length > 0
+                  ? dupes.leads.length === 1
+                    ? 'This looks like a lead you already have'
+                    : `This looks like ${dupes.leads.length} leads you already have`
+                  : 'This customer may already have an organisation'}
+              </p>
+              <p className="text-[13px] text-[color:var(--text-muted)] mt-1">
+                {dupeConfirm
+                  ? 'Open the match to continue there, or select Create anyway to save a separate lead. You can merge duplicates later from the lead page.'
+                  : 'Check the match before saving. Duplicates can be merged later from the lead page.'}
+              </p>
+            </div>
+            {dupes.leads.length > 0 && <DuplicateLeadList leads={dupes.leads} />}
+            {dupes.customerOrgs.length > 0 && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1.5">Customer organisations</p>
+                <CustomerOrgMatchList orgs={dupes.customerOrgs} />
+              </div>
+            )}
+          </div>
         )}
 
         {converted && (

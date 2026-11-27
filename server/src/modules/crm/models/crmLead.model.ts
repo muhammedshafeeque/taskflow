@@ -50,6 +50,8 @@ export interface ICrmLead extends Document {
   accountId?: mongoose.Types.ObjectId;
   customerOrgId?: mongoose.Types.ObjectId;
   dealId?: mongoose.Types.ObjectId;
+  /** Leads merged into this one; their old ids still resolve here. */
+  mergedLeadIds: mongoose.Types.ObjectId[];
   notes?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -102,6 +104,7 @@ const crmLeadSchema = new Schema<ICrmLead>(
     accountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount' },
     customerOrgId: { type: Schema.Types.ObjectId, ref: 'CustomerOrg' },
     dealId: { type: Schema.Types.ObjectId, ref: 'CrmDeal' },
+    mergedLeadIds: { type: [Schema.Types.ObjectId], default: [] },
     notes: { type: String },
   },
   { timestamps: true }
@@ -111,6 +114,7 @@ crmLeadSchema.index({ taskflowOrganizationId: 1, status: 1, createdAt: -1 });
 crmLeadSchema.index({ taskflowOrganizationId: 1, assigneeId: 1, status: 1 });
 crmLeadSchema.index({ taskflowOrganizationId: 1, contactEmail: 1 });
 crmLeadSchema.index({ taskflowOrganizationId: 1, nextFollowUpAt: 1 });
+crmLeadSchema.index({ taskflowOrganizationId: 1, mergedLeadIds: 1 });
 
 crmLeadSchema.index({ nextFollowUpAt: 1 });
 

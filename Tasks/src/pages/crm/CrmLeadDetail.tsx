@@ -11,7 +11,10 @@ import {
   type CrmLead,
   type CrmPipeline,
   type CrmQuote,
+  type LeadDuplicate,
+  type LeadDuplicateResult,
 } from '../../lib/api';
+import { CustomerOrgMatchList, DuplicateLeadList } from './LeadDuplicates';
 import {
   LEAD_COMPANY_SIZES,
   LEAD_ROLES,
@@ -65,6 +68,11 @@ export default function CrmLeadDetail() {
   const [convertStep, setConvertStep] = useState(1);
   const [convertError, setConvertError] = useState('');
   const [portalSkipAck, setPortalSkipAck] = useState(false);
+  const [dupes, setDupes] = useState<LeadDuplicateResult>({ leads: [], customerOrgs: [] });
+  /** Existing customer organisation picked in the convert wizard; '' creates a new one. */
+  const [useOrgId, setUseOrgId] = useState('');
+  /** The person chose a new organisation although matching ones are listed. */
+  const [newOrgConfirmed, setNewOrgConfirmed] = useState(false);
   const [convert, setConvert] = useState({
     pipelineId: '',
     dealValue: '',
@@ -97,6 +105,12 @@ export default function CrmLeadDetail() {
           adminEmail: res.data!.contactEmail || c.adminEmail,
         }));
       } else setError('Lead not found');
+    });
+    crmApi.getLeadDuplicates(id, token).then((res) => {
+      if (res.success && res.data) {
+        setDupes(res.data);
+        setUseOrgId((cur) => cur || res.data!.customerOrgs[0]?._id || '');
+      }
     });
     crmApi.listActivities(token, { relatedType: 'lead', relatedId: id }).then((res) => {
       if (res.success && res.data) setActivities(res.data);
@@ -160,6 +174,10 @@ export default function CrmLeadDetail() {
       return;
     }
     if (convertStep === 2) {
+      if (useOrgId) {
+        setConvertStep(3);
+        return;
+      }
       if (convert.createPortalOrg) {
         const email = (convert.adminEmail || convert.contactEmail).trim();
         if (!email) {
@@ -181,7 +199,7 @@ export default function CrmLeadDetail() {
   async function doConvert(e: React.FormEvent) {
     e.preventDefault();
     if (!token || !id || !canUpdate) return;
-    const existingOrgId = refOrgId(lead?.customerOrgId);
+    const existingOrgId = refOrgId(lead?.customerOrgId) || useOrgId;
     if (convert.createPortalOrg && !existingOrgId) {
       const email = (convert.adminEmail || convert.contactEmail).trim();
       if (!email) {
@@ -212,11 +230,22 @@ export default function CrmLeadDetail() {
                 adminEmail: convert.adminEmail.trim() || convert.contactEmail.trim(),
               }
             : undefined,
+        ignoreDuplicates: !existingOrgId && newOrgConfirmed ? true : undefined,
       },
       token
     );
     setBusy(false);
     if (!res.success) {
+      const data = res.data as unknown as { code?: string; customerOrgs?: LeadDuplicateResult['customerOrgs'] } | undefined;
+      if (res.status === 409 && data?.code === 'duplicate_customer_org') {
+        const orgs = data.customerOrgs ?? [];
+        setDupes((d) => ({ ...d, customerOrgs: orgs }));
+        setUseOrgId(orgs[0]?._id ?? '');
+        setNewOrgConfirmed(false);
+        setConvertStep(2);
+        setConvertError('This customer may already have an organisation. Choose it, or confirm a new one.');
+        return;
+      }
       setConvertError((res as { message?: string }).message ?? 'Convert failed');
       return;
     }
@@ -258,6 +287,31 @@ export default function CrmLeadDetail() {
     );
     setFollowDue('');
     load();
+  }
+
+  async function merge(other: LeadDuplicate, direction: 'into-this' | 'into-other') {
+    if (!token || !id || !lead) return;
+    const keep = direction === 'into-this' ? id : other._id;
+    const drop = direction === 'into-this' ? other._id : id;
+    const keepTitle = direction === 'into-this' ? lead.title : other.title;
+    const dropTitle = direction === 'into-this' ? other.title : lead.title;
+    if (
+      !window.confirm(
+        `Merge "${dropTitle}" into "${keepTitle}"?\n\nBlank fields, contacts, tags, notes and history move to "${keepTitle}" and "${dropTitle}" is removed. This cannot be undone.`
+      )
+    )
+      return;
+    setBusy(true);
+    setError('');
+    const res = await crmApi.mergeLead(keep, drop, token);
+    setBusy(false);
+    if (!res.success) {
+      setError((res as { message?: string }).message ?? 'Merge failed');
+      return;
+    }
+    setMsg(`Merged "${dropTitle}" into "${keepTitle}"`);
+    if (keep === id) load();
+    else navigate(`/crm/leads/${keep}`);
   }
 
   async function remove() {
@@ -353,6 +407,49 @@ export default function CrmLeadDetail() {
 
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="xl:col-span-2 space-y-4 min-w-0">
+        {dupes.leads.length > 0 && (
+          <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5">
+            <h2 className="text-sm font-semibold text-amber-200">
+              {dupes.leads.length === 1 ? 'Possible duplicate' : `${dupes.leads.length} possible duplicates`}
+            </h2>
+            <p className="text-[12px] text-[color:var(--text-muted)] mt-0.5 mb-2">
+              {canUpdate && canDelete
+                ? 'Merging keeps one lead, fills its blank fields from the other and moves contacts, notes, activity, quotations and emails across.'
+                : 'These leads share contact or company details with this one.'}
+            </p>
+            <DuplicateLeadList
+              leads={dupes.leads}
+              action={
+                canUpdate && canDelete
+                  ? (other) => (
+                      <div className="flex flex-wrap gap-1.5">
+                        {other.status !== 'converted' && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void merge(other, 'into-this')}
+                            className="text-xs px-2.5 py-1 rounded-lg border border-[color:var(--border-subtle)] hover:border-[color:var(--accent)]/40 disabled:opacity-50"
+                          >
+                            Merge into this lead
+                          </button>
+                        )}
+                        {lead.status !== 'converted' && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void merge(other, 'into-other')}
+                            className="text-xs px-2.5 py-1 rounded-lg border border-[color:var(--border-subtle)] hover:border-[color:var(--accent)]/40 disabled:opacity-50"
+                          >
+                            Merge this into it
+                          </button>
+                        )}
+                      </div>
+                    )
+                  : undefined
+              }
+            />
+          </section>
+        )}
         {id && <CrmEmailPanel relatedType="lead" relatedId={id} defaultTo={lead.contactEmail} />}
         <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5">
           <h2 className="text-sm font-semibold mb-4">Details</h2>
@@ -640,7 +737,45 @@ export default function CrmLeadDetail() {
               </>
             )}
 
-            {convertStep === 2 && !refOrgId(lead.customerOrgId) && (
+            {convertStep === 2 && !refOrgId(lead.customerOrgId) && dupes.customerOrgs.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm">
+                  {dupes.customerOrgs.length === 1
+                    ? 'This customer may already have an organisation.'
+                    : 'This customer may already have one of these organisations.'}
+                </p>
+                <CustomerOrgMatchList
+                  orgs={dupes.customerOrgs}
+                  selectedId={useOrgId}
+                  onSelect={(orgId) => {
+                    setUseOrgId(orgId);
+                    setNewOrgConfirmed(false);
+                    setConvertError('');
+                  }}
+                />
+                <label
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer ${
+                    !useOrgId
+                      ? 'border-[color:var(--accent)]/60 bg-[color:var(--accent)]/10'
+                      : 'border-[color:var(--border-subtle)] hover:border-[color:var(--accent)]/30'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="existing-customer-org"
+                    checked={!useOrgId}
+                    onChange={() => {
+                      setUseOrgId('');
+                      setNewOrgConfirmed(true);
+                      setConvertError('');
+                    }}
+                  />
+                  No, this is a different customer
+                </label>
+              </div>
+            )}
+
+            {convertStep === 2 && !refOrgId(lead.customerOrgId) && !useOrgId && (
               <>
                 <p className="text-sm text-[color:var(--text-muted)]">
                   A portal organisation gives the customer access to raise requests, view projects, and manage their team.
@@ -710,8 +845,12 @@ export default function CrmLeadDetail() {
                   {convert.dealValue && <p><span className="text-[color:var(--text-primary)]">Deal value:</span> {convert.dealValue}</p>}
                   {!refOrgId(lead.customerOrgId) && (
                     <p>
-                      <span className="text-[color:var(--text-primary)]">Portal org:</span>{' '}
-                      {convert.createPortalOrg ? convert.orgName || lead.companyName || lead.title : 'Skipped'}
+                      <span className="text-[color:var(--text-primary)]">{useOrgId ? 'Customer:' : 'Portal org:'}</span>{' '}
+                      {useOrgId
+                        ? `${dupes.customerOrgs.find((o) => o._id === useOrgId)?.name ?? 'Existing organisation'} (existing)`
+                        : convert.createPortalOrg
+                          ? convert.orgName || lead.companyName || lead.title
+                          : 'Skipped'}
                     </p>
                   )}
                 </div>

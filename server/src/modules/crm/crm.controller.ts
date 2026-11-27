@@ -202,8 +202,26 @@ export async function getLead(req: Request & { user?: AuthPayload }, res: Respon
 }
 
 export async function createLead(req: Request & { user?: AuthPayload }, res: Response) {
-  const data = await leadsService.createLead(ws(req), req.body, uid(req));
+  const data = await leadsService.createLead(ws(req), req.body, uid(req), { checkDuplicates: true });
   res.status(201).json({ success: true, data });
+}
+
+export async function checkLeadDuplicates(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await leadsService.checkLeadDuplicates(ws(req), (req.body ?? {}) as Record<string, unknown>);
+  res.json({ success: true, data });
+}
+
+export async function getLeadDuplicates(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await leadsService.getLeadDuplicates(req.params.id, ws(req));
+  res.json({ success: true, data });
+}
+
+export async function mergeLead(req: Request & { user?: AuthPayload }, res: Response) {
+  const body = (req.body ?? {}) as { sourceId?: string };
+  const data = await leadsService.mergeLeads(req.params.id, String(body.sourceId ?? ''), ws(req), uid(req));
+  res.json({ success: true, data });
 }
 
 /**
@@ -286,8 +304,13 @@ export async function convertLead(req: Request & { user?: AuthPayload }, res: Re
       adminName?: string;
       adminEmail?: string;
     };
+    ignoreDuplicates?: boolean;
   };
-  const data = await leadsService.convertLead(req.params.id, ws(req), uid(req), body);
+  const data = await leadsService.convertLead(req.params.id, ws(req), uid(req), {
+    ...body,
+    checkDuplicates: true,
+    ignoreDuplicates: body.ignoreDuplicates === true,
+  });
   res.json({ success: true, data });
 }
 

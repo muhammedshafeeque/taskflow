@@ -54,6 +54,13 @@ router.delete('/activities/:id', requirePermission(P.ACTIVITY.DELETE), asyncHand
 router.get('/leads', requirePermission(P.LEAD.LIST), asyncHandler(crm.listLeads));
 router.get('/leads/stats', requirePermission(P.LEAD.LIST), asyncHandler(crm.getLeadStats));
 router.post('/leads', requirePermission(P.LEAD.CREATE), asyncHandler(crm.createLead));
+router.post(
+  '/leads/duplicates',
+  requireAnyPermission([P.LEAD.CREATE, P.LEAD.UPDATE, P.LEAD.LIST]),
+  asyncHandler(crm.checkLeadDuplicates)
+);
+router.get('/leads/:id/duplicates', requireAnyPermission([P.LEAD.READ, P.LEAD.LIST]), asyncHandler(crm.getLeadDuplicates));
+router.post('/leads/:id/merge', requirePermission(P.LEAD.UPDATE, P.LEAD.DELETE), asyncHandler(crm.mergeLead));
 router.get('/leads/:id', requireAnyPermission([P.LEAD.READ, P.LEAD.LIST]), asyncHandler(crm.getLead));
 router.patch('/leads/:id', requirePermission(P.LEAD.UPDATE), asyncHandler(crm.updateLead));
 router.delete('/leads/:id', requirePermission(P.LEAD.DELETE), asyncHandler(crm.deleteLead));

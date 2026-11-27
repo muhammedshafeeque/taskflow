@@ -2583,6 +2583,34 @@ export interface CrmLead {
   updatedAt?: string;
 }
 
+export type LeadDuplicateReason = 'email' | 'phone' | 'company' | 'domain' | 'contact';
+
+export interface LeadDuplicate {
+  _id: string;
+  title: string;
+  status: string;
+  companyName?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  updatedAt?: string;
+  reasons: LeadDuplicateReason[];
+}
+
+export interface CustomerOrgMatch {
+  _id: string;
+  name: string;
+  status?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  reasons: LeadDuplicateReason[];
+}
+
+export interface LeadDuplicateResult {
+  leads: LeadDuplicate[];
+  customerOrgs: CustomerOrgMatch[];
+}
+
 export interface CrmLeadList {
   data: CrmLead[];
   total: number;
@@ -2889,7 +2917,13 @@ export const crmApi = {
   },
   getLeadStats: (token: string) => api.get<CrmLeadStats>('/crm/leads/stats', token),
   getLead: (id: string, token: string) => api.get<CrmLead>(`/crm/leads/${id}`, token),
-  createLead: (data: Partial<CrmLead>, token: string) => api.post<CrmLead>('/crm/leads', data, token),
+  createLead: (data: Partial<CrmLead> & { ignoreDuplicates?: boolean }, token: string) =>
+    api.post<CrmLead>('/crm/leads', data, token),
+  checkLeadDuplicates: (data: Partial<CrmLead> & { excludeId?: string }, token: string) =>
+    api.post<LeadDuplicateResult>('/crm/leads/duplicates', data, token),
+  getLeadDuplicates: (id: string, token: string) => api.get<LeadDuplicateResult>(`/crm/leads/${id}/duplicates`, token),
+  mergeLead: (id: string, sourceId: string, token: string) =>
+    api.post<CrmLead>(`/crm/leads/${id}/merge`, { sourceId }, token),
   updateLead: (id: string, data: Partial<CrmLead>, token: string) => api.patch<CrmLead>(`/crm/leads/${id}`, data, token),
   deleteLead: (id: string, token: string) => api.delete(`/crm/leads/${id}`, token),
   convertLead: (
@@ -2910,6 +2944,7 @@ export const crmApi = {
             adminName?: string;
             adminEmail?: string;
           };
+          ignoreDuplicates?: boolean;
         }
       | string
       | undefined,
