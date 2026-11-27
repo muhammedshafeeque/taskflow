@@ -17,3 +17,20 @@ Every time you make a change to this project (new feature, bug fix, improvement,
 - **`DETAILS`**: Clear, user-friendly description; separate multiple bullet points with ` ; ` (do not use `|` characters).
 - **Append-only**: Never edit or delete existing lines in `server/updates.txt` unless the user explicitly asks you to.
 - **No `|` in text**: Never include pipe (`|`) characters inside `TITLE` or `DETAILS`.
+
+
+## Mandatory Rule: Ticket Unrelated Issues (`AUT` project)
+
+When you find an issue that is **not related to the task in progress** (a bug, failing or flaky test, security gap, broken UI, incorrect behaviour, and so on), you **MUST** create a ticket for it in the **AUT** project automatically, without asking, instead of fixing it silently or ignoring it.
+
+### Requirements
+
+- **Where**: the AUT project, through the Autrium MCP connection (`create_issue`, `project: "AUT"`). Check the project's types, statuses and priorities with `get_project`. Default: status `Backlog`, assignee `me`, type `Bug` for defects.
+- **No duplicates**: search AUT first (`search_issues` / `jql_search`). If an open ticket already covers it, add a comment with any new evidence instead.
+- **Description must contain**:
+  - **Problem**: what is wrong and what it affects.
+  - **Evidence**: exact code (file path, line numbers, snippet), error message or test output, or a screenshot. A ticket without evidence is not allowed.
+  - **Steps to reproduce** (when applicable).
+  - **Done when**: the expected outcome.
+  - **Found while**: the ticket or task being worked on.
+- **Do not derail**: continue the current task, and list the created ticket keys in your final summary.
