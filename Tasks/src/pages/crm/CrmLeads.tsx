@@ -104,7 +104,6 @@ export default function CrmLeads() {
       lead._id,
       {
         createPortalOrg: !existingOrgId,
-        createProject: true,
         portalOrg: !existingOrgId && lead.contactEmail
           ? {
               name: lead.companyName || lead.title,

@@ -1,5 +1,6 @@
 import { notifyUsers } from '../../notifications/domainNotify';
-import { assertApprovedOrSubmit } from '../../approvals/approvals.service';
+import { assertApprovedOrSubmit, assertDiscountApprovedOrSubmit, isApprovalChainEnabled } from '../../approvals/approvals.service';
+import { overDiscountLimit } from './discountLimits';
 import mongoose from 'mongoose';
 import {
   CrmQuote,
@@ -360,9 +361,7 @@ export async function sendQuote(
     throw new ApiError(400, 'Cannot email an accepted, rejected, or expired quotation');
   }
   if (!quote.issueDate) throw new ApiError(400, 'Set the quotation’s issue date before sending it');
-  if (quote.status === 'draft') {
-    await assertApprovedOrSubmit(orgId, 'quote', id, opts?.userId ?? String(quote.createdBy), 'send this quotation');
-  }
+  await gateQuote(orgId, quote, opts?.userId ?? String(quote.createdBy), 'send this quotation');
   const accountName =
     quote.customerOrgId && typeof quote.customerOrgId === 'object' && 'name' in quote.customerOrgId
       ? String((quote.customerOrgId as { name?: string }).name ?? '')
@@ -446,6 +445,28 @@ export async function sendQuote(
   return { ok: true, status: doc.status };
 }
 
+/**
+ * Before a quote goes to the customer (sent or accepted):
+ * - the quote approval chain, when on, approves draft quotes (AUT-27), and also any quote above the
+ *   sender's discount limit, even one already sent and edited since;
+ * - with the chain off, a quote above the sender's discount limit needs approval from someone whose
+ *   limit covers it (AUT-31). An approval stays valid while the total and discount stay the same.
+ */
+async function gateQuote(
+  orgId: string,
+  quote: { _id: unknown; status: string; lineItems?: Array<{ quantity?: number; unitPrice?: number }>; subtotal?: number; discountAmount?: number },
+  actorUserId: string,
+  action: string
+) {
+  const id = String(quote._id);
+  const over = await overDiscountLimit(orgId, actorUserId, quote);
+  if (await isApprovalChainEnabled(orgId, 'quote')) {
+    if (quote.status === 'draft' || over) await assertApprovedOrSubmit(orgId, 'quote', id, actorUserId, action);
+    return;
+  }
+  if (over) await assertDiscountApprovedOrSubmit(orgId, id, actorUserId, action, over);
+}
+
 export async function updateQuote(
   id: string,
   workspaceId: string | null | undefined,
@@ -461,8 +482,8 @@ export async function updateQuote(
     if (existing.status === 'accepted' || existing.status === 'rejected' || existing.status === 'expired') {
       throw new ApiError(400, 'This quotation is already closed');
     }
-    if (existing.status === 'draft' && nextStatus === 'accepted') {
-      await assertApprovedOrSubmit(orgId, 'quote', id, userId ?? String(existing.createdBy), 'mark this quotation accepted');
+    if (nextStatus === 'accepted') {
+      await gateQuote(orgId, existing, userId ?? String(existing.createdBy), 'mark this quotation accepted');
     }
     const prev = existing.status;
     existing.status = nextStatus;

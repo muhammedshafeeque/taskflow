@@ -14,6 +14,7 @@ import { applyLeaveDecision } from '../hrms/hrms.service';
 import { HrmsPayrollRun } from '../hrms/models/hrmsPayroll.model';
 import { BillingInvoice } from '../billing/models/billingInvoice.model';
 import { CrmQuote } from '../crm/models/crmQuote.model';
+import { quoteDiscountPercent } from '../crm/quotes/discountLimits';
 
 const valid = (id: string) => mongoose.Types.ObjectId.isValid(id);
 const str = (v: unknown) => (v == null ? null : String(v));
@@ -106,8 +107,16 @@ registerApprovalAdapter({
   amountLabel: 'Total',
   async load(orgId, id) {
     if (!valid(id)) return null;
-    const q = await CrmQuote.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) }).select('title total currency createdBy').lean();
+    const q = await CrmQuote.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) }).select('title total currency createdBy lineItems subtotal discountAmount').lean();
     if (!q) return null;
-    return { title: `Quote: ${q.title}`, amount: q.total, currency: q.currency, requesterUserId: str(q.createdBy), link: `/crm/quotes/${id}` };
+    const discountPercent = quoteDiscountPercent(q);
+    return {
+      title: `Quote: ${q.title}${discountPercent > 0 ? ` (${discountPercent}% off)` : ''}`,
+      amount: q.total,
+      currency: q.currency,
+      requesterUserId: str(q.createdBy),
+      link: `/crm/quotes/${id}`,
+      discountPercent,
+    };
   },
 });

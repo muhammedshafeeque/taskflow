@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import { crmApi, type CrmPipeline, type CrmWebhook } from '../../lib/api';
 import ConfirmModal from '../../components/ConfirmModal';
+import DiscountLimitsSection from './DiscountLimitsSection';
 import { Chip, CrmShell, EmptyState, Field, Notice, btnDanger, btnPrimary, btnSecondary, errorOf, inputCls } from './crmKit';
 
 type Stage = CrmPipeline['stages'][number];
@@ -98,7 +99,7 @@ export default function CrmSettings() {
   }
 
   return (
-    <CrmShell title="CRM settings" description="Sales pipelines, their stages and probabilities, and outbound webhooks.">
+    <CrmShell title="CRM settings" description="Sales pipelines, their stages and probabilities, quotation discount limits, and outbound webhooks.">
       <Notice message={error} onClose={() => setError(null)} />
       {secretOnce && (
         <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
@@ -142,6 +143,8 @@ export default function CrmSettings() {
           />
         ))}
       </section>
+
+      <DiscountLimitsSection onError={setError} />
 
       <section className="space-y-3">
         <div>

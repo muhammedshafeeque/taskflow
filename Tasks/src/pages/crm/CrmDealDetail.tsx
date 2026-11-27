@@ -19,6 +19,7 @@ import { canAny } from '../../utils/moduleAccess';
 import { crmApi, type CrmActivity, type CrmDeal, type CrmDealDetail, type CrmPipeline } from '../../lib/api';
 import ConfirmModal from '../../components/ConfirmModal';
 import DealFormModal from './DealFormModal';
+import ProjectManagerPicker from './ProjectManagerPicker';
 import {
   Chip,
   CrmShell,
@@ -54,6 +55,7 @@ export default function CrmDealDetail() {
   const canDelete = canAny(user, 'taskflow.crm.deal.delete');
   const canQuote = canAny(user, 'taskflow.crm.quote.create');
   const canLog = canAny(user, 'taskflow.crm.activity.create');
+  const canCreateProject = canUpdate && canAny(user, 'project.project.create');
 
   const [detail, setDetail] = useState<CrmDealDetail | null>(null);
   const [pipelines, setPipelines] = useState<CrmPipeline[]>([]);
@@ -238,6 +240,24 @@ export default function CrmDealDetail() {
         <Stat label="Activities" value={activities.length} hint={`${activities.filter((a) => !a.completedAt).length} open`} />
       </div>
 
+      {deal.status === 'won' && !hasProject && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-500/5 px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold">Deal won: set up delivery</p>
+            <p className="text-[12px] text-[color:var(--text-muted)]">
+              {canCreateProject
+                ? 'Create the project and choose who runs it. Accepted quotes and contracts are linked to it.'
+                : 'Someone who can create projects needs to set up the delivery project and choose its manager.'}
+            </p>
+          </div>
+          {canCreateProject && (
+            <button type="button" className={btnPrimary} onClick={() => setProjectOpen(true)}>
+              <FiFolderPlus /> Create project
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="grid gap-5 xl:grid-cols-3">
         <div className="xl:col-span-2 space-y-5">
           <ActivityPanel dealId={deal._id} activities={activities} canLog={canLog} onChange={load} onError={setNotice} />
@@ -272,7 +292,7 @@ export default function CrmDealDetail() {
                   <Link className="text-[color:var(--accent)] hover:underline" to={`/projects/${refId(deal.projectId)}/dashboard`}>
                     {refName(deal.projectId) || 'Open project'}
                   </Link>
-                ) : canUpdate && deal.status !== 'lost' ? (
+                ) : canCreateProject && deal.status !== 'lost' ? (
                   <button type="button" className="inline-flex items-center gap-1 text-[color:var(--accent)] hover:underline" onClick={() => setProjectOpen(true)}>
                     <FiFolderPlus /> Create project
                   </button>
@@ -780,17 +800,30 @@ function CreateProjectForm({ deal, onClose, onDone }: { deal: CrmDeal; onClose: 
   const { token } = useAuth();
   const [name, setName] = useState(deal.title);
   const [key, setKey] = useState(suggestKey(deal.title));
+  const [leadId, setLeadId] = useState('');
+  const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   return (
-    <Modal open title="Create project from deal" subtitle="The deal is marked won and linked to the new project." onClose={onClose}>
+    <Modal
+      open
+      title="Create project from deal"
+      subtitle={
+        deal.status === 'won'
+          ? 'Links the customer, accepted quotes and contracts to the new project. Nobody is booked; the project manager staffs it.'
+          : 'The deal is marked won and linked to the new project. Nobody is booked; the project manager staffs it.'
+      }
+      onClose={onClose}
+    >
       <form
         className="space-y-3"
         onSubmit={async (e) => {
           e.preventDefault();
           if (!token || !name.trim() || !key.trim()) return;
+          if (!leadId) return setError('Choose the project manager.');
           setSaving(true);
-          const res = await crmApi.createProjectFromDeal(deal._id, { name: name.trim(), key: key.trim().toUpperCase() }, token);
+          setError('');
+          const res = await crmApi.createProjectFromDeal(deal._id, { name: name.trim(), key: key.trim().toUpperCase(), leadId }, token);
           setSaving(false);
           onDone(res.success ? undefined : errorOf(res, 'Could not create the project.'));
         }}
@@ -801,6 +834,10 @@ function CreateProjectForm({ deal, onClose, onDone }: { deal: CrmDeal; onClose: 
         <Field label="Key" hint="Short code used in issue keys, e.g. ACME-12.">
           <input required className={`${inputCls} uppercase font-mono`} maxLength={10} value={key} onChange={(e) => setKey(e.target.value)} />
         </Field>
+        <Field label="Project manager" hint="Runs delivery and becomes the project lead.">
+          <ProjectManagerPicker value={leadId} onChange={setLeadId} />
+        </Field>
+        {error && <p className="text-sm text-red-500">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" className={btnSecondary} onClick={onClose}>
             Cancel

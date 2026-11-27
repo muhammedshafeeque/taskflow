@@ -73,13 +73,25 @@ router.get('/deals/:id', requireAnyPermission([P.DEAL.READ, P.DEAL.LIST]), async
 router.patch('/deals/:id', requirePermission(P.DEAL.UPDATE), asyncHandler(crm.updateDeal));
 router.delete('/deals/:id', requirePermission(P.DEAL.DELETE), asyncHandler(crm.deleteDeal));
 router.post('/deals/:id/move-stage', requirePermission(P.DEAL.UPDATE), asyncHandler(crm.moveDealStage));
-router.post('/deals/:id/create-project', requirePermission(P.DEAL.UPDATE), asyncHandler(crm.createProjectFromDeal));
+// Creating the delivery project also needs the project create permission (AUT-30).
+router.post(
+  '/deals/:id/create-project',
+  requirePermission(P.DEAL.UPDATE, TASK_FLOW_PERMISSIONS.PROJECT.PROJECT.CREATE),
+  asyncHandler(crm.createProjectFromDeal)
+);
 
 router.get('/pipelines', requirePermission(P.DEAL.LIST), asyncHandler(crm.listPipelines));
 router.post('/pipelines', requirePermission(P.SETTINGS.MANAGE), asyncHandler(crm.createPipeline));
 router.patch('/pipelines/:id', requirePermission(P.SETTINGS.MANAGE), asyncHandler(crm.updatePipeline));
 router.delete('/pipelines/:id', requirePermission(P.SETTINGS.MANAGE), asyncHandler(crm.deletePipeline));
 
+// Quotation discount limits (AUT-31): anyone working on quotes can see them and their own limit.
+router.get(
+  '/discount-policy',
+  requireAnyPermission([P.QUOTE.LIST, P.QUOTE.CREATE, P.QUOTE.UPDATE, P.SETTINGS.MANAGE]),
+  asyncHandler(crm.getDiscountPolicyHandler)
+);
+router.put('/discount-policy', requirePermission(P.SETTINGS.MANAGE), asyncHandler(crm.updateDiscountPolicyHandler));
 router.get('/quotes', requirePermission(P.QUOTE.LIST), asyncHandler(crm.listQuotes));
 router.post('/quotes', requirePermission(P.QUOTE.CREATE), asyncHandler(crm.createQuote));
 router.get('/quotes/:id', requireAnyPermission([P.QUOTE.READ, P.QUOTE.LIST]), asyncHandler(crm.getQuote));

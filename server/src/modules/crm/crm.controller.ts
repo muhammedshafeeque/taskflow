@@ -18,6 +18,11 @@ import * as contractsService from './contracts/contracts.service';
 import * as dashboardService from './dashboard/dashboard.service';
 import * as campaignsService from './campaigns/campaigns.service';
 import * as ecosystemService from './ecosystem/ecosystem.service';
+import { discountLimitFor, getDiscountPolicy, saveDiscountPolicy } from './quotes/discountLimits';
+import { Role } from '../roles/role.model';
+import { HrmsSettings } from '../hrms/models/hrmsPolicy.model';
+import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
+import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import {
   assertDealInReach,
   assertLeadInReach,
@@ -335,6 +340,9 @@ export async function convertLead(req: Request & { user?: AuthPayload }, res: Re
     dealValue?: number;
     expectedCloseDate?: string;
     createProject?: boolean;
+    projectLeadId?: string;
+    projectName?: string;
+    projectKey?: string;
     createPortalOrg?: boolean;
     portalOrg?: {
       name?: string;
@@ -347,6 +355,8 @@ export async function convertLead(req: Request & { user?: AuthPayload }, res: Re
     ignoreDuplicates?: boolean;
   };
   await assertLeadInReach(ws(req), await crmReachFor(req), req.params.id);
+  // Converting needs lead update; also creating a project needs project create (AUT-30).
+  if (body.createProject === true) assertCanCreateProject(req);
   const data = await leadsService.convertLead(req.params.id, ws(req), uid(req), {
     ...body,
     checkDuplicates: true,
@@ -410,15 +420,49 @@ export async function moveDealStage(req: Request & { user?: AuthPayload }, res: 
   res.json({ success: true, data });
 }
 
+/** Creating a delivery project from CRM needs the same permission as creating one in Projects. */
+function assertCanCreateProject(req: Request & { user?: AuthPayload }) {
+  if (!userHasPermission(req.user?.permissions ?? [], TASK_FLOW_PERMISSIONS.PROJECT.PROJECT.CREATE)) {
+    throw new ApiError(403, 'Creating a project needs the project create permission. Convert without a project, or ask someone who can create projects.');
+  }
+}
+
 export async function createProjectFromDeal(req: Request & { user?: AuthPayload }, res: Response) {
-  const body = req.body as { name?: string; key?: string; templateId?: string };
+  const body = req.body as { name?: string; key?: string; templateId?: string; leadId?: string };
   await assertDealInReach(ws(req), await crmReachFor(req), req.params.id);
   const data = await dealsService.createProjectFromDeal(req.params.id, ws(req), uid(req), {
     name: String(body.name ?? ''),
     key: String(body.key ?? ''),
     templateId: body.templateId,
+    leadId: body.leadId,
   });
   res.status(201).json({ success: true, data });
+}
+
+/** Quotation discount limits, plus the viewer's own limit (null = not limited). */
+export async function getDiscountPolicyHandler(req: Request & { user?: AuthPayload }, res: Response) {
+  const userId = uid(req);
+  const orgId = ws(req);
+  if (!orgId) throw new ApiError(400, 'Choose a workspace');
+  const [policy, myLimit] = await Promise.all([getDiscountPolicy(orgId), discountLimitFor(orgId, userId)]);
+  // People who manage the limits also get the roles and levels they can set limits for.
+  let options: { roles: Array<{ _id: string; name: string }>; levels: string[] } | undefined;
+  if (userHasPermission(req.user?.permissions ?? [], TASK_FLOW_PERMISSIONS.TASKFLOW.CRM.SETTINGS.MANAGE)) {
+    const [roles, hr] = await Promise.all([
+      Role.find().select('name').sort({ name: 1 }).lean(),
+      HrmsSettings.findOne({ taskflowOrganizationId: new mongoose.Types.ObjectId(orgId) }).select('levels').lean(),
+    ]);
+    options = {
+      roles: roles.map((r) => ({ _id: String(r._id), name: r.name })),
+      levels: ((hr as { levels?: string[] } | null)?.levels ?? ['Intern', 'Junior', 'Senior', 'Lead', 'Manager']).filter(Boolean),
+    };
+  }
+  res.json({ success: true, data: { ...policy, myLimit, options } });
+}
+
+export async function updateDiscountPolicyHandler(req: Request & { user?: AuthPayload }, res: Response) {
+  const data = await saveDiscountPolicy(ws(req), (req.body ?? {}) as Record<string, unknown>, uid(req));
+  res.json({ success: true, data });
 }
 
 export async function getForecast(req: Request & { user?: AuthPayload }, res: Response) {

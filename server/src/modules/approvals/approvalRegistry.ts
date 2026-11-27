@@ -16,6 +16,8 @@ export interface ApprovalRecordInfo {
   /** Who is asking. Gate types fall back to the person who triggered the action. */
   requesterUserId?: string | null;
   link: string;
+  /** Discount in percent of list price, for record types that have one (quotes). */
+  discountPercent?: number;
 }
 
 export interface ApprovalAdapter {

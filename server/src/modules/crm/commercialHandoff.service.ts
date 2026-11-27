@@ -4,12 +4,12 @@ import { CrmQuote } from './models/crmQuote.model';
 import { CrmContract } from './models/crmContract.model';
 import { CrmLead } from './models/crmLead.model';
 import { Project } from '../projects/project.model';
-import { ProjectMember } from '../projects/projectMember.model';
+import { OrganizationMember } from '../organizations/organizationMember.model';
+import { ApiError } from '../../utils/ApiError';
 import * as projectsService from '../projects/projects.service';
 import { CustomerOrg } from '../customer-portal/customer-org/customerOrg.model';
 import { CustomerProjectMapping } from '../customer-portal/customer-project-mapping/customerProjectMapping.model';
 import * as customerOrgService from '../customer-portal/customer-org/customerOrg.service';
-import { ResourceAllocation } from '../resources/models/resourceAllocation.model';
 import { DocumentRecord } from '../documents/models/documentRecord.model';
 import { BillingInvoice } from '../billing/models/billingInvoice.model';
 import { createNotification } from '../notifications/notifications.service';
@@ -27,9 +27,15 @@ export type CommercialHandoffOpts = {
   contractId?: string;
   leadId?: string;
   projectTitle?: string;
-  createProject?: boolean;
+  /**
+   * Create a delivery project, run by this project manager. Only when someone explicitly asks
+   * (AUT-30): projects are never created automatically, and the salesperson is not made its lead.
+   */
+  project?: ProjectSetup;
   createPortalOrg?: boolean;
 };
+
+export type ProjectSetup = { leadId: string; name?: string; key?: string; templateId?: string };
 
 export type CommercialHandoffResult = {
   customerOrgId?: string;
@@ -41,7 +47,7 @@ export type CommercialHandoffResult = {
 const SKIP_MESSAGES: Record<string, string> = {
   portal_org_no_email: 'Portal organisation was not created: customer email is missing.',
   portal_org_skipped: 'Portal organisation was not created (opted out).',
-  project_skipped: 'Starter project was not created (opted out).',
+  project_skipped: 'No project was created. Create one from the deal once it is won.',
 };
 
 function warningsFromSkipped(skipped: string[]): string[] {
@@ -144,7 +150,19 @@ async function bindProject(
     }
   }
   const pid = new mongoose.Types.ObjectId(projectId);
-  if (ids.dealId) await CrmDeal.findByIdAndUpdate(ids.dealId, { $set: { projectId: pid } });
+  const orgOid = toOrgOid(workspaceId);
+  if (ids.dealId) {
+    await CrmDeal.findByIdAndUpdate(ids.dealId, { $set: { projectId: pid } });
+    // Quotes and contracts already agreed on the deal (e.g. accepted before the project existed) join it too.
+    const dealOid = new mongoose.Types.ObjectId(ids.dealId);
+    await CrmQuote.updateMany({ taskflowOrganizationId: orgOid, dealId: dealOid, projectId: null }, { $set: { projectId: pid } });
+    const contracts = await CrmContract.find({ taskflowOrganizationId: orgOid, dealId: dealOid, projectId: null }).select('_id').lean();
+    if (contracts.length) {
+      const contractIds = contracts.map((c) => c._id);
+      await CrmContract.updateMany({ _id: { $in: contractIds } }, { $set: { projectId: pid } });
+      await BillingInvoice.updateMany({ taskflowOrganizationId: orgOid, contractId: { $in: contractIds }, projectId: null }, { $set: { projectId: pid } });
+    }
+  }
   if (ids.quoteId) await CrmQuote.findByIdAndUpdate(ids.quoteId, { $set: { projectId: pid } });
   if (ids.contractId) {
     await CrmContract.findByIdAndUpdate(ids.contractId, { $set: { projectId: pid } });
@@ -155,27 +173,44 @@ async function bindProject(
   }
 }
 
-async function seedAllocations(projectId: string, workspaceId: string, userId: string): Promise<void> {
-  const members = await ProjectMember.find({ project: projectId }).select('user').lean();
-  const orgOid = toOrgOid(workspaceId);
-  const start = new Date();
-  for (const m of members) {
-    const uid = String(m.user);
-    const exists = await ResourceAllocation.findOne({ projectId, userId: uid }).lean();
-    if (exists) continue;
-    await ResourceAllocation.create({
-      taskflowOrganizationId: orgOid,
-      userId: uid,
-      projectId,
-      percent: 50,
-      startDate: start,
-      billable: true,
-      softBooked: true,
-      roleLabel: 'Project member',
-      notes: 'Seeded from commercial handoff',
-      createdBy: userId,
-    });
-  }
+/**
+ * The project manager must be an active member of the workspace. Checked before anything is saved,
+ * so a bad choice never leaves half a conversion behind.
+ */
+export async function assertProjectLead(workspaceId: string, leadId: unknown): Promise<string> {
+  const id = String(leadId ?? '').trim();
+  if (!id) throw new ApiError(400, 'Choose a project manager for the new project');
+  if (!mongoose.Types.ObjectId.isValid(id)) throw new ApiError(400, 'Invalid project manager');
+  const member = await OrganizationMember.exists({ organization: toOrgOid(workspaceId), user: id, status: 'active' });
+  if (!member) throw new ApiError(400, 'The project manager must be an active member of this workspace');
+  return id;
+}
+
+/** Create the delivery project for a deal (or customer), run by the chosen project manager. */
+export async function createDeliveryProject(
+  workspaceId: string,
+  actorUserId: string,
+  setup: ProjectSetup,
+  defaults: { title: string; description: string; customerOrgId?: string }
+): Promise<string> {
+  const leadId = await assertProjectLead(workspaceId, setup.leadId);
+  const name = (setup.name || defaults.title || 'Project').trim();
+  const key = setup.key?.trim()
+    ? setup.key.trim().toUpperCase()
+    : await uniqueProjectKey(workspaceId, projectKeyFromTitle(name));
+  const project = await projectsService.create(
+    {
+      name,
+      key,
+      lead: leadId,
+      templateId: setup.templateId,
+      description: defaults.description,
+      orgId: defaults.customerOrgId,
+    },
+    actorUserId,
+    workspaceId
+  );
+  return String((project as { _id: unknown })._id);
 }
 
 async function copyLeadDocuments(leadId: string, dealId: string, workspaceId: string): Promise<void> {
@@ -190,7 +225,6 @@ async function copyLeadDocuments(leadId: string, dealId: string, workspaceId: st
 }
 
 export async function runCommercialHandoff(opts: CommercialHandoffOpts): Promise<CommercialHandoffResult> {
-  const createProject = opts.createProject !== false;
   const createPortalOrg = opts.createPortalOrg !== false;
   const skipped: string[] = [];
   const orgOid = toOrgOid(opts.workspaceId);
@@ -222,32 +256,23 @@ export async function runCommercialHandoff(opts: CommercialHandoffOpts): Promise
   let projectId = deal?.projectId ? String(deal.projectId) : undefined;
   const orgDoc = customerOrgId ? await CustomerOrg.findById(customerOrgId).lean() : null;
 
-  if (createProject && !projectId) {
-    const title = (opts.projectTitle || deal?.title || orgDoc?.name || 'Project').trim();
-    const key = await uniqueProjectKey(opts.workspaceId, projectKeyFromTitle(title));
-    const project = await projectsService.create(
-      {
-        name: title,
-        key,
-        lead: opts.userId,
-        description: `Created from CRM handoff${deal ? `: ${deal.title}` : ''}`,
-        orgId: customerOrgId,
-      },
-      opts.userId,
-      opts.workspaceId
-    );
-    projectId = String((project as { _id: unknown })._id);
-  } else if (!createProject) {
+  if (opts.project && !projectId) {
+    projectId = await createDeliveryProject(opts.workspaceId, opts.userId, opts.project, {
+      title: (opts.projectTitle || deal?.title || orgDoc?.name || 'Project').trim(),
+      description: `Created from CRM handoff${deal ? `: ${deal.title}` : ''}`,
+      customerOrgId,
+    });
+  } else if (!projectId) {
     skipped.push('project_skipped');
   }
 
+  // Nobody is booked on the project here: the project manager staffs it in Resources.
   if (projectId) {
     await bindProject(projectId, customerOrgId, opts.workspaceId, opts.userId, {
       dealId: opts.dealId,
       quoteId: opts.quoteId,
       contractId: opts.contractId,
     });
-    await seedAllocations(projectId, opts.workspaceId, opts.userId);
   }
 
   if (opts.leadId && opts.dealId) {

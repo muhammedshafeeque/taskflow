@@ -39,6 +39,7 @@ import {
   type IApprovalRequestStep,
 } from './approval.models';
 import { getApprovalAdapter, listApprovalAdapters } from './approvalRegistry';
+import { usersWhoseLimitCovers } from '../crm/quotes/discountLimits';
 
 const AP = TASK_FLOW_PERMISSIONS.TASKFLOW.APPROVALS;
 const oid = (v: unknown) => new mongoose.Types.ObjectId(String(v));
@@ -131,6 +132,8 @@ function parseStep(raw: unknown, i: number): IApprovalPolicyStep {
     const ids = Array.isArray(s.userIds) ? s.userIds.map(String).filter((v) => mongoose.Types.ObjectId.isValid(v)) : [];
     if (!ids.length) throw new ApiError(400, `${where}: choose at least one person`);
     step.userIds = [...new Set(ids)].map(oid);
+  } else if (kind === 'discount_limit') {
+    // Approvers are worked out from the discount limits; nothing more to set.
   } else {
     const perm = String(s.permission ?? '').trim();
     if (!/^[a-z0-9_.]+$/i.test(perm)) throw new ApiError(400, `${where}: enter a permission code`);
@@ -207,7 +210,8 @@ async function usersWithRole(orgId: string, roleId: string): Promise<string[]> {
 export async function resolveStepApprovers(
   orgId: string,
   step: Pick<IApprovalPolicyStep, 'kind' | 'level' | 'roleId' | 'userIds' | 'permission'>,
-  requesterUserId: string
+  requesterUserId: string,
+  ctx: { discountPercent?: number } = {}
 ): Promise<string[]> {
   let ids: string[] = [];
   if (step.kind === 'manager') {
@@ -219,6 +223,8 @@ export async function resolveStepApprovers(
     ids = (step.userIds ?? []).map(String);
   } else if (step.kind === 'permission' && step.permission) {
     ids = await usersWithPermission(step.permission, orgId);
+  } else if (step.kind === 'discount_limit') {
+    ids = await usersWhoseLimitCovers(orgId, ctx.discountPercent ?? 0);
   }
   return activeMembers(orgId, ids);
 }
@@ -266,7 +272,7 @@ async function activateFrom(req: RequestDoc, policy: IApprovalPolicy, from: numb
 
   for (let i = from; i < req.steps.length; i++) {
     const step = req.steps[i];
-    const named = await resolveStepApprovers(orgId, step, requester);
+    const named = await resolveStepApprovers(orgId, step, requester, { discountPercent: req.discountPercent });
     let approvers = named.filter((u) => u !== requester && !decided.has(u));
     let note: string | undefined;
     if (!approvers.length) {
@@ -321,6 +327,23 @@ function buildSteps(policy: IApprovalPolicy, amount: number): IApprovalRequestSt
   }));
 }
 
+/** The built-in approval for a quote above the sender's discount limit, used while the quote chain is off. */
+function discountPolicy(orgId: string): IApprovalPolicy {
+  return {
+    _id: new mongoose.Types.ObjectId(),
+    taskflowOrganizationId: toOrgOid(orgId),
+    recordType: 'quote',
+    enabled: true,
+    steps: [{ name: 'Discount approval', kind: 'discount_limit', aboveAmount: null }],
+    fallbackUserIds: [],
+  } as unknown as IApprovalPolicy;
+}
+
+/** The policy a request runs on: the built-in discount approval, or the record type's chain. */
+async function policyFor(orgId: string, type: ApprovalRecordType, source: IApprovalRequest['source']): Promise<IApprovalPolicy> {
+  return source === 'discount_limit' ? discountPolicy(orgId) : requirePolicy(orgId, type);
+}
+
 /** Policy that must be on; refuses when the chain is off for this type. */
 async function requirePolicy(orgId: string, type: ApprovalRecordType): Promise<IApprovalPolicy> {
   const policy = await getPolicy(orgId, type);
@@ -336,8 +359,15 @@ export async function findOpenRequest(orgId: string, type: ApprovalRecordType, r
  * Start (or return the open) approval request for a record. `actorUserId` is who triggered it;
  * the adapter may name a different requester (e.g. the employee whose leave it is).
  */
-export async function submitForApproval(orgId: string, type: ApprovalRecordType, recordId: string, actorUserId: string): Promise<RequestDoc> {
-  const policy = await requirePolicy(orgId, type);
+export async function submitForApproval(
+  orgId: string,
+  type: ApprovalRecordType,
+  recordId: string,
+  actorUserId: string,
+  opts: { source?: IApprovalRequest['source'] } = {}
+): Promise<RequestDoc> {
+  const source = opts.source ?? 'chain';
+  const policy = await policyFor(orgId, type, source);
   const adapter = await getApprovalAdapter(type);
   if (!adapter) throw new ApiError(500, `No approval adapter for ${type}`);
   const info = await adapter.load(orgId, recordId);
@@ -345,8 +375,16 @@ export async function submitForApproval(orgId: string, type: ApprovalRecordType,
   const amount = round2(Number(info.amount) || 0);
 
   const open = await findOpenRequest(orgId, type, recordId);
-  if (open) {
-    if (open.amount === amount) return open;
+  if (open && (open.source ?? 'chain') !== source) {
+    // The way this record is approved changed (e.g. the chain was turned on): start over on the new one.
+    open.status = 'cancelled';
+    open.currentApproverIds = [];
+    open.completedAt = new Date();
+    open.history.push({ at: new Date(), action: 'cancelled', actorId: oid(actorUserId), note: 'Replaced by a new approval request' });
+    await open.save();
+  } else if (open) {
+    if (open.amount === amount && (open.discountPercent ?? 0) === (info.discountPercent ?? 0)) return open;
+    open.discountPercent = info.discountPercent;
     await restart(open, policy, amount, actorUserId, 'The amount changed, so approval started again');
     return open;
   }
@@ -364,6 +402,8 @@ export async function submitForApproval(orgId: string, type: ApprovalRecordType,
     link: info.link,
     requestedBy: oid(requester),
     status: 'pending',
+    source,
+    discountPercent: info.discountPercent,
     steps: buildSteps(policy, amount),
     history: [{ at: new Date(), action: 'submitted', actorId: oid(actorUserId || requester) }],
   });
@@ -429,7 +469,7 @@ export async function decide(
   if (!standing) throw new ApiError(403, 'You are not an approver for the current step of this request');
   if (standing.onBehalfOf && same(standing.onBehalfOf, req.requestedBy)) throw new ApiError(403, 'You cannot approve a request for the person who asked');
 
-  const policy = await requirePolicy(orgId, req.recordType);
+  const policy = await policyFor(orgId, req.recordType, req.source);
   const adapter = await getApprovalAdapter(req.recordType);
   const info = await adapter?.load(orgId, String(req.recordId));
   if (!info) {
@@ -440,7 +480,8 @@ export async function decide(
     throw new ApiError(409, 'The record behind this request no longer exists; the request was cancelled');
   }
   const amount = round2(Number(info.amount) || 0);
-  if (amount !== req.amount) {
+  if (amount !== req.amount || (info.discountPercent ?? 0) !== (req.discountPercent ?? 0)) {
+    req.discountPercent = info.discountPercent;
     await restart(req, policy, amount, actor.userId, `Amount changed from ${req.amount} to ${amount}`);
     throw new ApiError(409, `The amount changed to ${amount}, so approval started again. Please review it again.`);
   }
@@ -553,7 +594,13 @@ export async function assertApprovedOrSubmit(orgId: string, type: ApprovalRecord
   const adapter = await getApprovalAdapter(type);
   const info = await adapter?.load(orgId, recordId);
   const amount = round2(Number(info?.amount) || 0);
-  const latest = await ApprovalRequest.findOne({ taskflowOrganizationId: toOrgOid(orgId), recordType: type, recordId: oid(recordId) })
+  // Only the chain's own requests count here; a built-in discount approval is not the chain's approval.
+  const latest = await ApprovalRequest.findOne({
+    taskflowOrganizationId: toOrgOid(orgId),
+    recordType: type,
+    recordId: oid(recordId),
+    source: { $ne: 'discount_limit' },
+  })
     .sort({ createdAt: -1 })
     .lean();
   if (latest?.status === 'approved' && latest.amount === amount) return;
@@ -563,6 +610,44 @@ export async function assertApprovedOrSubmit(orgId: string, type: ApprovalRecord
   }
   await submitForApproval(orgId, type, recordId, actorUserId);
   throw new ApiError(409, `Sent for approval. You can ${action} once it is approved; follow it in Approvals.`);
+}
+
+/**
+ * Gate for sending a quote above the sender's discount limit while the quote chain is off (AUT-31).
+ * Passes when the quote has an approved request for its current amount and discount. Otherwise
+ * sends it to people whose own limit covers the discount and refuses with 409.
+ */
+export async function assertDiscountApprovedOrSubmit(
+  orgId: string,
+  quoteId: string,
+  actorUserId: string,
+  action: string,
+  over: { discountPercent: number; limit: number }
+) {
+  const adapter = await getApprovalAdapter('quote');
+  const info = await adapter?.load(orgId, quoteId);
+  if (!info) throw new ApiError(404, 'Quote not found');
+  const amount = round2(Number(info.amount) || 0);
+  const latest = await ApprovalRequest.findOne({ taskflowOrganizationId: toOrgOid(orgId), recordType: 'quote', recordId: oid(quoteId) })
+    .sort({ createdAt: -1 })
+    .lean();
+  const sameQuote = latest && latest.amount === amount && (latest.discountPercent ?? 0) === (info.discountPercent ?? 0);
+  if (sameQuote && latest.status === 'approved') return;
+  if (sameQuote && latest.status === 'pending' && latest.source === 'discount_limit') {
+    throw new ApiError(409, `Waiting for discount approval (${over.discountPercent}% off). You can ${action} once it is approved.`);
+  }
+  try {
+    await submitForApproval(orgId, 'quote', quoteId, actorUserId, { source: 'discount_limit' });
+  } catch (err) {
+    if (err instanceof ApiError && err.statusCode === 400 && /Nobody is available/.test(err.message)) {
+      throw new ApiError(400, `Nobody else's discount limit covers ${over.discountPercent}% off. Lower the discount, or ask an administrator to raise someone's limit.`);
+    }
+    throw err;
+  }
+  throw new ApiError(
+    409,
+    `${over.discountPercent}% off is above your discount limit of ${over.limit}%, so the quotation was sent for approval. You can ${action} once it is approved; follow it in Approvals.`
+  );
 }
 
 // ── Reading: queue, lists, one request ──────────────────────────────────────

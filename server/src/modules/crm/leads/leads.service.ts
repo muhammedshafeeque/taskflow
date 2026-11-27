@@ -610,6 +610,17 @@ async function upsertPeopleFromLead(
   }
 }
 
+/**
+ * Convert a lead into a deal (and, when asked, a customer organisation and a delivery project).
+ *
+ * Safe to retry (AUT-30): everything that can be checked is checked before anything is saved, and
+ * the lead is marked converted only after every step worked. If a later step fails, the deal made
+ * by this attempt is removed and the lead stays open; a customer organisation already created is
+ * kept on the lead, so the next attempt reuses it instead of making a second one.
+ *
+ * No project is created unless `createProject` is set, and then only with a chosen project manager
+ * (`projectLeadId`). The caller checks the project create permission.
+ */
 export async function convertLead(
   id: string,
   workspaceId: string | null | undefined,
@@ -620,6 +631,10 @@ export async function convertLead(
     dealValue?: number;
     expectedCloseDate?: string;
     createProject?: boolean;
+    /** Project manager of the new project; required with createProject. */
+    projectLeadId?: string;
+    projectName?: string;
+    projectKey?: string;
     createPortalOrg?: boolean;
     portalOrg?: {
       name?: string;
@@ -637,14 +652,16 @@ export async function convertLead(
   } = {}
 ) {
   const orgId = requireWorkspaceId(workspaceId);
-  const lead = await CrmLead.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
+  const orgOid = toOrgOid(orgId);
+  const lead = await CrmLead.findOne({ _id: id, taskflowOrganizationId: orgOid });
   if (!lead) throw new ApiError(404, 'Lead not found');
   if (lead.status === 'converted') throw new ApiError(400, 'Lead already converted');
   if (lead.status === 'unqualified') throw new ApiError(400, 'Unqualified leads cannot be converted');
 
+  // ── Checks: nothing is saved until all of these pass ──
   let customerOrgId = opts.customerOrgId || (lead.customerOrgId ? String(lead.customerOrgId) : '');
   if (customerOrgId) {
-    const org = await CustomerOrg.findOne({ _id: customerOrgId, taskflowOrganizationId: toOrgOid(orgId) });
+    const org = await CustomerOrg.findOne({ _id: customerOrgId, taskflowOrganizationId: orgOid });
     if (!org) throw new ApiError(404, 'Customer organisation not found');
   }
 
@@ -668,55 +685,93 @@ export async function convertLead(
     }
   }
 
-  await upsertPeopleFromLead(orgId, lead);
-
   const pipeline = opts.pipelineId
-    ? await CrmPipeline.findOne({ _id: opts.pipelineId, taskflowOrganizationId: toOrgOid(orgId) })
-    : await CrmPipeline.findOne({ taskflowOrganizationId: toOrgOid(orgId), isDefault: true });
+    ? await CrmPipeline.findOne({ _id: opts.pipelineId, taskflowOrganizationId: orgOid })
+    : await CrmPipeline.findOne({ taskflowOrganizationId: orgOid, isDefault: true });
   if (!pipeline || !pipeline.stages?.length) throw new ApiError(400, 'No pipeline configured');
 
+  const { runCommercialHandoff, assertProjectLead } = await import('../commercialHandoff.service');
+  const projectLeadId = opts.createProject ? await assertProjectLead(orgId, opts.projectLeadId) : undefined;
+
+  // ── Deal: reuse the one a failed earlier attempt left on the lead, else create it ──
   const firstStage = [...pipeline.stages].sort((a, b) => a.order - b.order)[0];
   const dealValue = opts.dealValue ?? lead.estimatedBudget ?? 0;
+  await upsertPeopleFromLead(orgId, lead);
   const primaryContact = lead.contactEmail
-    ? await CrmContact.findOne({ taskflowOrganizationId: toOrgOid(orgId), email: lead.contactEmail.toLowerCase() })
+    ? await CrmContact.findOne({ taskflowOrganizationId: orgOid, email: lead.contactEmail.toLowerCase() })
     : opts.contactId
-      ? await CrmContact.findOne({ _id: opts.contactId, taskflowOrganizationId: toOrgOid(orgId) })
+      ? await CrmContact.findOne({ _id: opts.contactId, taskflowOrganizationId: orgOid })
       : null;
 
-  const deal = await CrmDeal.create({
-    taskflowOrganizationId: toOrgOid(orgId),
-    customerOrgId: customerOrgId || undefined,
-    contactId: primaryContact?._id,
-    pipelineId: pipeline._id,
-    stageId: (firstStage as { _id?: mongoose.Types.ObjectId })._id,
-    title: lead.title,
-    value: dealValue,
-    currency: lead.currency || 'USD',
-    ownerId: lead.assigneeId ?? userId,
-    leadId: lead._id,
-    status: 'open',
-    expectedCloseDate: opts.expectedCloseDate ? new Date(opts.expectedCloseDate) : undefined,
-    competitorNotes: lead.competitor,
-  });
+  const leftover = lead.dealId ? await CrmDeal.findOne({ _id: lead.dealId, taskflowOrganizationId: orgOid, leadId: lead._id }) : null;
+  const createdDeal = !leftover;
+  const deal =
+    leftover ??
+    (await CrmDeal.create({
+      taskflowOrganizationId: orgOid,
+      customerOrgId: customerOrgId || undefined,
+      contactId: primaryContact?._id,
+      pipelineId: pipeline._id,
+      stageId: (firstStage as { _id?: mongoose.Types.ObjectId })._id,
+      title: lead.title,
+      value: dealValue,
+      currency: lead.currency || 'USD',
+      ownerId: lead.assigneeId ?? userId,
+      leadId: lead._id,
+      status: 'open',
+      expectedCloseDate: opts.expectedCloseDate ? new Date(opts.expectedCloseDate) : undefined,
+      competitorNotes: lead.competitor,
+    }));
 
-  lead.status = 'converted';
-  if (customerOrgId) lead.customerOrgId = new mongoose.Types.ObjectId(customerOrgId);
-  lead.dealId = deal._id as mongoose.Types.ObjectId;
-  await lead.save();
+  let handoff: Awaited<ReturnType<typeof runCommercialHandoff>>;
+  try {
+    handoff = await runCommercialHandoff({
+      workspaceId: orgId,
+      userId,
+      customerOrgId: customerOrgId || undefined,
+      portalOrg: opts.portalOrg,
+      dealId: String(deal._id),
+      leadId: String(lead._id),
+      projectTitle: lead.title,
+      project: projectLeadId ? { leadId: projectLeadId, name: opts.projectName, key: opts.projectKey } : undefined,
+      createPortalOrg,
+    });
+    if (createPortalOrg && !handoff.customerOrgId) {
+      throw new ApiError(
+        400,
+        handoff.skipped.includes('portal_org_no_email')
+          ? 'Customer email is required to create a portal organisation'
+          : 'Failed to create portal organisation during conversion'
+      );
+    }
+  } catch (err) {
+    // Leave the lead open so the conversion can be tried again. A customer organisation that was
+    // created is already saved on the lead (by the handoff) and is reused next time.
+    if (createdDeal) {
+      await CrmDeal.deleteOne({ _id: deal._id });
+      await CrmLead.updateOne({ _id: lead._id }, { $unset: { dealId: 1 } });
+    }
+    throw err;
+  }
 
-  await logLeadActivity(
-    orgId,
-    lead._id as mongoose.Types.ObjectId,
-    userId,
-    'Converted to deal',
-    deal.title
+  // ── Every step worked: now the lead is converted ──
+  if (handoff.customerOrgId) customerOrgId = handoff.customerOrgId;
+  await CrmLead.updateOne(
+    { _id: lead._id },
+    { $set: { status: 'converted', dealId: deal._id, ...(customerOrgId ? { customerOrgId: new mongoose.Types.ObjectId(customerOrgId) } : {}) } }
   );
+  if (customerOrgId) {
+    await CrmDeal.updateOne({ _id: deal._id }, { $set: { customerOrgId } });
+    await upsertPeopleFromLead(orgId, { ...lead.toObject(), customerOrgId });
+  }
+
+  await logLeadActivity(orgId, lead._id as mongoose.Types.ObjectId, userId, 'Converted to deal', deal.title);
   logAudit({
     userId,
     action: 'crm.lead.convert',
     resourceType: 'crm_lead',
     resourceId: id,
-    meta: { customerOrgId: customerOrgId || undefined, dealId: String(deal._id) },
+    meta: { customerOrgId: customerOrgId || undefined, dealId: String(deal._id), projectId: handoff.projectId },
   });
 
   try {
@@ -730,42 +785,15 @@ export async function convertLead(
     /* best-effort */
   }
 
-  const { runCommercialHandoff } = await import('../commercialHandoff.service');
-  const handoff = await runCommercialHandoff({
-    workspaceId: orgId,
-    userId,
-    customerOrgId: customerOrgId || undefined,
-    portalOrg: opts.portalOrg,
-    dealId: String(deal._id),
-    leadId: String(lead._id),
-    projectTitle: lead.title,
-    createProject: opts.createProject !== false,
-    createPortalOrg,
-  });
-
-  if (createPortalOrg && !handoff.customerOrgId) {
-    const msg = handoff.skipped.includes('portal_org_no_email')
-      ? 'Customer email is required to create a portal organisation'
-      : 'Failed to create portal organisation during conversion';
-    throw new ApiError(400, msg);
-  }
-
-  if (handoff.customerOrgId) {
-    customerOrgId = handoff.customerOrgId;
-    lead.customerOrgId = new mongoose.Types.ObjectId(handoff.customerOrgId);
-    await lead.save();
-    await CrmDeal.findByIdAndUpdate(deal._id, { $set: { customerOrgId: handoff.customerOrgId } });
-    await upsertPeopleFromLead(orgId, { ...lead.toObject(), customerOrgId: handoff.customerOrgId });
-  }
-
-  const org = customerOrgId
-    ? await CustomerOrg.findById(customerOrgId).lean()
-    : null;
-
+  const [savedLead, savedDeal, org] = await Promise.all([
+    CrmLead.findById(lead._id).lean(),
+    CrmDeal.findById(deal._id).lean(),
+    customerOrgId ? CustomerOrg.findById(customerOrgId).lean() : null,
+  ]);
   return {
-    lead: lead.toObject(),
+    lead: savedLead ?? lead.toObject(),
     customerOrg: org,
-    deal: deal.toObject(),
+    deal: savedDeal ?? deal.toObject(),
     contact: primaryContact?.toObject?.() ?? primaryContact,
     handoff,
   };

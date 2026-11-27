@@ -5,7 +5,8 @@ export const APPROVAL_RECORD_TYPES = ['invoice', 'quote', 'purchase_order', 'exp
 export type ApprovalRecordType = (typeof APPROVAL_RECORD_TYPES)[number];
 
 /** How a step finds its approvers. */
-export const APPROVER_KINDS = ['manager', 'role', 'users', 'permission'] as const;
+/** discount_limit: anyone whose quotation discount limit covers the request's discount (AUT-31). */
+export const APPROVER_KINDS = ['manager', 'role', 'users', 'permission', 'discount_limit'] as const;
 export type ApproverKind = (typeof APPROVER_KINDS)[number];
 
 const orgRef = { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true } as const;
@@ -114,6 +115,13 @@ export interface IApprovalRequest {
   currentApproverIds: mongoose.Types.ObjectId[];
   history: IApprovalHistoryEntry[];
   completedAt?: Date;
+  /** Discount in percent of list price, for record types that have one (quotes). */
+  discountPercent?: number;
+  /**
+   * chain: the record type's approval chain. discount_limit: the built-in approval for a quote above
+   * the sender's discount limit while the quote chain is off (one step: someone whose limit covers it).
+   */
+  source?: 'chain' | 'discount_limit';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -164,6 +172,8 @@ const approvalRequestSchema = new Schema<IApprovalRequest>(
     currentApproverIds: { type: [{ type: Schema.Types.ObjectId, ref: 'User' }], default: [], index: true },
     history: { type: [historySchema], default: [] },
     completedAt: Date,
+    discountPercent: Number,
+    source: { type: String, enum: ['chain', 'discount_limit'], default: 'chain' },
   },
   // Two approvers clicking at once: the second save fails instead of overwriting the first.
   { timestamps: true, optimisticConcurrency: true }

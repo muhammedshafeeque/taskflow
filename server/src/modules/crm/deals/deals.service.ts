@@ -9,7 +9,6 @@ import { CrmContract } from '../models/crmContract.model';
 import { CrmLead } from '../models/crmLead.model';
 import { CustomerOrg } from '../../customer-portal/customer-org/customerOrg.model';
 import { Project } from '../../projects/project.model';
-import * as projectsService from '../../projects/projects.service';
 import { ApiError } from '../../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crmWorkspace';
 
@@ -210,11 +209,16 @@ export async function moveDealStage(id: string, workspaceId: string | null | und
   return deal.toObject();
 }
 
+/**
+ * Create the delivery project for a deal, run by the chosen project manager (AUT-30). The deal is
+ * marked won if it was still open: creating the project is the explicit "we won it" step. Nobody is
+ * booked on the project; the project manager staffs it. The route also needs project create.
+ */
 export async function createProjectFromDeal(
   dealId: string,
   workspaceId: string | null | undefined,
   userId: string,
-  input: { name: string; key: string; templateId?: string }
+  input: { name: string; key: string; templateId?: string; leadId?: string }
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const deal = await CrmDeal.findOne({ _id: dealId, taskflowOrganizationId: toOrgOid(orgId) });
@@ -222,37 +226,28 @@ export async function createProjectFromDeal(
   if (deal.status !== 'won' && deal.status !== 'open') {
     throw new ApiError(400, 'Deal must be open or won to create project');
   }
-  const project = await projectsService.create(
-    {
-      name: input.name,
-      key: input.key.toUpperCase(),
-      lead: userId,
-      templateId: input.templateId,
-      description: `Created from deal: ${deal.title}`,
-    },
+  if (deal.projectId && (await Project.exists({ _id: deal.projectId }))) {
+    throw new ApiError(409, 'This deal already has a project');
+  }
+  const { createDeliveryProject, runCommercialHandoff } = await import('../commercialHandoff.service');
+  const projectId = await createDeliveryProject(
+    orgId,
     userId,
-    orgId
+    { leadId: String(input.leadId ?? ''), name: input.name, key: input.key, templateId: input.templateId },
+    { title: deal.title, description: `Created from deal: ${deal.title}`, customerOrgId: deal.customerOrgId ? String(deal.customerOrgId) : undefined }
   );
-  const projectId = String((project as { _id: unknown })._id);
   deal.projectId = new mongoose.Types.ObjectId(projectId);
   deal.status = 'won';
   await deal.save();
-  await Project.findByIdAndUpdate(projectId, {
-    $set: { ...(deal.customerOrgId ? { orgId: deal.customerOrgId } : {}) },
+  // Links the customer, quotes, contracts and invoices of the deal to the project.
+  await runCommercialHandoff({
+    workspaceId: orgId,
+    userId,
+    customerOrgId: deal.customerOrgId ? String(deal.customerOrgId) : undefined,
+    dealId: String(deal._id),
+    createPortalOrg: false,
   });
-  try {
-    const { runCommercialHandoff } = await import('../commercialHandoff.service');
-    await runCommercialHandoff({
-      workspaceId: orgId,
-      userId,
-      customerOrgId: deal.customerOrgId ? String(deal.customerOrgId) : undefined,
-      dealId: String(deal._id),
-      createProject: false,
-      createPortalOrg: false,
-    });
-  } catch (err) {
-    console.error('commercialHandoff from deal project:', err);
-  }
+  const project = await Project.findById(projectId).lean();
   return { deal: deal.toObject(), project };
 }
 

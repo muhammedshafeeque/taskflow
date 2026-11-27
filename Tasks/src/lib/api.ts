@@ -2610,6 +2610,26 @@ export interface CustomerOrgMatch {
   reasons: LeadDuplicateReason[];
 }
 
+/** Quotation discount limits (AUT-31). `myLimit` null = not limited. */
+export interface CrmDiscountPolicy {
+  enabled: boolean;
+  defaultMaxPercent: number;
+  roleLimits: Array<{ roleId: string; maxPercent: number }>;
+  levelLimits: Array<{ level: string; maxPercent: number }>;
+  updatedAt: string | null;
+  myLimit?: number | null;
+  /** Only for people who manage CRM settings. */
+  options?: { roles: Array<{ _id: string; name: string }>; levels: string[] };
+}
+
+/** Discount in percent of list price, before tax: line discounts and the quote discount together. */
+export function quoteDiscountPercent(q: { lineItems?: Array<{ quantity?: number; unitPrice?: number }>; subtotal?: number; discountAmount?: number }): number {
+  const gross = (q.lineItems ?? []).reduce((s, l) => s + (Number(l.quantity ?? 1) || 0) * (Number(l.unitPrice ?? 0) || 0), 0);
+  if (gross <= 0) return 0;
+  const net = (Number(q.subtotal) || 0) - (Number(q.discountAmount) || 0);
+  return Math.max(0, Math.round(((gross - net) / gross) * 10000) / 100);
+}
+
 export interface LeadDuplicateResult {
   leads: LeadDuplicate[];
   customerOrgs: CustomerOrgMatch[];
@@ -2939,6 +2959,10 @@ export const crmApi = {
           dealValue?: number;
           expectedCloseDate?: string;
           createProject?: boolean;
+          /** Project manager of the new project; required with createProject. */
+          projectLeadId?: string;
+          projectName?: string;
+          projectKey?: string;
           createPortalOrg?: boolean;
           portalOrg?: {
             name?: string;
@@ -2980,7 +3004,10 @@ export const crmApi = {
   updateDeal: (id: string, data: Partial<CrmDeal>, token: string) => api.patch<CrmDeal>(`/crm/deals/${id}`, data, token),
   deleteDeal: (id: string, token: string) => api.delete(`/crm/deals/${id}`, token),
   moveDealStage: (id: string, stageId: string, token: string) => api.post(`/crm/deals/${id}/move-stage`, { stageId }, token),
-  createProjectFromDeal: (id: string, data: { name: string; key: string; templateId?: string }, token: string) =>
+  discountPolicy: (token: string) => api.get<CrmDiscountPolicy>('/crm/discount-policy', token),
+  saveDiscountPolicy: (data: Partial<Pick<CrmDiscountPolicy, 'enabled' | 'defaultMaxPercent' | 'roleLimits' | 'levelLimits'>>, token: string) =>
+    api.put<CrmDiscountPolicy>('/crm/discount-policy', data, token),
+  createProjectFromDeal: (id: string, data: { name: string; key: string; templateId?: string; leadId: string }, token: string) =>
     api.post(`/crm/deals/${id}/create-project`, data, token),
   getForecast: (token: string) => api.get('/crm/deals/forecast', token),
   listPipelines: (token: string) => api.get<CrmPipeline[]>('/crm/pipelines', token),
@@ -3643,7 +3670,7 @@ export const accountsApi = {
 // ── Approvals (shared approval engine) ─────────────────────────────────────────
 
 export type ApprovalRecordType = 'invoice' | 'quote' | 'purchase_order' | 'expense' | 'leave' | 'payroll';
-export type ApproverKind = 'manager' | 'role' | 'users' | 'permission';
+export type ApproverKind = 'manager' | 'role' | 'users' | 'permission' | 'discount_limit';
 type PersonRef = string | { _id: string; name?: string; email?: string };
 
 export interface ApprovalPolicyStep {

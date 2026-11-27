@@ -40,6 +40,7 @@ const KIND_LABEL: Record<ApproverKind, string> = {
   role: 'Everyone with a role',
   users: 'Named people',
   permission: 'Everyone with a permission',
+  discount_limit: 'Someone whose discount limit covers it',
 };
 
 type Tab = 'queue' | 'mine' | 'decided' | 'all' | 'delegations' | 'chains';
@@ -639,6 +640,7 @@ function describeStep(s: ApprovalPolicyStep, roles: Array<{ _id: string; name: s
   if (s.kind === 'manager') return ordinal(s.level ?? 1);
   if (s.kind === 'role') return `Role: ${roles.find((r) => r._id === s.roleId)?.name ?? 'unknown role'}`;
   if (s.kind === 'users') return (s.userIds ?? []).map((u) => people.find((p) => p._id === u)?.name ?? 'someone').join(', ');
+  if (s.kind === 'discount_limit') return 'Anyone whose quotation discount limit covers the discount';
   return `Permission: ${s.permission}`;
 }
 

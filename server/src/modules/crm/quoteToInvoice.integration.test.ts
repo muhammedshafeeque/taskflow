@@ -13,6 +13,7 @@ import { CrmQuote } from './models/crmQuote.model';
 import { ensureDefaultPipeline } from './pipelines/pipelines.service';
 import { convertLead, createLead } from './leads/leads.service';
 import { createQuote, updateQuote } from './quotes/quotes.service';
+import { createProjectFromDeal } from './deals/deals.service';
 
 jest.mock('../../services/email.service', () => new Proxy({}, { get: (_t, name) => (name === '__esModule' ? true : name === 'tfEmailWrap' ? (s: string) => s : jest.fn().mockResolvedValue(undefined)) }));
 jest.mock('../notifications/notificationDispatch.service', () => ({ notifyUser: jest.fn().mockResolvedValue(undefined) }));
@@ -45,7 +46,7 @@ afterAll(async () => {
 
 async function wonCustomer(createProject: boolean) {
   const lead = (await createLead(ws, { title: 'Northwind', companyName: 'Northwind', contactName: 'Omar', contactEmail: 'omar@northwind.test', estimatedBudget: 50000 }, sara)) as { _id: unknown };
-  const converted = await convertLead(String(lead._id), ws, sara, { createProject });
+  const converted = await convertLead(String(lead._id), ws, sara, createProject ? { createProject, projectLeadId: sara } : {});
   const quote = (await createQuote(
     ws,
     { dealId: String(converted.deal._id), title: 'Northwind build', issueDate: '2026-11-01', lineItems: [{ description: 'Build', quantity: 10, unitPrice: 100, billingType: 'hourly' }] },
@@ -55,26 +56,35 @@ async function wonCustomer(createProject: boolean) {
   return { converted, accepted, quote };
 }
 
+/** Since AUT-30 accepting a quote creates no project; delivery sets one up from the won deal with a chosen manager. */
+async function projectFromDeal(dealId: string) {
+  const { project } = await createProjectFromDeal(dealId, ws, sara, { name: 'Northwind build', key: `NW${Math.floor(Math.random() * 1e4)}`, leadId: sara });
+  return String((project as { _id: unknown })._id);
+}
+
 describe('lead > deal > accepted quote (AUT-14)', () => {
-  it('produces a draft invoice linked to the customer, contract and project', async () => {
+  it('produces a draft invoice linked to the customer and contract, and to the project once delivery creates it', async () => {
     const { converted, accepted, quote } = await wonCustomer(false);
+    expect(accepted.converted?.handoff?.projectId).toBeUndefined();
+    expect(await Project.countDocuments()).toBe(0);
     const org = await CustomerOrg.findById(converted.customerOrg?._id).lean();
     expect(org?.crmAccountId).toBeTruthy();
     expect(accepted.converted?.invoiceId).toBeTruthy();
 
+    const projectId = await projectFromDeal(String(converted.deal._id));
     const invoice = await BillingInvoice.findById(accepted.converted!.invoiceId).lean();
     const contract = await CrmContract.findById(accepted.converted!.contractId).lean();
-    const projectId = accepted.converted!.handoff!.projectId!;
     expect(invoice).toMatchObject({ status: 'draft', total: 1000, accountId: org!.crmAccountId, customerOrgId: org!._id, contractId: contract!._id, projectId: new mongoose.Types.ObjectId(projectId) });
     expect(invoice!.number).toMatch(/^INV-\d{4}-0001$/);
     expect(String(contract!.projectId)).toBe(projectId);
+    expect(String((await CrmQuote.findById(quote._id).lean())?.projectId)).toBe(projectId);
     expect(String((await CrmQuote.findById(quote._id).lean())?.accountId)).toBe(String(org!.crmAccountId));
     expect(await CrmAccount.countDocuments()).toBe(1);
   });
 
   it('lets Time to invoice bill the new project', async () => {
-    const { converted, accepted } = await wonCustomer(false);
-    const project = await Project.findById(accepted.converted!.handoff!.projectId).lean();
+    const { converted } = await wonCustomer(false);
+    const project = await Project.findById(await projectFromDeal(String(converted.deal._id))).lean();
     expect(String(project?.crmAccountId)).toBe(String((await CustomerOrg.findById(converted.customerOrg?._id).lean())?.crmAccountId));
   });
 
@@ -86,7 +96,7 @@ describe('lead > deal > accepted quote (AUT-14)', () => {
     expect(new Set(numbers).size).toBe(2);
   });
 
-  it('also works when the project was created at conversion', async () => {
+  it('also works when the project was explicitly created at conversion', async () => {
     const { accepted } = await wonCustomer(true);
     const invoice = await BillingInvoice.findById(accepted.converted!.invoiceId).lean();
     expect(String(invoice?.projectId)).toBe(accepted.converted!.handoff!.projectId);

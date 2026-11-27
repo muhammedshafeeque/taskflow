@@ -15,6 +15,7 @@ import {
   type LeadDuplicateResult,
 } from '../../lib/api';
 import { CustomerOrgMatchList, DuplicateLeadList } from './LeadDuplicates';
+import ProjectManagerPicker from './ProjectManagerPicker';
 import {
   LEAD_COMPANY_SIZES,
   LEAD_ROLES,
@@ -52,6 +53,7 @@ export default function CrmLeadDetail() {
   const { token, user } = useAuth();
   const navigate = useNavigate();
   const canUpdate = canAny(user, 'taskflow.crm.lead.update');
+  const canCreateProject = canAny(user, 'project.project.create');
   const canDelete = canAny(user, 'taskflow.crm.lead.delete');
   const canActivity = canAny(user, 'taskflow.crm.activity.create');
   const canQuote = canAny(user, 'taskflow.crm.quote.create');
@@ -77,7 +79,8 @@ export default function CrmLeadDetail() {
     pipelineId: '',
     dealValue: '',
     expectedCloseDate: '',
-    createProject: true,
+    createProject: false,
+    projectLeadId: '',
     createPortalOrg: true,
     orgName: '',
     contactEmail: '',
@@ -208,6 +211,11 @@ export default function CrmLeadDetail() {
         return;
       }
     }
+    if (convert.createProject && !convert.projectLeadId) {
+      setConvertError('Choose the project manager for the new project, or untick it.');
+      setConvertStep(3);
+      return;
+    }
     setBusy(true);
     setConvertError('');
     const res = await crmApi.convertLead(
@@ -216,7 +224,8 @@ export default function CrmLeadDetail() {
         pipelineId: convert.pipelineId || undefined,
         dealValue: convert.dealValue ? Number(convert.dealValue) : undefined,
         expectedCloseDate: convert.expectedCloseDate || undefined,
-        createProject: convert.createProject,
+        createProject: convert.createProject && canCreateProject,
+        projectLeadId: convert.createProject && canCreateProject ? convert.projectLeadId : undefined,
         createPortalOrg: convert.createPortalOrg && !existingOrgId,
         customerOrgId: existingOrgId || undefined,
         portalOrg:
@@ -834,12 +843,25 @@ export default function CrmLeadDetail() {
             {convertStep === 3 && (
               <>
                 <p className="text-sm text-[color:var(--text-muted)]">
-                  Optionally create a starter project and map it to this customer for delivery tracking.
+                  Usually the delivery project is created from the deal once it is won. Create it now only if the work is already agreed.
                 </p>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={convert.createProject} onChange={(e) => setConvert((c) => ({ ...c, createProject: e.target.checked }))} />
-                  Create starter project and map to customer
-                </label>
+                {canCreateProject ? (
+                  <>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={convert.createProject} onChange={(e) => setConvert((c) => ({ ...c, createProject: e.target.checked }))} />
+                      Create the delivery project now and map it to the customer
+                    </label>
+                    {convert.createProject && (
+                      <label className="block text-xs space-y-1">
+                        <span className="text-[color:var(--text-muted)]">Project manager</span>
+                        <ProjectManagerPicker value={convert.projectLeadId} onChange={(v) => setConvert((c) => ({ ...c, projectLeadId: v }))} />
+                        <span className="block text-[11px] text-[color:var(--text-muted)]">Nobody is booked on the project; the project manager staffs it.</span>
+                      </label>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-[color:var(--text-muted)]">Someone who can create projects sets it up from the deal once it is won.</p>
+                )}
                 <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-xs text-[color:var(--text-muted)] space-y-1">
                   <p><span className="text-[color:var(--text-primary)]">Pipeline:</span> {pipelines.find((p) => p._id === convert.pipelineId)?.name ?? 'Default'}</p>
                   {convert.dealValue && <p><span className="text-[color:var(--text-primary)]">Deal value:</span> {convert.dealValue}</p>}
