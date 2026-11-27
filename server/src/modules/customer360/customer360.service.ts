@@ -98,7 +98,7 @@ export async function getCustomer360(access: GraphAccess, customerId: string) {
   ]);
 
   const [deals, contracts, issues, tickets, invoices, monitor] = await Promise.all([
-    canDeals ? loadDeals(belongs) : null,
+    canDeals ? loadDeals({ ...belongs, ...(await access.rowFilter('deal')) }) : null,
     canContracts ? loadContracts(belongs, now) : null,
     loadIssues(projects, now),
     canTickets ? loadTickets(belongs, now) : null,

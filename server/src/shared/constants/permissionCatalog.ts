@@ -63,6 +63,9 @@ const LEGACY_LABELS: Record<string, string> = {
   'taskflow.timesheet.scope.team': 'Approve reach: own team',
   'taskflow.timesheet.scope.department': 'Approve reach: own department',
   'taskflow.timesheet.scope.all': 'Approve reach: everyone',
+  'taskflow.crm.scope.team': 'Leads and deals: own team (reports and teams led)',
+  'taskflow.crm.scope.department': 'Leads and deals: own department',
+  'taskflow.crm.scope.all': 'Leads and deals: everyone',
 };
 
 const ACTION_LABELS: Record<string, string> = {

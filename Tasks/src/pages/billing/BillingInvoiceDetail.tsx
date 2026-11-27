@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import ApprovalStatusPanel from '../../components/ApprovalStatusPanel';
 import { useAppDisplayName } from '../../hooks/useAppDisplayName';
 import { canAny } from '../../utils/moduleAccess';
 import { money } from '../../components/moduleKit';
@@ -268,6 +269,8 @@ export default function BillingInvoiceDetail() {
       </div>
 
       {actionMsg && <p className="text-sm text-[color:var(--accent)]">{actionMsg}</p>}
+
+      <ApprovalStatusPanel recordType="invoice" recordId={invoice._id} refreshKey={`${invoice.status}|${actionMsg}`} actionLabel="mark it sent or email it" />
 
       <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 text-sm">
         <div>

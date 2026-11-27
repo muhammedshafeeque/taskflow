@@ -87,7 +87,16 @@ export default function Approvals() {
   const tab: Tab = tabs.some((t) => t.id === raw) ? (raw as Tab) : 'queue';
   const setTab = (t: Tab) => setParams(t === 'queue' ? {} : { tab: t }, { replace: true });
 
-  const [openId, setOpenId] = useState<string | null>(null);
+  // ?request=<id> opens one request directly (links from record pages and notifications).
+  const [openId, setOpenIdState] = useState<string | null>(() => params.get('request'));
+  const setOpenId = (id: string | null) => {
+    setOpenIdState(id);
+    if (!id && params.has('request')) {
+      const next = new URLSearchParams(params);
+      next.delete('request');
+      setParams(next, { replace: true });
+    }
+  };
   const [queueCount, setQueueCount] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((k) => k + 1);

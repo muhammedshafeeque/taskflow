@@ -4,6 +4,7 @@ import { canAny } from '../../utils/moduleAccess';
 import { hrmsApi, type PayComponent, type PayrollAdjustment, type PayrollRun, type PayrollSettings, type Payslip } from '../../lib/api';
 import { Field, GhostButton, Modal, PrimaryButton, Select, SectionPage, StatusPill, TextInput, money } from '../../components/moduleKit';
 import { ModuleLoader } from '../../components/loaders/ModuleLoader';
+import ApprovalStatusPanel from '../../components/ApprovalStatusPanel';
 
 const runTone = { draft: 'amber', finalized: 'blue', paid: 'green' } as const;
 
@@ -135,6 +136,8 @@ export function HrmsPayroll() {
               </div>
             )}
           </div>
+
+          <ApprovalStatusPanel recordType="payroll" recordId={run._id} refreshKey={`${run.status}|${error}`} actionLabel="finalize it" />
 
           <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-x-auto">
             <table className="w-full text-sm">

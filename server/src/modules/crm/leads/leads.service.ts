@@ -342,10 +342,13 @@ export async function listLeads(
     limit?: number;
     campaignId?: string;
     unlinked?: boolean;
+    /** Record-level access (AUT-29): extra conditions limiting the leads the viewer reaches. */
+    scope?: Record<string, unknown>;
   } = {}
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
+  if (opts.scope && Object.keys(opts.scope).length) filter.$and = [opts.scope];
   if (opts.unlinked) {
     filter.$or = [{ customerOrgId: null }, { customerOrgId: { $exists: false } }];
     filter.status = { $ne: 'unqualified' };
@@ -382,25 +385,26 @@ export async function listLeads(
   return { data, total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) };
 }
 
-export async function getLeadStats(workspaceId: string | null | undefined) {
+export async function getLeadStats(workspaceId: string | null | undefined, scope: Record<string, unknown> = {}) {
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
+  const base = { taskflowOrganizationId: orgOid, ...scope };
   const startOfMonth = new Date();
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
   const [byStatus, open, overdueFollowUps, convertedThisMonth] = await Promise.all([
     CrmLead.aggregate<{ _id: string; count: number }>([
-      { $match: { taskflowOrganizationId: orgOid } },
+      { $match: base },
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]),
-    CrmLead.countDocuments({ taskflowOrganizationId: orgOid, status: { $in: OPEN_LEAD_STATUSES } }),
+    CrmLead.countDocuments({ ...base, status: { $in: OPEN_LEAD_STATUSES } }),
     CrmLead.countDocuments({
-      taskflowOrganizationId: orgOid,
+      ...base,
       status: { $in: OPEN_LEAD_STATUSES },
       nextFollowUpAt: { $lt: new Date() },
     }),
     CrmLead.countDocuments({
-      taskflowOrganizationId: orgOid,
+      ...base,
       status: 'converted',
       updatedAt: { $gte: startOfMonth },
     }),

@@ -40,6 +40,12 @@ router.post(
     ok(res, await approvals.decide(orgId, req.params.id, actor(req), d, req.body?.note));
   })
 );
+router.get(
+  '/record/:recordType/:recordId',
+  asyncHandler(async (req: R, res) =>
+    ok(res, await approvals.recordStatus(req.activeOrganizationId, approvals.assertRecordType(req.params.recordType), req.params.recordId, actor(req)))
+  )
+);
 router.post('/requests/:id/cancel', asyncHandler(async (req: R, res) => ok(res, await approvals.cancelRequest(req.activeOrganizationId, req.params.id, actor(req), req.body?.note))));
 
 router.get('/delegations', asyncHandler(async (req: R, res) => ok(res, await approvals.listDelegations(req.activeOrganizationId, actor(req), req.query.all === '1'))));

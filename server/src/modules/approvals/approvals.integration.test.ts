@@ -252,6 +252,34 @@ describe('shared approval engine (AUT-27)', () => {
     expect((sent as { status: string }).status).toBe('sent');
   });
 
+  it('record pages can read where a record stands in its chain', async () => {
+    const account = await CrmAccount.create({ taskflowOrganizationId: orgId, name: 'Client', type: 'client' });
+    const inv = await billing.createInvoice(orgId, { accountId: account._id, lines: [{ description: 'Work', quantity: 1, unitPrice: 500 }] }, ids.lead);
+    const invId = String((inv as { _id: unknown })._id);
+    const status = (who: string) => call(who, 'GET', `/approvals/record/invoice/${invId}`);
+
+    // Chain off, nothing asked yet.
+    expect((await status('lead')).body.data).toEqual({ chainEnabled: false, request: null });
+    expect((await call('lead', 'GET', `/approvals/record/nonsense/${invId}`)).status).toBe(400);
+
+    await call('finance', 'PUT', '/approvals/policies/invoice', { enabled: true, steps: [{ name: 'Finance', kind: 'users', userIds: [ids.finance] }] });
+    await expect(billing.updateInvoice(invId, orgId, { status: 'sent' }, ids.lead)).rejects.toMatchObject({ statusCode: 409 });
+
+    const mine = (await status('lead')).body.data;
+    expect(mine.chainEnabled).toBe(true);
+    expect(mine.request).toMatchObject({ status: 'pending', amount: 500, requestedBy: 'lead', isMine: true, canDecide: false });
+    expect(mine.request.steps).toEqual([expect.objectContaining({ name: 'Finance', status: 'pending', approvers: ['finance'], decidedBy: null })]);
+    expect(mine.request).not.toHaveProperty('title');
+
+    const approver = (await status('finance')).body.data.request;
+    expect(approver).toMatchObject({ canDecide: true, isMine: false });
+
+    await decide('finance', approver._id, 'approve');
+    const done = (await status('lead')).body.data.request;
+    expect(done).toMatchObject({ status: 'approved', canDecide: false });
+    expect(done.steps[0]).toMatchObject({ status: 'approved', decidedBy: 'finance' });
+  });
+
   it('purchase orders use the chain; chains that are off leave modules as they were', async () => {
     const po = await call('staff', 'POST', '/procurement/vendors', { name: 'V' });
     expect(po.status).toBe(403); // staff can't add vendors; seed one directly

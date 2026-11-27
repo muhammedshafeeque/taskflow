@@ -15,10 +15,20 @@ import { requireWorkspaceId, toOrgOid } from '../crmWorkspace';
 
 export async function listDeals(
   workspaceId: string | null | undefined,
-  opts: { status?: string; stageId?: string; unlinked?: boolean; ownerId?: string; search?: string; pipelineId?: string } = {}
+  opts: {
+    status?: string;
+    stageId?: string;
+    unlinked?: boolean;
+    ownerId?: string;
+    search?: string;
+    pipelineId?: string;
+    /** Record-level access (AUT-29): extra conditions limiting the deals the viewer reaches. */
+    scope?: Record<string, unknown>;
+  } = {}
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
+  if (opts.scope && Object.keys(opts.scope).length) filter.$and = [opts.scope];
   if (opts.ownerId && mongoose.isValidObjectId(opts.ownerId)) filter.ownerId = opts.ownerId;
   if (opts.pipelineId && mongoose.isValidObjectId(opts.pipelineId)) filter.pipelineId = opts.pipelineId;
   if (opts.search?.trim()) {
@@ -246,9 +256,9 @@ export async function createProjectFromDeal(
   return { deal: deal.toObject(), project };
 }
 
-export async function getForecast(workspaceId: string | null | undefined) {
+export async function getForecast(workspaceId: string | null | undefined, scope: Record<string, unknown> = {}) {
   const orgId = requireWorkspaceId(workspaceId);
-  const deals = await CrmDeal.find({ taskflowOrganizationId: toOrgOid(orgId), status: 'open' }).lean();
+  const deals = await CrmDeal.find({ taskflowOrganizationId: toOrgOid(orgId), ...scope, status: 'open' }).lean();
   const byMonth: Record<string, { weighted: number; total: number; count: number }> = {};
   for (const d of deals) {
     const month = d.expectedCloseDate

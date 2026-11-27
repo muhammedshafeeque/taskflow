@@ -378,6 +378,15 @@ export const TASK_FLOW_PERMISSIONS = {
       },
       REPORT: { READ: 'taskflow.crm.report.read' },
       SETTINGS: { MANAGE: 'taskflow.crm.settings.manage' },
+      /**
+       * Whose leads and deals the CRM permissions reach. None: only leads assigned to you and deals you own.
+       * Team = also your reports (any depth) and members of teams you lead; department = also your department.
+       */
+      SCOPE: {
+        TEAM: 'taskflow.crm.scope.team',
+        DEPARTMENT: 'taskflow.crm.scope.department',
+        ALL: 'taskflow.crm.scope.all',
+      },
       COMMISSION: { READ: 'taskflow.crm.commission.read', MANAGE: 'taskflow.crm.commission.manage' },
     },
     MAIL: {

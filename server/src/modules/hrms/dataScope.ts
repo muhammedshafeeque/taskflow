@@ -18,12 +18,13 @@ import { ResourceTeam } from '../resources/models/resourceTeam.model';
 import { HrmsEmployee } from './models/hrmsEmployee.model';
 
 type Oid = mongoose.Types.ObjectId;
-export type ScopeArea = 'hr' | 'timesheet';
+export type ScopeArea = 'hr' | 'timesheet' | 'crm';
 export type ScopeLevel = 'own' | 'team' | 'department' | 'all';
 
 const CODES: Record<ScopeArea, { TEAM: string; DEPARTMENT: string; ALL: string }> = {
   hr: TASK_FLOW_PERMISSIONS.TASKFLOW.HR.SCOPE,
   timesheet: TASK_FLOW_PERMISSIONS.TASKFLOW.TIMESHEET.SCOPE,
+  crm: TASK_FLOW_PERMISSIONS.TASKFLOW.CRM.SCOPE,
 };
 
 export function scopeLevel(permissions: string[], area: ScopeArea): ScopeLevel {

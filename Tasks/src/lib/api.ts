@@ -2595,6 +2595,10 @@ export interface LeadDuplicate {
   contactPhone?: string;
   updatedAt?: string;
   reasons: LeadDuplicateReason[];
+  assigneeId?: string;
+  assigneeName?: string;
+  /** Outside your CRM reach: only that it exists, why it matched and who has it are shown. */
+  outOfScope?: boolean;
 }
 
 export interface CustomerOrgMatch {
@@ -3703,6 +3707,24 @@ export interface ApprovalRequest {
   canDecide?: boolean;
 }
 
+/** Where one record stands in its chain (GET /approvals/record/:type/:id). */
+export interface ApprovalRecordStatus {
+  chainEnabled: boolean;
+  request: null | {
+    _id: string;
+    status: ApprovalRequest['status'];
+    amount: number;
+    currency?: string;
+    currentStep: number;
+    requestedBy: string;
+    createdAt: string;
+    completedAt?: string;
+    steps: Array<{ name: string; status: ApprovalRequestStep['status']; approvers: string[]; decidedBy: string | null; decidedAt: string | null }>;
+    canDecide: boolean;
+    isMine: boolean;
+  };
+}
+
 export interface ApprovalDelegation {
   _id: string;
   fromUserId: PersonRef;
@@ -3721,6 +3743,8 @@ export const approvalsApi = {
     return api.get<ApprovalRequest[]>(`/approvals/requests?${q}`, token);
   },
   request: (id: string, token: string) => api.get<ApprovalRequest>(`/approvals/requests/${id}`, token),
+  recordStatus: (type: ApprovalRecordType, recordId: string, token: string) =>
+    api.get<ApprovalRecordStatus>(`/approvals/record/${type}/${encodeURIComponent(recordId)}`, token),
   decide: (id: string, decision: 'approve' | 'reject', note: string, token: string) =>
     api.post<{ request: ApprovalRequest; outcome: 'pending' | 'approved' | 'rejected' }>(`/approvals/requests/${id}/decision`, { decision, note }, token),
   cancel: (id: string, note: string, token: string) => api.post<ApprovalRequest>(`/approvals/requests/${id}/cancel`, { note }, token),

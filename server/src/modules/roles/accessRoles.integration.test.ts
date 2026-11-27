@@ -152,7 +152,8 @@ describe('read-only executive (AUT-11)', () => {
       e.permissions.every((t) => (t.all ?? []).every((p) => userHasPermission(held, p)) && (!t.any?.length || t.any.some((p) => userHasPermission(held, p))));
     const writes = apiCatalog().filter((e) => e.method !== 'GET' && e.permissions.length > 0 && passes(EXECUTIVE_PERMISSIONS)(e) && !passes(DEFAULT_USER_PERMISSIONS)(e)).map((e) => `${e.method} ${e.path}`);
     const own = writes.filter((w) => / \/me\//.test(w) || / \/resources\/engagement\/entries/.test(w) || / \/timesheet\//.test(w));
-    expect(writes.filter((w) => !own.includes(w))).toEqual(['POST /reports/:id/execute']);
+    // Lookups sent as POST that change nothing: running a saved report, and checking unsaved lead details for duplicates.
+    expect(writes.filter((w) => !own.includes(w)).sort()).toEqual(['POST /crm/leads/duplicates', 'POST /reports/:id/execute']);
   });
 
   it('reads every project of the workspace, changes none, and no other workspace', async () => {

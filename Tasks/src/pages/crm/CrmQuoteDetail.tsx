@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import ApprovalStatusPanel from '../../components/ApprovalStatusPanel';
 import { useAppDisplayName, useAppLogoUrl } from '../../hooks/useAppDisplayName';
 import { canAny } from '../../utils/moduleAccess';
 import { coreApi, crmApi, type CrmContact, type CrmLead, type CrmQuote } from '../../lib/api';
@@ -439,6 +440,8 @@ export default function CrmQuoteDetail() {
           {actionMsg}
         </div>
       )}
+
+      <ApprovalStatusPanel recordType="quote" recordId={quote._id} refreshKey={`${quote.status}|${actionMsg}|${sendError}`} actionLabel="send or accept it" />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <section className="lg:col-span-2 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] overflow-hidden">

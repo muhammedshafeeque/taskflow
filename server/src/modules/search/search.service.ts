@@ -5,6 +5,7 @@ import { CrmDeal } from '../crm/models/crmDeal.model';
 import { CrmContact } from '../crm/models/crmContact.model';
 import { CrmContract } from '../crm/models/crmContract.model';
 import { CrmLead } from '../crm/models/crmLead.model';
+import { crmReachOf, dealScopeFilter, leadScopeFilter } from '../crm/crmScope';
 import { CrmQuote } from '../crm/models/crmQuote.model';
 import { BillingInvoice } from '../billing/models/billingInvoice.model';
 import { ServiceTicket } from '../service-desk/models/serviceTicket.model';
@@ -147,10 +148,11 @@ const SOURCES: Source[] = [
     type: 'lead',
     module: 'crm',
     permissions: ['taskflow.crm.lead.list', 'taskflow.crm.lead.read'],
-    run: async ({ orgOid, rx, limit }) =>
+    run: async ({ orgOid, rx, limit, userId, permissions }) =>
       (
         await CrmLead.find({
           taskflowOrganizationId: orgOid,
+          ...leadScopeFilter(await crmReachOf(orgOid, { userId, permissions })),
           $or: [{ title: rx }, { companyName: rx }, { contactName: rx }, { contactEmail: rx }, { contactPhone: rx }],
         })
           .select('title companyName status')
@@ -169,13 +171,17 @@ const SOURCES: Source[] = [
     type: 'deal',
     module: 'crm',
     permissions: ['taskflow.crm.deal.list', 'taskflow.crm.deal.read'],
-    run: async ({ orgOid, rx, limit }) =>
-      (await CrmDeal.find({ taskflowOrganizationId: orgOid, title: rx }).limit(limit).lean()).map((d) => ({
+    run: async ({ orgOid, rx, limit, userId, permissions }) =>
+      (
+        await CrmDeal.find({ taskflowOrganizationId: orgOid, ...dealScopeFilter(await crmReachOf(orgOid, { userId, permissions })), title: rx })
+          .limit(limit)
+          .lean()
+      ).map((d) => ({
         type: 'deal' as const,
         id: String(d._id),
         title: d.title,
         subtitle: `${d.status} · ${d.currency} ${d.value}`,
-        link: '/crm/deals',
+        link: `/crm/deals/${d._id}`,
       })),
   },
   {

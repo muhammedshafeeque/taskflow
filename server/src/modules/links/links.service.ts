@@ -4,6 +4,7 @@
  * Every record returned is checked against the viewer: module on, a read
  * permission for its type, and project membership for projects and issues.
  */
+import { crmReachOf, dealScopeFilter, leadScopeFilter } from '../crm/crmScope';
 import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
@@ -52,6 +53,7 @@ export class GraphAccess {
   private projectIds?: Promise<Set<string> | 'all'>;
   private modules?: ReturnType<typeof getPlatformEnabledModules>;
   private hr?: Promise<Reach>;
+  private crm?: Promise<Reach>;
 
   constructor(
     readonly orgOid: mongoose.Types.ObjectId,
@@ -81,8 +83,16 @@ export class GraphAccess {
     return this.hr;
   }
 
-  /** Extra conditions on rows of a type, beyond the type's permission: HR records follow the HR reach. */
+  /** How far the viewer's CRM scope reaches for leads and deals (null = everyone). */
+  crmReach(): Promise<Reach> {
+    this.crm ??= crmReachOf(this.orgOid, this.viewer);
+    return this.crm;
+  }
+
+  /** Extra conditions on rows of a type, beyond the type's permission: HR records follow the HR reach, leads and deals the CRM reach. */
   async rowFilter(type: RecordType): Promise<Record<string, unknown>> {
+    if (type === 'lead') return leadScopeFilter(await this.crmReach());
+    if (type === 'deal') return dealScopeFilter(await this.crmReach());
     if (type !== 'employee') return {};
     const filter = employeeFilter(await this.hrReach());
     // The viewer's own record is always theirs to see.

@@ -19,7 +19,8 @@ jest.setTimeout(120_000);
 
 let mongo: MongoMemoryServer;
 const ids: Record<string, string> = {};
-const CRM = ['taskflow.crm.deal.read', 'taskflow.crm.quote.read'];
+// Deals reach the whole workspace only with the CRM "all" scope (AUT-29).
+const CRM = ['taskflow.crm.deal.read', 'taskflow.crm.quote.read', 'taskflow.crm.scope.all'];
 const SERVICE = ['taskflow.service.ticket.read'];
 
 const as = (user: string, perms: string[] = [], org = ids.org) =>

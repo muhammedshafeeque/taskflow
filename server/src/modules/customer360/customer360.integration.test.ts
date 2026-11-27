@@ -32,6 +32,7 @@ const DAY = 24 * HOUR;
 const ALL = [
   'taskflow.customer_portal.org.view',
   'taskflow.crm.deal.read',
+  'taskflow.crm.scope.all',
   'taskflow.crm.contract.read',
   'taskflow.service.ticket.read',
   'taskflow.billing.invoice.list',

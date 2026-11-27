@@ -635,6 +635,49 @@ export async function getRequest(workspaceId: string | null | undefined, id: str
   return { ...req, canDecide: Boolean(standing) && !same(raw.requestedBy, actor.userId), onBehalfOf: standing?.onBehalfOf ?? null };
 }
 
+/**
+ * Approval status of one record, for the record's own page: is a chain on, and where its latest
+ * request stands. Only step names, states and current approvers' names are shown here; the full
+ * request (title, notes, history) stays behind getRequest's checks.
+ */
+export async function recordStatus(workspaceId: string | null | undefined, type: ApprovalRecordType, recordId: string, actor: ApprovalActor) {
+  const orgId = requireWorkspaceId(workspaceId);
+  const chainEnabled = await isApprovalChainEnabled(orgId, type);
+  if (!mongoose.Types.ObjectId.isValid(recordId)) return { chainEnabled, request: null };
+  const raw = await ApprovalRequest.findOne({ taskflowOrganizationId: toOrgOid(orgId), recordType: type, recordId: oid(recordId) })
+    .sort({ createdAt: -1 })
+    .populate('requestedBy', 'name')
+    .populate('steps.approverIds', 'name')
+    .populate('steps.decidedBy', 'name')
+    .lean();
+  if (!raw) return { chainEnabled, request: null };
+  const requesterId = (raw.requestedBy as { _id?: unknown })?._id ?? raw.requestedBy;
+  const standing = await standingFor(raw as unknown as IApprovalRequest, actor.userId);
+  const nameOf = (p: unknown) => (p && typeof p === 'object' && 'name' in p ? String((p as { name?: unknown }).name ?? '') : '');
+  return {
+    chainEnabled,
+    request: {
+      _id: String(raw._id),
+      status: raw.status,
+      amount: raw.amount,
+      currency: raw.currency,
+      currentStep: raw.currentStep,
+      requestedBy: nameOf(raw.requestedBy),
+      createdAt: raw.createdAt,
+      completedAt: raw.completedAt,
+      steps: raw.steps.map((s) => ({
+        name: s.name,
+        status: s.status,
+        approvers: (s.approverIds as unknown[]).map(nameOf).filter(Boolean),
+        decidedBy: nameOf(s.decidedBy) || null,
+        decidedAt: s.decidedAt ?? null,
+      })),
+      canDecide: Boolean(standing) && !same(requesterId, actor.userId),
+      isMine: same(requesterId, actor.userId),
+    },
+  };
+}
+
 // ── Delegations ──────────────────────────────────────────────────────────────
 
 export async function listDelegations(workspaceId: string | null | undefined, actor: ApprovalActor, all = false) {

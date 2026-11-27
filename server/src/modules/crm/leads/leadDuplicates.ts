@@ -26,6 +26,10 @@ export interface LeadDuplicate {
   contactPhone?: string;
   updatedAt?: Date;
   reasons: DuplicateReason[];
+  assigneeId?: string;
+  assigneeName?: string;
+  /** Set when the match is outside the viewer's CRM reach: only that it exists, and who has it, is shown. */
+  outOfScope?: boolean;
 }
 
 export interface CustomerOrgMatch {
@@ -148,6 +152,15 @@ function companyProbe(company: string): RegExp {
 }
 
 const SCAN_LIMIT = 200;
+
+function assigneeOf(a: unknown): { assigneeId?: string; assigneeName?: string } {
+  if (!a) return {};
+  if (typeof a === 'object' && '_id' in a) {
+    const p = a as { _id: unknown; name?: string };
+    return { assigneeId: String(p._id), assigneeName: p.name };
+  }
+  return { assigneeId: String(a) };
+}
 const RESULT_LIMIT = 10;
 
 /**
@@ -181,7 +194,8 @@ export async function findLeadDuplicates(
     ...(exclude.length ? { _id: { $nin: exclude } } : {}),
     $or: or,
   })
-    .select('title status companyName contactName contactEmail contactPhone website additionalContacts updatedAt')
+    .select('title status companyName contactName contactEmail contactPhone website additionalContacts updatedAt assigneeId')
+    .populate('assigneeId', 'name')
     .sort({ updatedAt: -1 })
     .limit(SCAN_LIMIT)
     .lean();
@@ -200,6 +214,7 @@ export async function findLeadDuplicates(
       contactPhone: r.contactPhone,
       updatedAt: r.updatedAt,
       reasons,
+      ...assigneeOf(r.assigneeId),
     });
   }
   return rankByReasons(out).slice(0, RESULT_LIMIT);

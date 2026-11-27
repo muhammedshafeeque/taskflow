@@ -34,6 +34,7 @@ export const EXECUTIVE_PERMISSIONS: string[] = [
     // What the views reach: the whole company.
     TASKFLOW.HR.SCOPE.ALL,
     TASKFLOW.TIMESHEET.SCOPE.ALL,
+    TASKFLOW.CRM.SCOPE.ALL,
   ]),
 ];
 

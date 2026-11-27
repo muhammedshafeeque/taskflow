@@ -18,6 +18,15 @@ import * as contractsService from './contracts/contracts.service';
 import * as dashboardService from './dashboard/dashboard.service';
 import * as campaignsService from './campaigns/campaigns.service';
 import * as ecosystemService from './ecosystem/ecosystem.service';
+import {
+  assertDealInReach,
+  assertLeadInReach,
+  assignableOwner,
+  crmReachFor,
+  dealScopeFilter,
+  leadScopeFilter,
+  redactLeadDuplicates,
+} from './crmScope';
 
 function ws(req: Request & { user?: AuthPayload; activeOrganizationId?: string }) {
   return req.activeOrganizationId;
@@ -185,41 +194,66 @@ export async function listLeads(req: Request & { user?: AuthPayload }, res: Resp
     limit: q.limit ? parseInt(q.limit, 10) : undefined,
     campaignId: q.campaignId,
     unlinked: unlinked || undefined,
+    scope: leadScopeFilter(await crmReachFor(req)),
   });
   res.json({ success: true, data });
 }
 
 export async function getLeadStats(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const data = await leadsService.getLeadStats(ws(req));
+  const data = await leadsService.getLeadStats(ws(req), leadScopeFilter(await crmReachFor(req)));
   res.json({ success: true, data });
 }
 
 export async function getLead(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
+  await assertLeadInReach(ws(req), await crmReachFor(req), req.params.id);
   const data = await leadsService.getLead(req.params.id, ws(req));
   res.json({ success: true, data });
 }
 
 export async function createLead(req: Request & { user?: AuthPayload }, res: Response) {
-  const data = await leadsService.createLead(ws(req), req.body, uid(req), { checkDuplicates: true });
-  res.status(201).json({ success: true, data });
+  const userId = uid(req);
+  const reach = await crmReachFor(req);
+  const body = { ...((req.body ?? {}) as Record<string, unknown>) };
+  const assignee = assignableOwner(reach, body.assigneeId, userId, { creating: true, what: 'lead' });
+  if (assignee !== undefined) body.assigneeId = assignee;
+  try {
+    const data = await leadsService.createLead(ws(req), body, userId, { checkDuplicates: true });
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    throw redactDuplicateError(err, reach);
+  }
+}
+
+/** A 409 duplicate warning lists matches; hide the details of those outside the viewer's reach. */
+function redactDuplicateError(err: unknown, reach: Awaited<ReturnType<typeof crmReachFor>>): unknown {
+  if (reach === null || !(err instanceof ApiError) || err.statusCode !== 409) return err;
+  const d = err.details as { code?: string; leads?: Parameters<typeof redactLeadDuplicates>[1] } | undefined;
+  if (d?.code !== 'duplicate_lead' || !Array.isArray(d.leads)) return err;
+  return new ApiError(409, err.message, { ...d, leads: redactLeadDuplicates(reach, d.leads) });
 }
 
 export async function checkLeadDuplicates(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
   const data = await leadsService.checkLeadDuplicates(ws(req), (req.body ?? {}) as Record<string, unknown>);
-  res.json({ success: true, data });
+  res.json({ success: true, data: { ...data, leads: redactLeadDuplicates(await crmReachFor(req), data.leads) } });
 }
 
 export async function getLeadDuplicates(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
+  const reach = await crmReachFor(req);
+  await assertLeadInReach(ws(req), reach, req.params.id);
   const data = await leadsService.getLeadDuplicates(req.params.id, ws(req));
-  res.json({ success: true, data });
+  res.json({ success: true, data: { ...data, leads: redactLeadDuplicates(reach, data.leads) } });
 }
 
 export async function mergeLead(req: Request & { user?: AuthPayload }, res: Response) {
   const body = (req.body ?? {}) as { sourceId?: string };
+  const reach = await crmReachFor(req);
+  // Both leads must be within reach: merging moves the other lead's history into the kept one.
+  await assertLeadInReach(ws(req), reach, req.params.id);
+  if (body.sourceId) await assertLeadInReach(ws(req), reach, String(body.sourceId));
   const data = await leadsService.mergeLeads(req.params.id, String(body.sourceId ?? ''), ws(req), uid(req));
   res.json({ success: true, data });
 }
@@ -279,11 +313,17 @@ export async function ingestListProjects(req: Request, res: Response) {
 }
 
 export async function updateLead(req: Request & { user?: AuthPayload }, res: Response) {
-  const data = await leadsService.updateLead(req.params.id, ws(req), req.body, uid(req));
+  const userId = uid(req);
+  const reach = await crmReachFor(req);
+  await assertLeadInReach(ws(req), reach, req.params.id);
+  const body = { ...((req.body ?? {}) as Record<string, unknown>) };
+  if ('assigneeId' in body) body.assigneeId = assignableOwner(reach, body.assigneeId, userId, { creating: false, what: 'lead' }) ?? body.assigneeId;
+  const data = await leadsService.updateLead(req.params.id, ws(req), body, userId);
   res.json({ success: true, data });
 }
 
 export async function deleteLead(req: Request & { user?: AuthPayload }, res: Response) {
+  await assertLeadInReach(ws(req), await crmReachFor(req), req.params.id);
   const data = await leadsService.deleteLead(req.params.id, ws(req), uid(req));
   res.json({ success: true, data });
 }
@@ -306,6 +346,7 @@ export async function convertLead(req: Request & { user?: AuthPayload }, res: Re
     };
     ignoreDuplicates?: boolean;
   };
+  await assertLeadInReach(ws(req), await crmReachFor(req), req.params.id);
   const data = await leadsService.convertLead(req.params.id, ws(req), uid(req), {
     ...body,
     checkDuplicates: true,
@@ -318,40 +359,60 @@ export async function listDeals(req: Request & { user?: AuthPayload }, res: Resp
   uid(req);
   const q = req.query as { status?: string; stageId?: string; unlinked?: string; ownerId?: string; search?: string; pipelineId?: string };
   const unlinked = q.unlinked === '1' || q.unlinked === 'true';
-  const data = await dealsService.listDeals(ws(req), { ...q, unlinked: unlinked || undefined });
+  const data = await dealsService.listDeals(ws(req), {
+    status: q.status,
+    stageId: q.stageId,
+    ownerId: q.ownerId,
+    search: q.search,
+    pipelineId: q.pipelineId,
+    unlinked: unlinked || undefined,
+    scope: dealScopeFilter(await crmReachFor(req)),
+  });
   res.json({ success: true, data });
 }
 
 export async function createDeal(req: Request & { user?: AuthPayload }, res: Response) {
-  const data = await dealsService.createDeal(ws(req), req.body);
+  const body = { ...((req.body ?? {}) as Record<string, unknown>) };
+  const owner = assignableOwner(await crmReachFor(req), body.ownerId, uid(req), { creating: true, what: 'deal' });
+  if (owner !== undefined) body.ownerId = owner;
+  const data = await dealsService.createDeal(ws(req), body);
   res.status(201).json({ success: true, data });
 }
 
 export async function getDeal(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
+  await assertDealInReach(ws(req), await crmReachFor(req), req.params.id);
   const data = await dealsService.getDeal(req.params.id, ws(req));
   res.json({ success: true, data });
 }
 
 export async function deleteDeal(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
+  await assertDealInReach(ws(req), await crmReachFor(req), req.params.id);
   const data = await dealsService.deleteDeal(req.params.id, ws(req));
   res.json({ success: true, data });
 }
 
 export async function updateDeal(req: Request & { user?: AuthPayload }, res: Response) {
-  const data = await dealsService.updateDeal(req.params.id, ws(req), req.body);
+  const userId = uid(req);
+  const reach = await crmReachFor(req);
+  await assertDealInReach(ws(req), reach, req.params.id);
+  const body = { ...((req.body ?? {}) as Record<string, unknown>) };
+  if ('ownerId' in body) body.ownerId = assignableOwner(reach, body.ownerId, userId, { creating: false, what: 'deal' }) ?? body.ownerId;
+  const data = await dealsService.updateDeal(req.params.id, ws(req), body);
   res.json({ success: true, data });
 }
 
 export async function moveDealStage(req: Request & { user?: AuthPayload }, res: Response) {
   const body = req.body as { stageId?: string };
+  await assertDealInReach(ws(req), await crmReachFor(req), req.params.id);
   const data = await dealsService.moveDealStage(req.params.id, ws(req), String(body.stageId));
   res.json({ success: true, data });
 }
 
 export async function createProjectFromDeal(req: Request & { user?: AuthPayload }, res: Response) {
   const body = req.body as { name?: string; key?: string; templateId?: string };
+  await assertDealInReach(ws(req), await crmReachFor(req), req.params.id);
   const data = await dealsService.createProjectFromDeal(req.params.id, ws(req), uid(req), {
     name: String(body.name ?? ''),
     key: String(body.key ?? ''),
@@ -362,7 +423,7 @@ export async function createProjectFromDeal(req: Request & { user?: AuthPayload 
 
 export async function getForecast(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const data = await dealsService.getForecast(ws(req));
+  const data = await dealsService.getForecast(ws(req), dealScopeFilter(await crmReachFor(req)));
   res.json({ success: true, data });
 }
 

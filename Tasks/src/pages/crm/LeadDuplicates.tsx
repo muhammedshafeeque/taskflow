@@ -39,24 +39,30 @@ export function DuplicateLeadList({
         <li key={l._id} className="py-2 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <Link
-                to={`/crm/leads/${l._id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm font-medium text-[color:var(--accent)] hover:underline truncate"
-              >
-                {l.title}
-              </Link>
+              {l.outOfScope ? (
+                <span className="text-sm font-medium text-[color:var(--text-primary)] truncate">{l.title}</span>
+              ) : (
+                <Link
+                  to={`/crm/leads/${l._id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm font-medium text-[color:var(--accent)] hover:underline truncate"
+                >
+                  {l.title}
+                </Link>
+              )}
               <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${statusClass(l.status)}`}>
                 {leadLabel(LEAD_STATUSES, l.status)}
               </span>
               <ReasonChips reasons={l.reasons} />
             </div>
             <p className="text-[12px] text-[color:var(--text-muted)] mt-0.5 truncate">
-              {[l.companyName, l.contactName, l.contactEmail, l.contactPhone].filter(Boolean).join(' · ') || '—'}
+              {l.outOfScope
+                ? 'Outside your access. Ask the person who has it, or a manager, before adding another lead.'
+                : [l.companyName, l.contactName, l.contactEmail, l.contactPhone].filter(Boolean).join(' · ') || '—'}
             </p>
           </div>
-          {action?.(l)}
+          {!l.outOfScope && action?.(l)}
         </li>
       ))}
     </ul>

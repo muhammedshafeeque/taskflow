@@ -46,3 +46,44 @@ export async function migrateDataScopesIfNeeded(): Promise<{ roles: number; user
   if (roles || users) console.log(`[migrate] data scopes: ${roles} role(s) and ${users} user(s) keep reaching everyone`);
   return { roles, users };
 }
+
+const CRM_MARKER = 'crm-scopes-v1';
+const CRM_ALL = 'taskflow.crm.scope.all';
+
+/** CRM scope to add so a permission list keeps reaching every lead and deal, as it did before AUT-29. */
+export function crmScopesToKeep(permissions: string[]): string[] {
+  const dots = permissions.map(permissionToDot);
+  if (dots.includes(CRM_ALL) || dots.includes('taskflow.crm.*') || dots.includes('taskflow.crm.scope.*')) return [];
+  const touchesRecords = dots.some((p) => p.startsWith('taskflow.crm.lead.') || p.startsWith('taskflow.crm.deal.'));
+  return touchesRecords ? [CRM_ALL] : [];
+}
+
+/**
+ * One-time (AUT-29): lead and deal permissions used to reach every record in the workspace. Since CRM scopes,
+ * they reach only the person's own leads and deals unless a scope code says more. Existing roles, and people's
+ * extra permissions, get "reach everyone" so nothing changes; administrators narrow them in Auth → Roles.
+ */
+export async function migrateCrmScopesIfNeeded(): Promise<{ roles: number; users: number }> {
+  const db = mongoose.connection;
+  const done = db.collection<{ _id: string; at: Date }>('appmigrations');
+  if (await done.findOne({ _id: CRM_MARKER })) return { roles: 0, users: 0 };
+  let roles = 0;
+  let users = 0;
+  for await (const r of db.collection('roles').find({}, { projection: { permissions: 1 } })) {
+    const add = crmScopesToKeep((r.permissions as string[]) ?? []);
+    if (add.length) {
+      await db.collection('roles').updateOne({ _id: r._id }, { $addToSet: { permissions: { $each: add } } });
+      roles++;
+    }
+  }
+  for await (const u of db.collection('users').find({ 'permissionOverrides.granted.0': { $exists: true } }, { projection: { permissionOverrides: 1 } })) {
+    const add = crmScopesToKeep((u.permissionOverrides?.granted as string[]) ?? []);
+    if (add.length) {
+      await db.collection('users').updateOne({ _id: u._id }, { $addToSet: { 'permissionOverrides.granted': { $each: add } } });
+      users++;
+    }
+  }
+  await done.updateOne({ _id: CRM_MARKER }, { $set: { at: new Date(), roles, users } }, { upsert: true });
+  if (roles || users) console.log(`[migrate] CRM scopes: ${roles} role(s) and ${users} user(s) keep reaching every lead and deal`);
+  return { roles, users };
+}
