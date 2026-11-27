@@ -68,6 +68,10 @@ const jobOpeningSchema = new Schema(
     employmentType: { type: String, default: 'full_time' },
     description: { type: String },
     openings: { type: Number, default: 1, min: 1 },
+    /** People hired into this opening so far; it closes when this reaches `openings` (AUT-37). */
+    filled: { type: Number, min: 0 },
+    /** Shown on the public careers page. */
+    published: { type: Boolean, default: false },
     status: { type: String, enum: ['draft', 'open', 'on_hold', 'closed'], default: 'open', index: true },
     hiringManagerId: { type: Schema.Types.ObjectId, ref: 'User' },
     /** Stage names for this opening; defaults come from HR settings. */
@@ -106,6 +110,8 @@ const candidateSchema = new Schema(
     expectedSalary: { type: Number },
     hiredEmployeeId: { type: Schema.Types.ObjectId, ref: 'HrmsEmployee' },
     rejectionReason: { type: String },
+    /** Applied through the public careers page. */
+    coverNote: { type: String },
   },
   { timestamps: true }
 );

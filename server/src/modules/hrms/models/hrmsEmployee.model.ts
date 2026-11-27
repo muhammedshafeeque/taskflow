@@ -6,6 +6,8 @@ export type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
 export interface IHrmsEmployee extends Document {
   taskflowOrganizationId: mongoose.Types.ObjectId;
   userId?: mongoose.Types.ObjectId;
+  archivedAt?: Date | null;
+  archivedBy?: mongoose.Types.ObjectId;
   accountRequest?: { roleId?: mongoose.Types.ObjectId; requestedBy?: mongoose.Types.ObjectId; requestedAt: Date; status: 'pending' | 'done' | 'cancelled'; doneAt?: Date };
   employeeCode: string;
   name: string;
@@ -41,6 +43,9 @@ const hrmsEmployeeSchema = new Schema<IHrmsEmployee>(
   {
     taskflowOrganizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User' },
+    /** Kept for its history instead of deleted; hidden from lists until restored (AUT-38). */
+    archivedAt: { type: Date, default: null, index: true },
+    archivedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     /** Hiring asked for a sign-in account that the hirer could not create (AUT-35). */
     accountRequest: {
       type: new Schema(

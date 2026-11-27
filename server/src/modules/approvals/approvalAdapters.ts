@@ -14,6 +14,8 @@ import { applyLeaveDecision } from '../hrms/hrms.service';
 import { HrmsPayrollRun } from '../hrms/models/hrmsPayroll.model';
 import { BillingInvoice } from '../billing/models/billingInvoice.model';
 import { CrmQuote } from '../crm/models/crmQuote.model';
+import { HrmsOffer } from '../hrms/models/hrmsOffer.model';
+import { HrmsCandidate } from '../hrms/models/hrmsPeople.model';
 import { quoteDiscountPercent } from '../crm/quotes/discountLimits';
 
 const valid = (id: string) => mongoose.Types.ObjectId.isValid(id);
@@ -118,5 +120,33 @@ registerApprovalAdapter({
       link: `/crm/quotes/${id}`,
       discountPercent,
     };
+  },
+});
+
+registerApprovalAdapter({
+  type: 'offer',
+  label: 'Job offers',
+  mode: 'decision',
+  amountLabel: 'Annual CTC',
+  async load(orgId, id) {
+    if (!valid(id)) return null;
+    const o = await HrmsOffer.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) }).select('candidateId designation annualCtc currency createdBy aboveBand').lean();
+    if (!o) return null;
+    const c = await HrmsCandidate.findById(o.candidateId).select('name').lean();
+    return {
+      title: `Offer: ${c?.name ?? 'Candidate'}${o.designation ? `, ${o.designation}` : ''}${o.aboveBand ? ' (above band)' : ''}`,
+      amount: o.annualCtc,
+      currency: o.currency ?? undefined,
+      requesterUserId: str(o.createdBy),
+      link: '/hrms/recruitment',
+    };
+  },
+  onApproved: async (orgId, id, userId) => {
+    const { applyOfferDecision } = await import('../hrms/offers.service');
+    await applyOfferDecision(orgId, id, 'approved', userId);
+  },
+  onRejected: async (orgId, id, userId, note) => {
+    const { applyOfferDecision } = await import('../hrms/offers.service');
+    await applyOfferDecision(orgId, id, 'rejected', userId, note);
   },
 });

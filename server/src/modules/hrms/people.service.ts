@@ -46,7 +46,7 @@ function jobInReach(reach: Reach, job: { hiringManagerId?: unknown; department?:
   return Boolean(job.department && reach.departments.includes(job.department));
 }
 
-async function assertCandidateJobInReach(reach: Reach, jobId: unknown) {
+export async function assertCandidateJobInReach(reach: Reach, jobId: unknown) {
   if (reach === null) return;
   const job = await HrmsJobOpening.findById(jobId).select('hiringManagerId department').lean();
   if (!jobInReach(reach, job)) throw new ApiError(404, 'Candidate not found');
@@ -213,6 +213,8 @@ export async function saveJob(ws: string | null | undefined, input: Record<strin
     if (typeof input[k] === 'string') data[k] = (input[k] as string).trim().slice(0, k === 'description' ? 10_000 : 120);
   }
   for (const k of ['openings', 'salaryMin', 'salaryMax'] as const) if (input[k] !== undefined && input[k] !== '') data[k] = Number(input[k]);
+  if (data.openings !== undefined && (!Number.isInteger(data.openings) || (data.openings as number) < 1)) throw new ApiError(400, 'Openings must be a whole number of 1 or more');
+  if (input.published !== undefined) data.published = Boolean(input.published);
   if (['draft', 'open', 'on_hold', 'closed'].includes(String(input.status))) data.status = input.status;
   if (isId(input.hiringManagerId)) data.hiringManagerId = oid(String(input.hiringManagerId));
   if (Array.isArray(input.stages)) data.stages = input.stages.map((s) => String(s).trim()).filter(Boolean).slice(0, 15);
@@ -335,9 +337,16 @@ export async function hireCandidate(
   if (c.status !== 'active') throw new ApiError(409, `This candidate is ${c.status}; make them active before hiring`);
 
   // Check everything first: a hire that fails halfway leaves an employee without a checklist.
-  const joinedDate = input.joinedDate ? new Date(input.joinedDate) : new Date();
+  // An accepted offer gives the terms; HR can make one compulsory (AUT-37).
+  const hrSettings = (await getHrSettings(String(orgOid))) as { requireAcceptedOffer?: boolean };
+  const { acceptedOfferFor } = await import('./offers.service');
+  const offer = await acceptedOfferFor(c._id);
+  if (hrSettings.requireAcceptedOffer && !offer) throw new ApiError(409, 'This candidate needs an accepted offer before they can be hired');
+  const joinedDate = input.joinedDate ? new Date(input.joinedDate) : offer?.joiningDate ? new Date(offer.joiningDate) : new Date();
   if (Number.isNaN(joinedDate.getTime())) throw new ApiError(400, 'Joining date is not valid');
-  const annualCtc = input.annualCtc === undefined ? (c.expectedSalary ?? 0) : Number(input.annualCtc);
+  const annualCtc = input.annualCtc === undefined ? (offer?.annualCtc ?? c.expectedSalary ?? 0) : Number(input.annualCtc);
+  if (offer && !input.designation && offer.designation) input = { ...input, designation: offer.designation };
+  if (offer && !input.currency && offer.currency) input = { ...input, currency: offer.currency };
   if (!Number.isFinite(annualCtc) || annualCtc < 0) throw new ApiError(400, 'CTC must be zero or more');
   await assertValidManager(orgOid, input.managerId);
   if (input.onboardingTemplateId) {
@@ -363,12 +372,17 @@ export async function hireCandidate(
 
   const job = await HrmsJobOpening.findById(c.jobId).lean();
   const stages = job?.stages ?? [];
+  // Take one of the opening's places first: never more hires than openings, even at the same moment.
+  await claimOpening(c.jobId);
   // Claim the candidate, so a double click or two people hiring at once create one employee.
   const claimed = await HrmsCandidate.updateOne(
     { _id: c._id, status: 'active' },
     { $set: { status: 'hired', ...(stages.length ? { stage: stages[stages.length - 1] } : {}) } }
   );
-  if (!claimed.modifiedCount) throw new ApiError(409, 'Already hired');
+  if (!claimed.modifiedCount) {
+    await releaseOpening(c.jobId);
+    throw new ApiError(409, 'Already hired');
+  }
 
   let employee;
   try {
@@ -392,15 +406,39 @@ export async function hireCandidate(
     );
   } catch (err) {
     await HrmsCandidate.updateOne({ _id: c._id }, { $set: { status: 'active', stage: c.stage } });
+    await releaseOpening(c.jobId);
     throw err;
   }
   await HrmsCandidate.updateOne({ _id: c._id }, { $set: { hiredEmployeeId: employee._id } });
+  // The last place filled closes the opening (and takes it off the careers page).
+  await HrmsJobOpening.updateOne({ _id: c.jobId, $expr: { $gte: ['$filled', '$openings'] } }, { $set: { status: 'closed' } });
   const checklist = input.onboardingTemplateId
     ? await startChecklist(String(orgOid), { employeeId: String(employee._id), templateId: input.onboardingTemplateId }, actorId)
     : null;
   const account = await setUpHireAccount(String(orgOid), employee, accountAction, input.account?.roleId, { id: actorId, permissions, role: actorRole });
   const fresh = await HrmsEmployee.findById(employee._id).lean();
   return { employee: withoutPay(fresh ?? employee.toObject(), access), checklist, account };
+}
+
+/**
+ * Take one place in a job opening (AUT-37). Openings created before places were counted start from
+ * the number of people already hired into them.
+ */
+async function claimOpening(jobId: unknown) {
+  const job = await HrmsJobOpening.findById(jobId).select('filled openings').lean();
+  if (!job) throw new ApiError(404, 'Job not found');
+  if (job.filled == null) {
+    const hired = await HrmsCandidate.countDocuments({ jobId, status: 'hired' });
+    await HrmsJobOpening.updateOne({ _id: jobId, filled: { $exists: false } }, { $set: { filled: hired } });
+  }
+  const taken = await HrmsJobOpening.updateOne({ _id: jobId, $expr: { $lt: ['$filled', '$openings'] } }, { $inc: { filled: 1 } });
+  if (!taken.modifiedCount) {
+    throw new ApiError(409, `All ${job.openings} opening(s) for this job are filled. Add openings to the job to hire more people.`);
+  }
+}
+
+async function releaseOpening(jobId: unknown) {
+  await HrmsJobOpening.updateOne({ _id: jobId, filled: { $gt: 0 } }, { $inc: { filled: -1 } });
 }
 
 type HireAccountResult = {

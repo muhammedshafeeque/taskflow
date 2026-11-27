@@ -23,6 +23,7 @@ const TYPE_LABEL: Record<ApprovalRecordType, string> = {
   expense: 'Expense claim',
   leave: 'Leave',
   payroll: 'Payroll run',
+  offer: 'Job offer',
 };
 const RECORD_TYPES = Object.keys(TYPE_LABEL) as ApprovalRecordType[];
 
@@ -110,7 +111,7 @@ export default function Approvals() {
   return (
     <SectionPage
       title="Approvals"
-      subtitle="One place for every approval: expenses, purchase orders, leave, invoices, quotations and payroll. Nobody approves their own request, and every decision is logged."
+      subtitle="One place for every approval: expenses, purchase orders, leave, invoices, quotations, payroll and job offers. Nobody approves their own request, and every decision is logged."
     >
       <div className="flex flex-wrap gap-1 border-b border-[color:var(--border-subtle)]">
         {tabs.map((t) => (

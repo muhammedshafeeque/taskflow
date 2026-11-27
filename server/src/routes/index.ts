@@ -59,6 +59,7 @@ import { commissionRoutes } from '../modules/crm/commissions/commissions';
 import { statusPageRoutes, postmortemRoutes, publicStatusRoutes } from '../modules/monitor/statusPage';
 import { publicCsatRoutes } from '../modules/service-desk/publicCsat.routes';
 import { customerQuoteRoutes, publicQuoteRoutes } from '../modules/crm/quotes/customerQuotes';
+import { publicCareersRoutes, publicOfferRoutes } from '../modules/hrms/publicHiring.routes';
 import { monitorStaffRoutes, monitorIngestRoutes } from '../modules/monitor/monitor.routes';
 import { internalPaRoutes } from '../modules/internal/pa.internal.routes';
 import { customerRoleRoutes } from '../modules/customer-portal/customer-role/customerRole.routes';
@@ -141,6 +142,9 @@ router.use('/public/csat', publicLimiter, publicCsatRoutes);
 router.use('/public/status', publicLimiter, publicStatusRoutes);
 // Customers accept or reject quotations from the emailed link (AUT-32).
 router.use('/public/quotes', publicLimiter, crmEnabled, publicQuoteRoutes);
+// Offer letters and the careers page (AUT-37).
+router.use('/public/offers', publicLimiter, hrmsEnabled, publicOfferRoutes);
+router.use('/public/careers', publicLimiter, hrmsEnabled, publicCareersRoutes);
 router.use('/me', meRoutes);
 router.use('/updates', updatesRoutes);
 router.use('/announcements', announcementRoutes);

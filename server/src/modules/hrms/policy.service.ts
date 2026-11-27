@@ -23,6 +23,10 @@ export async function getHrSettings(workspaceId: string | null | undefined) {
       leaveApproverUserIds: [],
       standardHoursPerDay: 8,
       workingDaysPerYear: 260,
+      requireAcceptedOffer: false,
+      offerLetterTemplate: '',
+      careersPageEnabled: false,
+      careersIntro: '',
     }
   );
 }
@@ -71,6 +75,10 @@ export async function updateHrSettings(workspaceId: string | null | undefined, i
       .filter((id) => mongoose.Types.ObjectId.isValid(String(id)))
       .map((id) => new mongoose.Types.ObjectId(String(id)));
   }
+  if (input.requireAcceptedOffer !== undefined) $set.requireAcceptedOffer = Boolean(input.requireAcceptedOffer);
+  if (input.careersPageEnabled !== undefined) $set.careersPageEnabled = Boolean(input.careersPageEnabled);
+  if (typeof input.offerLetterTemplate === 'string') $set.offerLetterTemplate = input.offerLetterTemplate.slice(0, 20_000);
+  if (typeof input.careersIntro === 'string') $set.careersIntro = input.careersIntro.slice(0, 2_000);
   return HrmsSettings.findOneAndUpdate({ taskflowOrganizationId: orgOid }, { $set }, { upsert: true, new: true }).lean();
 }
 
@@ -250,6 +258,46 @@ export async function adjustBalance(
   return getBalances(String(orgOid), employeeId);
 }
 
+/**
+ * How a leave's days fall across leave years (AUT-39). Leave from 28 Dec to 3 Jan with a January leave
+ * year is charged partly to each year, by the working days in each part. The days asked for (which HR
+ * may have set by hand, or a half day) are shared in proportion and rounded to half days.
+ */
+export async function splitByLeaveYear(
+  orgOid: mongoose.Types.ObjectId,
+  start: Date,
+  end: Date,
+  days: number,
+  location?: string
+): Promise<Array<{ year: number; days: number; from: Date }>> {
+  const settings = await getHrSettings(String(orgOid));
+  const startMonth = settings.leaveYearStartMonth ?? 1;
+  const parts: Array<{ year: number; from: Date; to: Date }> = [];
+  let from = new Date(start);
+  for (let guard = 0; guard < 5; guard++) {
+    const year = leaveYearOf(from, startMonth);
+    const nextYearStart = new Date(Date.UTC(year + 1, startMonth - 1, 1));
+    if (end < nextYearStart) {
+      parts.push({ year, from, to: end });
+      break;
+    }
+    parts.push({ year, from, to: new Date(nextYearStart.getTime() - 86_400_000) });
+    from = nextYearStart;
+  }
+  if (parts.length === 1) return [{ year: parts[0].year, days, from: parts[0].from }];
+  const weights = await Promise.all(parts.map((p) => workingDaysFor(orgOid, p.from, p.to, location)));
+  const total = weights.reduce((a, b) => a + b, 0);
+  const out: Array<{ year: number; days: number; from: Date }> = [];
+  let left = days;
+  parts.forEach((p, i) => {
+    const share = i === parts.length - 1 ? left : total > 0 ? Math.round(((days * weights[i]) / total) * 2) / 2 : 0;
+    const d = Math.min(left, Math.max(0, share));
+    left = round2(left - d);
+    if (d > 0) out.push({ year: p.year, days: d, from: p.from });
+  });
+  return out;
+}
+
 /** Record usage when a leave request is approved (or reverse it when cancelled). */
 export async function applyLeaveUsage(leave: {
   taskflowOrganizationId: mongoose.Types.ObjectId;
@@ -257,17 +305,24 @@ export async function applyLeaveUsage(leave: {
   leaveTypeId?: mongoose.Types.ObjectId | null;
   startDate: Date;
   days: number;
+  yearSplit?: Array<{ year: number; days: number }> | null;
 }, sign: 1 | -1) {
   if (!leave.leaveTypeId) return;
   const type = await HrmsLeaveType.findById(leave.leaveTypeId).select('paid').lean();
   if (!type?.paid) return;
-  const settings = await getHrSettings(String(leave.taskflowOrganizationId));
-  const year = leaveYearOf(new Date(leave.startDate), settings.leaveYearStartMonth ?? 1);
-  await HrmsLeaveLedger.updateOne(
-    { employeeId: leave.employeeId, leaveTypeId: leave.leaveTypeId, year },
-    { $inc: { used: sign * leave.days }, $setOnInsert: { taskflowOrganizationId: leave.taskflowOrganizationId } },
-    { upsert: true }
-  );
+  // The split saved when the leave was requested is used both ways, so cancelling undoes exactly what approving did.
+  let parts = leave.yearSplit?.length ? leave.yearSplit : null;
+  if (!parts) {
+    const settings = await getHrSettings(String(leave.taskflowOrganizationId));
+    parts = [{ year: leaveYearOf(new Date(leave.startDate), settings.leaveYearStartMonth ?? 1), days: leave.days }];
+  }
+  for (const p of parts) {
+    await HrmsLeaveLedger.updateOne(
+      { employeeId: leave.employeeId, leaveTypeId: leave.leaveTypeId, year: p.year },
+      { $inc: { used: sign * p.days }, $setOnInsert: { taskflowOrganizationId: leave.taskflowOrganizationId } },
+      { upsert: true }
+    );
+  }
 }
 
 /** Roll unused days into the new leave year (run once per year; safe to re-run). */

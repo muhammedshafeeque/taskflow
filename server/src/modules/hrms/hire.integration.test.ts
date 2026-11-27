@@ -26,7 +26,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await Promise.all([HrmsEmployee, HrmsCandidate, HrmsChecklist, HrmsChecklistTemplate, HrmsJobOpening].map((m) => (m as typeof HrmsEmployee).deleteMany({})));
-  jobId = (await HrmsJobOpening.create({ taskflowOrganizationId: org, title: 'Developer', department: 'Dev', employmentType: 'intern', stages: ['Applied', 'Offer', 'Hired'], currency: 'INR' }))._id as mongoose.Types.ObjectId;
+  jobId = (await HrmsJobOpening.create({ taskflowOrganizationId: org, title: 'Developer', department: 'Dev', employmentType: 'intern', stages: ['Applied', 'Offer', 'Hired'], currency: 'INR' , openings: 50 }))._id as mongoose.Types.ObjectId;
 });
 afterAll(async () => {
   await mongoose.disconnect();

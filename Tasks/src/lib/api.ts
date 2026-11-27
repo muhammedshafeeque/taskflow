@@ -3500,6 +3500,8 @@ export const coreApi = {
 
 // ── HRMS ────────────────────────────────────────────────────────────────────
 export interface HrmsEmployee {
+  /** Kept for its history instead of deleted; hidden from lists until restored. */
+  archivedAt?: string | null;
   _id: string;
   employeeCode: string;
   name: string;
@@ -3557,7 +3559,7 @@ export interface HrmsAttendance {
 
 export const hrmsApi = {
   dashboard: (token: string) => api.get('/hrms/dashboard', token),
-  listEmployees: (token: string, params?: { status?: string; department?: string; search?: string }) => {
+  listEmployees: (token: string, params?: { status?: string; department?: string; search?: string; archived?: 'only' | 'all' }) => {
     const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
     return api.get<HrmsEmployee[]>(`/hrms/employees${q}`, token);
   },
@@ -3566,7 +3568,9 @@ export const hrmsApi = {
   openWork: (id: string, token: string) => api.get<HrmsOpenWork>(`/hrms/employees/${id}/open-work`, token),
   reassignWork: (id: string, body: { toUserId: string; kinds: string[] }, token: string) =>
     api.post<{ moved: Partial<HrmsOpenWork>; remaining: HrmsOpenWork }>(`/hrms/employees/${id}/reassign`, body, token),
-  deleteEmployee: (id: string, token: string) => api.delete(`/hrms/employees/${id}`, token),
+  /** Deletes a record with no history; one with history is archived instead (AUT-38). */
+  deleteEmployee: (id: string, token: string) => api.delete<{ deleted: boolean; archived: boolean; history?: string[] }>(`/hrms/employees/${id}`, token),
+  restoreEmployee: (id: string, token: string) => api.post<{ restored: boolean }>(`/hrms/employees/${id}/restore`, {}, token),
   listLeave: (token: string, params?: { status?: string; employeeId?: string }) => {
     const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
     return api.get<HrmsLeaveRequest[]>(`/hrms/leave${q}`, token);
@@ -3771,7 +3775,7 @@ export const accountsApi = {
 
 // ── Approvals (shared approval engine) ─────────────────────────────────────────
 
-export type ApprovalRecordType = 'invoice' | 'quote' | 'purchase_order' | 'expense' | 'leave' | 'payroll';
+export type ApprovalRecordType = 'invoice' | 'quote' | 'purchase_order' | 'expense' | 'leave' | 'payroll' | 'offer';
 export type ApproverKind = 'manager' | 'role' | 'users' | 'permission' | 'discount_limit';
 type PersonRef = string | { _id: string; name?: string; email?: string };
 

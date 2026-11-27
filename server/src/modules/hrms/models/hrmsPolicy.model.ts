@@ -81,6 +81,13 @@ const hrSettingsSchema = new Schema(
     workingDaysPerYear: { type: Number, default: 260, min: 100, max: 366 },
     /** Who approves leave when the employee has no manager with an account. */
     leaveApproverUserIds: { type: [{ type: Schema.Types.ObjectId, ref: 'User' }], default: [] },
+    /** Hiring a candidate needs an offer they accepted (AUT-37). */
+    requireAcceptedOffer: { type: Boolean, default: false },
+    /** Offer letter text; {{name}}, {{designation}}, {{ctc}}, {{currency}}, {{joiningDate}}, {{company}}, {{expiresAt}} are filled in. */
+    offerLetterTemplate: { type: String, default: '' },
+    /** Public careers page listing published openings (AUT-37). */
+    careersPageEnabled: { type: Boolean, default: false },
+    careersIntro: { type: String, default: '' },
   },
   { timestamps: true }
 );

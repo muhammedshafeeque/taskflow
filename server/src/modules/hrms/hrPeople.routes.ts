@@ -1,4 +1,7 @@
 import { Role } from '../roles/role.model';
+import * as offers from './offers.service';
+import { Organization } from '../organizations/organization.model';
+import { env } from '../../config/env';
 import { Router, type Request, type Response } from 'express';
 import { requireAnyPermission } from '../../middleware/requirePermission';
 import { asyncHandler } from '../../utils/asyncHandler';
@@ -26,7 +29,16 @@ export const hrPeopleRouter = Router();
 const r = hrPeopleRouter;
 
 // Settings, leave types, holidays
-r.get('/settings', requireAnyPermission([H.POLICY.MANAGE, H.LEAVE.MANAGE, H.RECRUITMENT.MANAGE, H.EMPLOYEE.CREATE, H.EMPLOYEE.UPDATE]), asyncHandler(async (req: R, res) => ok(res, await policy.getHrSettings(ws(req)))));
+r.get(
+  '/settings',
+  requireAnyPermission([H.POLICY.MANAGE, H.LEAVE.MANAGE, H.RECRUITMENT.MANAGE, H.EMPLOYEE.CREATE, H.EMPLOYEE.UPDATE]),
+  asyncHandler(async (req: R, res) => {
+    const settings = await policy.getHrSettings(ws(req));
+    // Where the public careers page lives (AUT-37), to show and share.
+    const org = await Organization.findById(ws(req)).select('slug').lean();
+    ok(res, { ...settings, careersUrl: org?.slug ? `${env.frontendUrl.replace(/\/$/, '')}/careers/${org.slug}` : null });
+  })
+);
 r.put('/settings', requireAnyPermission([H.POLICY.MANAGE]), asyncHandler(async (req: R, res) => ok(res, await policy.updateHrSettings(ws(req), req.body ?? {}))));
 
 const leaveTypeReaders = [H.POLICY.MANAGE, H.LEAVE.READ, H.LEAVE.MANAGE, S.LEAVE.APPLY];
@@ -88,6 +100,18 @@ r.get('/jobs/:id/candidates', asyncHandler(async (req: R, res) => ok(res, await 
 r.post('/candidates', requireAnyPermission([H.RECRUITMENT.MANAGE]), asyncHandler(async (req: R, res) => ok(res, await people.saveCandidate(ws(req), req.body ?? {}, undefined, await hr(req)))));
 r.patch('/candidates/:id', requireAnyPermission([H.RECRUITMENT.MANAGE]), asyncHandler(async (req: R, res) => ok(res, await people.saveCandidate(ws(req), req.body ?? {}, req.params.id, await hr(req)))));
 r.post('/candidates/:id/interviews', requireAnyPermission([H.RECRUITMENT.MANAGE]), asyncHandler(async (req: R, res) => ok(res, await people.addInterview(ws(req), req.params.id, req.body ?? {}, req.user!.id, await hr(req)))));
+// Offers (AUT-37): draft → approve → send → the candidate answers online.
+const RM = requireAnyPermission([H.RECRUITMENT.MANAGE]);
+r.get('/candidates/:id/offers', RM, asyncHandler(async (req: R, res) => ok(res, await offers.listOffers(ws(req), req.params.id))));
+r.post('/candidates/:id/offers', RM, asyncHandler(async (req: R, res) => ok(res, await offers.createOffer(ws(req), req.params.id, req.body ?? {}, req.user!.id, req.user!.permissions ?? [], await hr(req)))));
+r.patch('/offers/:id', RM, asyncHandler(async (req: R, res) => ok(res, await offers.updateOffer(ws(req), req.params.id, req.body ?? {}, req.user!.permissions ?? []))));
+r.post('/offers/:id/submit', RM, asyncHandler(async (req: R, res) => ok(res, await offers.submitOffer(ws(req), req.params.id, req.user!.id))));
+// Approving needs pay rights (checked inside), not recruitment rights.
+r.post('/offers/:id/approve', asyncHandler(async (req: R, res) => ok(res, await offers.decideOffer(ws(req), req.params.id, 'approve', req.user!.id, req.user!.permissions ?? []))));
+r.post('/offers/:id/reject', asyncHandler(async (req: R, res) => ok(res, await offers.decideOffer(ws(req), req.params.id, 'reject', req.user!.id, req.user!.permissions ?? [], (req.body as { note?: string } | undefined)?.note))));
+r.post('/offers/:id/send', RM, asyncHandler(async (req: R, res) => ok(res, await offers.sendOffer(ws(req), req.params.id, req.user!.id))));
+r.post('/offers/:id/withdraw', RM, asyncHandler(async (req: R, res) => ok(res, await offers.withdrawOffer(ws(req), req.params.id, req.user!.id))));
+
 /** Roles a hirer can suggest for the new hire's account (AUT-35): names only. */
 r.get(
   '/hire/account-roles',

@@ -5,6 +5,7 @@ import { canAny } from '../../utils/moduleAccess';
 import { CrudPage, SettingsForm, fmtDate, type Row } from '../../components/CrudPage';
 import { Field, GhostButton, Modal, PrimaryButton, SectionPage, Select, StatusPill, TextArea, TextInput } from '../../components/moduleKit';
 import HireModal from './HireModal';
+import OfferModal from './OfferModal';
 import { PersonSelect, toPeople } from '../../components/people';
 
 const H = {
@@ -57,6 +58,11 @@ export function HrSettingsPage() {
         { key: 'jobChangeNeedsApproval', label: 'Job changes need a second approver', type: 'checkbox', placeholder: 'Promotions, transfers and pay changes are approved by someone other than who proposed them' },
         { key: 'levels', label: 'Levels', type: 'list', help: 'Seniority levels, most junior first (e.g. Intern, Junior, Senior, Lead). Set on each employee; team & level rules can use them.' },
         { key: 'leaveApproverUserIds', label: 'Fallback leave approvers', type: 'multiselect', optionsFrom: { endpoint: '/core/people' }, help: "Used when an employee has no manager linked to a user account." },
+        { key: 'requireAcceptedOffer', label: 'Hiring needs an accepted offer', type: 'checkbox', placeholder: 'A candidate can be hired only after accepting an offer online' },
+        { key: 'offerLetterTemplate', label: 'Offer letter template', type: 'textarea', help: 'Filled in for each offer: {{name}}, {{designation}}, {{ctc}}, {{currency}}, {{joiningDate}}, {{expiresAt}}, {{company}}. Leave blank for a simple default.' },
+        { key: 'careersPageEnabled', label: 'Public careers page', type: 'checkbox', placeholder: 'List openings marked "Show on the careers page" and accept applications' },
+        { key: 'careersIntro', label: 'Careers page introduction', type: 'textarea', help: 'Shown above the openings. Your careers page address is shown below once saved.' },
+        { key: 'careersUrl', label: 'Careers page address', type: 'text', help: 'Share this link. It works while the careers page is on.' },
       ]}
     />
   );
@@ -339,6 +345,7 @@ export function HrRecruitmentPage() {
   const [cand, setCand] = useState<Row | null>(null);
   const [interview, setInterview] = useState<Row | null>(null);
   const [hiring, setHiring] = useState<Row | null>(null);
+  const [offering, setOffering] = useState<Row | null>(null);
   const stages = ((job?.stages as string[]) ?? []).length ? (job!.stages as string[]) : ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'];
 
   const save = async (path: string, body: Row, id?: unknown) => {
@@ -417,6 +424,9 @@ export function HrRecruitmentPage() {
                         <button className="text-[color:var(--accent)]" onClick={() => setInterview({ candidateId: c._id, at: '', rating: '', feedback: '', recommendation: '' })}>
                           + Interview
                         </button>
+                        <button className="text-[color:var(--accent)]" onClick={() => setOffering(c)}>
+                          Offer
+                        </button>
                         <button className="text-emerald-600" onClick={() => setHiring(c)}>
                           Hire
                         </button>
@@ -452,8 +462,8 @@ export function HrRecruitmentPage() {
             <Field label="Location">
               <TextInput value={String(editJob.location ?? '')} onChange={(e) => setEditJob({ ...editJob, location: e.target.value })} />
             </Field>
-            <Field label="Openings">
-              <TextInput type="number" value={String(editJob.openings ?? 1)} onChange={(e) => setEditJob({ ...editJob, openings: Number(e.target.value) })} />
+            <Field label={editJob.filled != null ? `Openings (${String(editJob.filled)} filled)` : 'Openings'}>
+              <TextInput type="number" min={1} value={String(editJob.openings ?? 1)} onChange={(e) => setEditJob({ ...editJob, openings: Number(e.target.value) })} />
             </Field>
             <Field label="Status">
               <Select value={String(editJob.status)} onChange={(e) => setEditJob({ ...editJob, status: e.target.value })}>
@@ -463,6 +473,10 @@ export function HrRecruitmentPage() {
               </Select>
             </Field>
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={Boolean(editJob.published)} onChange={(e) => setEditJob({ ...editJob, published: e.target.checked })} />
+            Show on the public careers page while open
+          </label>
           <Field label="Pipeline stages (blank = HR default)">
             <TextInput value={((editJob.stages as string[]) ?? []).join(', ')} onChange={(e) => setEditJob({ ...editJob, stages: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} />
           </Field>
@@ -500,7 +514,8 @@ export function HrRecruitmentPage() {
           ))}
         </Modal>
       )}
-      {hiring && job && <HireModal candidate={hiring} job={job} onClose={() => setHiring(null)} onHired={candidates.reload} />}
+      {hiring && job && <HireModal candidate={hiring} job={job} onClose={() => setHiring(null)} onHired={() => { candidates.reload(); jobs.reload(); }} />}
+      {offering && job && <OfferModal candidate={offering} job={job} onClose={() => setOffering(null)} onChanged={candidates.reload} />}
       {interview && (
         <Modal
           title="Log interview"

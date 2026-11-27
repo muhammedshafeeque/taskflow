@@ -217,6 +217,7 @@ import MonitorTelemetry from './pages/monitor/MonitorTelemetry';
 import MonitorAlerts from './pages/monitor/MonitorAlerts';
 import PublicSign from './pages/PublicSign';
 import PublicQuote from './pages/PublicQuote';
+import { PublicCareers, PublicOffer } from './pages/PublicHiring';
 import PortalQuotes from './pages/portal/PortalQuotes';
 import { I18nProvider } from './i18n/I18nProvider';
 import { UploadProgressTray } from './components/attachment/UploadProgress';
@@ -248,6 +249,8 @@ function AppRoutes() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/sign/:token" element={<PublicSign />} />
       <Route path="/quote/:token" element={<PublicQuote />} />
+      <Route path="/offer/:token" element={<PublicOffer />} />
+      <Route path="/careers/:slug" element={<PublicCareers />} />
       <Route path="/rate/:token" element={<PublicRate />} />
       <Route path="/status/:slug" element={<PublicStatus />} />
       <Route path="/reset-password" element={<ResetPassword />} />

@@ -1,7 +1,7 @@
 import { type Reach, assertReaches, employeeFilter, reaches } from './dataScope';
 import { cancelForRecord, decideForRecord, isApprovalChainEnabled, submitForApproval } from '../approvals/approvals.service';
 import mongoose from 'mongoose';
-import { applyLeaveUsage, getBalances, workingDaysFor } from './policy.service';
+import { applyLeaveUsage, getBalances, leaveYearOf, splitByLeaveYear, workingDaysFor } from './policy.service';
 import { HrmsLeaveType } from './models/hrmsPolicy.model';
 import { ApiError } from '../../utils/ApiError';
 import { escapeRegex } from '../../utils/safeUrl';
@@ -63,12 +63,15 @@ function daysBetween(start: Date, end: Date): number {
 
 export async function listEmployees(
   workspaceId: string | null | undefined,
-  query: { status?: string; department?: string; search?: string },
+  query: { status?: string; department?: string; search?: string; archived?: string },
   permissions: string[],
   reach: Reach = null
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId), ...employeeFilter(reach) };
+  // Archived people are hidden unless asked for (AUT-38): archived=only shows just them, archived=all shows everyone.
+  if (query.archived === 'only') filter.archivedAt = { $ne: null };
+  else if (query.archived !== 'all') filter.archivedAt = null;
   if (query.status) filter.status = query.status;
   if (query.department) filter.department = query.department;
   if (query.search) filter.name = new RegExp(escapeRegex(query.search), 'i');
@@ -158,6 +161,7 @@ export async function updateEmployee(id: string, workspaceId: string | null | un
   const orgId = requireWorkspaceId(workspaceId);
   const existing = await HrmsEmployee.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
   if (!existing) throw new ApiError(404, 'Employee not found');
+  if (existing.archivedAt) throw new ApiError(409, `${existing.name} is archived. Restore them before making changes.`);
   const previousStatus = existing.status;
   const before = existing.toObject();
   const managerChanged = 'managerId' in input && String(input.managerId || '') !== String(existing.managerId ?? '');
@@ -235,12 +239,73 @@ export async function updateEmployee(id: string, workspaceId: string | null | un
   return withoutPay((await HrmsEmployee.findById(existing._id).lean()) ?? existing.toObject(), access);
 }
 
-export async function deleteEmployee(id: string, workspaceId: string | null | undefined, reach: Reach = null) {
+/**
+ * What would be orphaned if this employee record disappeared (AUT-38): their attendance, leave,
+ * payroll, checklists, reviews, job changes, policy acceptances, hire record, and people who report
+ * to them or whom they mentor. Empty means the record can safely be deleted (e.g. added by mistake).
+ */
+export async function employeeHistory(orgOid: mongoose.Types.ObjectId, employeeId: mongoose.Types.ObjectId): Promise<string[]> {
+  const { HrmsLeaveLedger } = await import('./models/hrmsPolicy.model');
+  const { HrmsPayrollRun } = await import('./models/hrmsPayroll.model');
+  const { HrmsChecklist, HrmsReview, HrmsCandidate } = await import('./models/hrmsPeople.model');
+  const { HrmsJobChange } = await import('./models/hrmsJobChange.model');
+  const { PolicyAcceptance } = await import('../documents/policyAcceptance');
+  const org = { taskflowOrganizationId: orgOid };
+  const checks: Array<[string, () => Promise<unknown>]> = [
+    ['attendance', () => HrmsAttendance.exists({ ...org, employeeId })],
+    ['leave', () => HrmsLeaveRequest.exists({ ...org, employeeId })],
+    ['leave balances', () => HrmsLeaveLedger.exists({ ...org, employeeId })],
+    ['payroll', () => HrmsPayrollRun.exists({ ...org, 'payslips.employeeId': employeeId })],
+    ['onboarding or exit checklists', () => HrmsChecklist.exists({ ...org, employeeId })],
+    ['reviews', () => HrmsReview.exists({ ...org, employeeId })],
+    ['job changes', () => HrmsJobChange.exists({ ...org, employeeId })],
+    ['policy acceptances', () => PolicyAcceptance.exists({ ...org, employeeId })],
+    ['a hire record', () => HrmsCandidate.exists({ ...org, hiredEmployeeId: employeeId })],
+    ['people who report to them', () => HrmsEmployee.exists({ ...org, managerId: employeeId })],
+    ['people they mentor', () => HrmsEmployee.exists({ ...org, mentorId: employeeId })],
+  ];
+  const found = await Promise.all(checks.map(async ([label, check]) => ((await check()) ? label : null)));
+  return found.filter((x): x is string => Boolean(x));
+}
+
+/**
+ * "Delete" an employee (AUT-38). With any history the record is archived instead, so nothing is
+ * orphaned: only people who have left can be archived. A record with no history (added by mistake)
+ * is deleted for real.
+ */
+export async function deleteEmployee(id: string, workspaceId: string | null | undefined, reach: Reach = null, actorId?: string) {
   assertReaches(reach, id);
   const orgId = requireWorkspaceId(workspaceId);
-  const deleted = await HrmsEmployee.findOneAndDelete({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
-  if (!deleted) throw new ApiError(404, 'Employee not found');
-  return { deleted: true };
+  const orgOid = toOrgOid(orgId);
+  const emp = await HrmsEmployee.findOne({ _id: id, taskflowOrganizationId: orgOid });
+  if (!emp) throw new ApiError(404, 'Employee not found');
+  if (emp.archivedAt) throw new ApiError(409, `${emp.name} is already archived`);
+  const history = await employeeHistory(orgOid, emp._id as mongoose.Types.ObjectId);
+  if (!history.length) {
+    await HrmsEmployee.deleteOne({ _id: emp._id });
+    const { CrmContact } = await import('../crm/models/crmContact.model');
+    await CrmContact.updateMany({ taskflowOrganizationId: orgOid, employeeId: emp._id }, { $unset: { employeeId: 1 } });
+    if (actorId) logAudit({ userId: actorId, action: 'hr.employee.delete', resourceType: 'employee', resourceId: id, meta: { name: emp.name } });
+    return { deleted: true, archived: false };
+  }
+  if (emp.status !== 'terminated') {
+    throw new ApiError(409, `${emp.name} has ${history.join(', ')}, so the record is kept and archived rather than deleted. Record their exit (status Left) first, then archive.`);
+  }
+  emp.archivedAt = new Date();
+  if (actorId) emp.archivedBy = new mongoose.Types.ObjectId(actorId);
+  await emp.save();
+  if (actorId) logAudit({ userId: actorId, action: 'hr.employee.archive', resourceType: 'employee', resourceId: id, meta: { name: emp.name, history } });
+  return { deleted: false, archived: true, history };
+}
+
+/** Bring an archived employee back into the lists. They stay Left until someone rehires them. */
+export async function restoreEmployee(id: string, workspaceId: string | null | undefined, reach: Reach = null, actorId?: string) {
+  assertReaches(reach, id);
+  const orgOid = toOrgOid(requireWorkspaceId(workspaceId));
+  const res = await HrmsEmployee.updateOne({ _id: id, taskflowOrganizationId: orgOid, archivedAt: { $ne: null } }, { $set: { archivedAt: null }, $unset: { archivedBy: 1 } });
+  if (!res.matchedCount) throw new ApiError(404, 'No archived employee with that id');
+  if (actorId) logAudit({ userId: actorId, action: 'hr.employee.restore', resourceType: 'employee', resourceId: id });
+  return { restored: true };
 }
 
 // ── Leave ─────────────────────────────────────────────────────────────────
@@ -290,15 +355,16 @@ export async function createLeave(workspaceId: string | null | undefined, input:
   const days =
     input.days != null ? Number(input.days) : await workingDaysFor(orgOid, start, end, employee.location, halfDay);
   if (!(days > 0)) throw new ApiError(400, 'The selected dates contain no working days');
+  await assertNoOverlap(employee._id as mongoose.Types.ObjectId, start, end, halfDay);
+  // Leave across two leave years is charged to each year for its own days (AUT-39).
+  const split = await splitByLeaveYear(orgOid, start, end, days, employee.location);
   if (leaveTypeId) {
-    const balance = (await getBalances(orgId, String(employee._id), start)).find((b) => b.leaveTypeId === String(leaveTypeId));
-    if (balance?.paid && !balance.allowNegative && balance.available !== null) {
-      const pending = await HrmsLeaveRequest.aggregate<{ d: number }>([
-        { $match: { employeeId: employee._id, leaveTypeId, status: 'pending' } },
-        { $group: { _id: null, d: { $sum: '$days' } } },
-      ]);
-      if (days > balance.available - (pending[0]?.d ?? 0)) {
-        throw new ApiError(400, `Not enough ${balance.name} balance (${balance.available} available, ${pending[0]?.d ?? 0} pending)`);
+    for (const part of split) {
+      const balance = (await getBalances(orgId, String(employee._id), part.from)).find((b) => b.leaveTypeId === String(leaveTypeId));
+      if (!balance?.paid || balance.allowNegative || balance.available === null) continue;
+      const pending = await pendingDaysInYear(employee._id as mongoose.Types.ObjectId, leaveTypeId, part.year);
+      if (part.days > balance.available - pending) {
+        throw new ApiError(400, `Not enough ${balance.name} balance for leave year ${part.year} (${balance.available} available, ${pending} pending, ${part.days} asked)`);
       }
     }
   }
@@ -313,6 +379,7 @@ export async function createLeave(workspaceId: string | null | undefined, input:
     endDate: end,
     days,
     reason: input.reason,
+    ...(split.length > 1 ? { yearSplit: split.map(({ year, days: d }) => ({ year, days: d })) } : {}),
   });
   if (await isApprovalChainEnabled(orgId, 'leave')) {
     try {
@@ -325,6 +392,52 @@ export async function createLeave(workspaceId: string | null | undefined, input:
   }
   return HrmsLeaveRequest.findById(doc._id).populate('employeeId', 'name employeeCode department').lean();
 }
+
+/**
+ * Leave can't overlap the person's other pending or approved leave (AUT-39). Two half days on the same
+ * single day are allowed (morning and afternoon).
+ */
+async function assertNoOverlap(employeeId: mongoose.Types.ObjectId, start: Date, end: Date, halfDay: boolean) {
+  const clashes = await HrmsLeaveRequest.find({
+    employeeId,
+    status: { $in: ['pending', 'approved'] },
+    startDate: { $lte: end },
+    endDate: { $gte: start },
+  })
+    .select('startDate endDate halfDay status')
+    .lean();
+  if (!clashes.length) return;
+  const sameSingleDay = (a: Date, b: Date) => a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
+  const halfDayPair =
+    halfDay && sameSingleDay(start, end) && clashes.length === 1 && clashes[0].halfDay && sameSingleDay(new Date(clashes[0].startDate), new Date(clashes[0].endDate));
+  if (halfDayPair) return;
+  const c = clashes[0];
+  throw new ApiError(
+    409,
+    `This overlaps ${c.status} leave from ${new Date(c.startDate).toISOString().slice(0, 10)} to ${new Date(c.endDate).toISOString().slice(0, 10)}. Change or cancel that request first.`
+  );
+}
+
+/** Pending days of one leave type charged to one leave year (split requests count their part). */
+async function pendingDaysInYear(employeeId: mongoose.Types.ObjectId, leaveTypeId: mongoose.Types.ObjectId, year: number) {
+  const settings = await getHrSettings(String((await HrmsEmployee.findById(employeeId).select('taskflowOrganizationId').lean())?.taskflowOrganizationId));
+  const startMonth = (settings as { leaveYearStartMonth?: number }).leaveYearStartMonth ?? 1;
+  const rows = await HrmsLeaveRequest.find({ employeeId, leaveTypeId, status: 'pending' }).select('startDate days yearSplit').lean();
+  let total = 0;
+  for (const r of rows) {
+    if (r.yearSplit?.length) total += r.yearSplit.filter((p) => p.year === year).reduce((a, p) => a + p.days, 0);
+    else if (leaveYearOf(new Date(r.startDate), startMonth) === year) total += r.days;
+  }
+  return total;
+}
+
+/** Which decisions each leave status can take (AUT-39): decided leave can't be decided again. */
+const LEAVE_MOVES: Record<string, Array<'approved' | 'rejected' | 'cancelled'>> = {
+  pending: ['approved', 'rejected', 'cancelled'],
+  approved: ['cancelled'],
+  rejected: [],
+  cancelled: [],
+};
 
 /**
  * Approve, reject or cancel a leave request. With a leave approval chain turned on (Approvals → chains),
@@ -367,18 +480,25 @@ export async function applyLeaveDecision(
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
+  if (!['approved', 'rejected', 'cancelled'].includes(status)) throw new ApiError(400, 'Status must be approved, rejected or cancelled');
   const leave = await HrmsLeaveRequest.findOne({ _id: id, taskflowOrganizationId: orgOid });
   if (!leave || !reaches(reach, leave.employeeId)) throw new ApiError(404, 'Leave request not found');
   const wasApproved = leave.status === 'approved';
-  if (onlyPending) {
-    const won = await HrmsLeaveRequest.updateOne({ _id: leave._id, status: 'pending' }, { $set: { status, decidedBy: userId, decidedAt: new Date() } });
-    if (!won.modifiedCount) throw new ApiError(409, 'This request has already been decided');
-  } else {
-    leave.status = status;
-    leave.decidedBy = userId as never;
-    leave.decidedAt = new Date();
-    await leave.save();
+  // Nobody approves or rejects their own leave, whatever their permissions (they may still cancel it).
+  if (status !== 'cancelled' && userId) {
+    const owner = await HrmsEmployee.findById(leave.employeeId).select('userId').lean();
+    if (owner?.userId && String(owner.userId) === String(userId)) throw new ApiError(403, 'You cannot approve or reject your own leave');
   }
+  const from = onlyPending ? ['pending'] : Object.keys(LEAVE_MOVES).filter((k) => LEAVE_MOVES[k].includes(status));
+  // Decided once: the move is checked and written in one step, so two people deciding at once can't both win.
+  const won = await HrmsLeaveRequest.updateOne(
+    { _id: leave._id, status: { $in: from } },
+    { $set: { status, decidedBy: userId, decidedAt: new Date() } }
+  );
+  if (!won.modifiedCount) {
+    throw new ApiError(409, leave.status === 'pending' ? 'This request has just been decided by someone else' : `This request is already ${leave.status} and can't be ${status === 'cancelled' ? 'cancelled' : status}`);
+  }
+  leave.status = status;
 
   // Typed leave: per-type ledger. Legacy requests keep the old single balance.
   if (leave.leaveTypeId) {

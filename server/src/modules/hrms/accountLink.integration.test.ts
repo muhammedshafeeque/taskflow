@@ -72,7 +72,7 @@ beforeEach(async () => {
     await OrganizationMember.create({ organization: org._id, user: u._id, role: 'org_member', status: 'active' });
     ids[name] = String(u._id);
   }
-  jobId = (await HrmsJobOpening.create({ taskflowOrganizationId: org._id, title: 'Developer', department: 'Dev', stages: ['Applied', 'Hired'], currency: 'INR' }))._id as mongoose.Types.ObjectId;
+  jobId = (await HrmsJobOpening.create({ taskflowOrganizationId: org._id, title: 'Developer', department: 'Dev', stages: ['Applied', 'Hired'], currency: 'INR' , openings: 50 }))._id as mongoose.Types.ObjectId;
 });
 
 const employee = (extra: Record<string, unknown> = {}) =>

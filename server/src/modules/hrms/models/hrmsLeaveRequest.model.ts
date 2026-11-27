@@ -17,6 +17,8 @@ export interface IHrmsLeaveRequest extends Document {
   reason?: string;
   decidedBy?: mongoose.Types.ObjectId;
   decidedAt?: Date;
+  /** Days charged to each leave year, when the leave spans two (AUT-39). */
+  yearSplit?: Array<{ year: number; days: number }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +37,7 @@ const hrmsLeaveRequestSchema = new Schema<IHrmsLeaveRequest>(
     reason: { type: String },
     decidedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     decidedAt: { type: Date },
+    yearSplit: { type: [{ _id: false, year: Number, days: Number }], default: undefined },
   },
   { timestamps: true }
 );

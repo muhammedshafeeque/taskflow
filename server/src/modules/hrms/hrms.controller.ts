@@ -33,7 +33,11 @@ export async function updateEmployee(req: Request & { user?: AuthPayload }, res:
   res.json({ success: true, data: await hrms.updateEmployee(req.params.id, ws(req), req.body ?? {}, grantActorOf(req), await hr(req)) });
 }
 export async function deleteEmployee(req: Request & { user?: AuthPayload }, res: Response) {
-  res.json({ success: true, data: await hrms.deleteEmployee(req.params.id, ws(req), await hr(req)) });
+  res.json({ success: true, data: await hrms.deleteEmployee(req.params.id, ws(req), await hr(req), req.user?.id) });
+}
+
+export async function restoreEmployee(req: Request & { user?: AuthPayload }, res: Response) {
+  res.json({ success: true, data: await hrms.restoreEmployee(req.params.id, ws(req), await hr(req), req.user?.id) });
 }
 
 export async function getOpenWork(req: Request, res: Response) {

@@ -38,6 +38,7 @@ router.get('/employees', requireAnyPermission(empList), asyncHandler(ctrl.listEm
 router.post('/employees', requireAnyPermission(empManage), asyncHandler(ctrl.createEmployee));
 router.patch('/employees/:id', requireAnyPermission(empManage), asyncHandler(ctrl.updateEmployee));
 router.delete('/employees/:id', requireAnyPermission([H.EMPLOYEE.UPDATE]), asyncHandler(ctrl.deleteEmployee));
+router.post('/employees/:id/restore', requireAnyPermission([H.EMPLOYEE.UPDATE]), asyncHandler(ctrl.restoreEmployee));
 
 router.get('/employees/:id/open-work', requireAnyPermission([H.EMPLOYEE.UPDATE]), asyncHandler(ctrl.getOpenWork));
 router.post('/employees/:id/reassign', requireAnyPermission([H.EMPLOYEE.UPDATE]), asyncHandler(ctrl.reassignWork));

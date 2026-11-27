@@ -41,6 +41,7 @@ export function HrmsEmployees() {
   const [jobChange, setJobChange] = useState<HrmsEmployee | null>(null);
   const [history, setHistory] = useState<HrmsEmployee | null>(null);
   const [jobMessage, setJobMessage] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
   const canChangeJob = canAny(user, 'taskflow.hr.job_change.request');
   const [levels, setLevels] = useState<string[]>(['Intern', 'Junior', 'Senior', 'Lead', 'Manager']);
   useEffect(() => {
@@ -50,11 +51,11 @@ export function HrmsEmployees() {
 
   const load = useCallback(() => {
     if (!token) return;
-    hrmsApi.listEmployees(token).then((r) => {
+    hrmsApi.listEmployees(token, showArchived ? { archived: 'only' } : undefined).then((r) => {
       setLoading(false);
       if (r.success && r.data) setRows(r.data);
     });
-  }, [token]);
+  }, [token, showArchived]);
   useEffect(load, [load]);
 
   const save = async () => {
@@ -74,9 +75,19 @@ export function HrmsEmployees() {
       if (leaving && res.data?._id) setHandover(res.data);
     } else alert(res.message);
   };
-  const remove = async (id: string) => {
-    if (!token || !confirm('Delete this employee?')) return;
-    await hrmsApi.deleteEmployee(id, token);
+  // People with history (attendance, leave, payroll…) are archived instead of deleted (AUT-38).
+  const remove = async (e: HrmsEmployee) => {
+    if (!token || !confirm(`Delete ${e.name}? If they have history (attendance, leave, payroll and so on) the record is archived instead, so nothing is lost.`)) return;
+    const r = await hrmsApi.deleteEmployee(e._id, token);
+    if (!r.success) setJobMessage(r.message ?? 'Could not delete');
+    else if (r.data?.archived) setJobMessage(`${e.name} was archived (they have ${(r.data.history ?? []).join(', ')}). Find them under Show archived.`);
+    else setJobMessage(`${e.name} was deleted.`);
+    load();
+  };
+  const restore = async (e: HrmsEmployee) => {
+    if (!token) return;
+    const r = await hrmsApi.restoreEmployee(e._id, token);
+    setJobMessage(r.success ? `${e.name} was restored. They stay Left until rehired.` : r.message ?? 'Could not restore');
     load();
   };
 
@@ -95,11 +106,15 @@ export function HrmsEmployees() {
         { header: 'Leave balance', value: (r) => r.leaveBalanceDays ?? 0 },
       ]} /><PrimaryButton onClick={() => setEditing({ employmentType: 'full_time', status: 'active', currency: 'USD', leaveBalanceDays: 20 })}>+ Add employee</PrimaryButton></div>}
     >
+      <label className="mb-3 flex items-center gap-2 text-xs text-[color:var(--text-muted)]">
+        <input type="checkbox" checked={showArchived} onChange={(ev) => { setLoading(true); setShowArchived(ev.target.checked); }} />
+        Show archived people
+      </label>
       {jobMessage && <p className="mb-3 text-xs text-emerald-600" role="status">{jobMessage}</p>}
       {loading ? (
         <ModuleLoader size="block" label="Loading employees…" />
       ) : rows.length === 0 ? (
-        <p className="text-sm text-[color:var(--text-muted)]">No employees yet. Add your first team member.</p>
+        <p className="text-sm text-[color:var(--text-muted)]">{showArchived ? 'No archived people.' : 'No employees yet. Add your first team member.'}</p>
       ) : (
         tableWrap(
           <>
@@ -122,16 +137,25 @@ export function HrmsEmployees() {
                   </td>
                   <td className="px-4 py-2.5">{e.department || '—'}</td>
                   <td className="px-4 py-2.5 capitalize">{e.employmentType.replace('_', ' ')}</td>
-                  <td className="px-4 py-2.5"><StatusPill label={e.status} tone={statusTone[e.status]} /></td>
+                  <td className="px-4 py-2.5"><StatusPill label={e.status} tone={statusTone[e.status]} />{e.archivedAt && <span className="ml-1"><StatusPill label="archived" tone="slate" /></span>}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{e.leaveBalanceDays}d</td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <Link to={`/employees/${e._id}`} className="text-[color:var(--accent)] hover:underline text-xs mr-3">360</Link>
+                    {e.archivedAt ? (
+                      <>
+                        <button onClick={() => setHistory(e)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">History</button>
+                        <button onClick={() => restore(e)} className="text-[color:var(--accent)] hover:underline text-xs">Restore</button>
+                      </>
+                    ) : (
+                    <>
                     <button onClick={() => setLinksId(e._id)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Links</button>
                     <button onClick={() => setEditing(e)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Edit</button>
                     {canChangeJob && e.status !== 'terminated' && <button onClick={() => setJobChange(e)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Change job</button>}
                     <button onClick={() => setHistory(e)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">History</button>
                     <button onClick={() => setHandover(e)} className="text-[color:var(--accent)] hover:underline text-xs mr-3">Hand over</button>
-                    <button onClick={() => remove(e._id)} className="text-rose-500 hover:underline text-xs">Delete</button>
+                    <button onClick={() => remove(e)} className="text-rose-500 hover:underline text-xs">Delete</button>
+                    </>
+                    )}
                   </td>
                 </tr>
               ))}

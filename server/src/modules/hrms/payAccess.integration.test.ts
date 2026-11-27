@@ -95,7 +95,7 @@ describe('seeing pay (AUT-10)', () => {
     expect(hasPay((await call('hr', 'POST', '/employees', { name: 'New' })).body.data)).toEqual([]);
     expect(hasPay((await call('hr', 'PATCH', `/employees/${empId}`, { location: 'Kochi' })).body.data)).toEqual([]);
     expect(hasPay((await call('salary', 'PATCH', `/employees/${empId}`, { location: 'Goa' })).body.data)).toContain('annualCtc');
-    const job = await HrmsJobOpening.create({ taskflowOrganizationId: org, title: 'Dev', stages: ['A', 'B'] });
+    const job = await HrmsJobOpening.create({ taskflowOrganizationId: org, title: 'Dev', stages: ['A', 'B'] , openings: 50 });
     const cand = () => HrmsCandidate.create({ taskflowOrganizationId: org, jobId: job._id, name: 'Jo', stage: 'A', expectedSalary: 500 });
     const hired = await call('hr', 'POST', `/candidates/${(await cand())._id}/hire`, { employeeCode: 'H1' });
     expect(hired.status).toBe(200);
