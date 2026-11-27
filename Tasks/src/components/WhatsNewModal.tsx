@@ -133,7 +133,7 @@ export function WhatsNewModal({
         aria-labelledby="whats-new-title"
         aria-describedby="whats-new-subtitle"
         tabIndex={-1}
-        className="w-full max-w-2xl max-h-[85vh] flex flex-col bg-[color:var(--bg-modal)] border border-[color:var(--border-subtle)] rounded-xl card-shadow shadow-xl animate-scale-in outline-none"
+        className="w-full max-w-4xl max-h-[85vh] flex flex-col bg-[color:var(--bg-modal)] border border-[color:var(--border-subtle)] rounded-xl card-shadow shadow-xl animate-scale-in outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b border-[color:var(--border-subtle)] px-6 py-4 shrink-0">
