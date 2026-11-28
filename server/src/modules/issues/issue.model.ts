@@ -100,7 +100,9 @@ issueSchema.index({ project: 1, type: 1 });
 issueSchema.index({ project: 1, priority: 1 });
 issueSchema.index({ parent: 1 });
 issueSchema.index({ project: 1, sprint: 1, backlogOrder: 1 });
-issueSchema.index({ key: 1 }, { unique: true, sparse: true });
+// Unique within a project only (AUT-66): project keys repeat across workspaces, so "PC-18" can exist twice.
+issueSchema.index({ project: 1, key: 1 }, { unique: true, partialFilterExpression: { key: { $type: 'string' } } });
+issueSchema.index({ key: 1 });
 issueSchema.index({ project: 1, 'customFieldValues.adoWorkItemId': 1 }, { sparse: true });
 
 // Due-date reminders scan by assignee + due date.

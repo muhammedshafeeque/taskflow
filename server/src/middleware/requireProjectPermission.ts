@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { resolveProjectRef } from '../modules/issues/issueKey';
 import mongoose from 'mongoose';
 import { ApiError } from '../utils/ApiError';
 import { Project } from '../modules/projects/project.model';
@@ -71,17 +72,21 @@ export function requireProjectPermission(
     const userPerms = authUser.permissions ?? [];
 
     let projectId: string | undefined;
+    let from: ProjectIdSource | undefined;
     for (const src of sources) {
       if (src.param && req.params[src.param]) {
         projectId = req.params[src.param];
+        from = src;
         break;
       }
       if (src.query && req.query[src.query]) {
         projectId = String(req.query[src.query]);
+        from = src;
         break;
       }
       if (src.body && req.body && typeof req.body === 'object' && (req.body as Record<string, unknown>)[src.body]) {
         projectId = String((req.body as Record<string, unknown>)[src.body]);
+        from = src;
         break;
       }
     }
@@ -89,6 +94,21 @@ export function requireProjectPermission(
     if (!projectId) {
       next(new ApiError(400, 'Project context required'));
       return;
+    }
+
+    // A project key (e.g. "PC") is accepted too, looked up in the active workspace only (AUT-66). The
+    // resolved id is written back so the handler works with the id, never a key cast to an ObjectId.
+    if (!/^[a-f0-9]{24}$/i.test(projectId)) {
+      const activeWs = (req as Request & { activeOrganizationId?: string }).activeOrganizationId;
+      const resolved = await resolveProjectRef(projectId, activeWs);
+      if (!resolved) {
+        next(new ApiError(404, 'Project not found'));
+        return;
+      }
+      projectId = resolved;
+      if (from?.param) req.params[from.param] = resolved;
+      else if (from?.query) (req.query as Record<string, unknown>)[from.query] = resolved;
+      else if (from?.body) (req.body as Record<string, unknown>)[from.body] = resolved;
     }
 
     const proj = await Project.findById(projectId).select('taskflowOrganizationId').lean();

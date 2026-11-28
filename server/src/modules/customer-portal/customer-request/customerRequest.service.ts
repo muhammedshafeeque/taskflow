@@ -1,4 +1,5 @@
 import { roleTreePermissions } from '../../auth/accessProfile';
+import { createWithNextKey } from '../../issues/issueKey';
 import mongoose from 'mongoose';
 import { CustomerRequest } from './customerRequest.model';
 import { CustomerUser } from '../customer-user/customerUser.model';
@@ -690,13 +691,7 @@ export async function tfApprove(
   let projectLabel = '';
 
   if (!r.linkedIssueId) {
-    const project = await Project.findByIdAndUpdate(
-      r.projectId,
-      { $inc: { nextIssueNumber: 1 } },
-      { new: true }
-    )
-      .select('name key nextIssueNumber statuses issueTypes priorities')
-      .lean();
+    const project = await Project.findById(r.projectId).select('name key statuses issueTypes priorities').lean();
 
     if (!project) throw new ApiError(404, 'Project not found');
 
@@ -706,7 +701,6 @@ export async function tfApprove(
     const projectAny = project as {
       name: string;
       key: string;
-      nextIssueNumber: number;
       issueTypes?: Array<{ name?: string }>;
       priorities?: Array<{ name?: string }>;
       statuses?: Array<{ name?: string; isClosed?: boolean }>;
@@ -720,10 +714,12 @@ export async function tfApprove(
     const status =
       projectAny.statuses?.find((s) => !s.isClosed) ?? projectAny.statuses?.[0];
 
-    issueKey = `${projectAny.key}-${projectAny.nextIssueNumber}`;
     const descFooter = `\n\n---\nWork classification: ${classLabel}`;
 
-    const issue = await Issue.create({
+    // Unique within the project; a taken number moves on to the next (AUT-66).
+    const issue = await createWithNextKey(r.projectId, (key) => {
+      issueKey = key;
+      return Issue.create({
       title: r.title,
       description: `${r.description}${descFooter}`,
       type: issueType?.name ?? 'Task',
@@ -739,6 +735,7 @@ export async function tfApprove(
         customerOrgId: r.customerOrgId.toString(),
         workClassification,
       },
+      });
     });
     issueId = String(issue._id);
   } else {

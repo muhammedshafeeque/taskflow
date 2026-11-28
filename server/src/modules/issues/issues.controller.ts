@@ -1,4 +1,5 @@
 import { notifyIssuePeople } from '../notifications/domainNotify';
+import { resolveProjectRef } from './issueKey';
 import { Request, Response } from 'express';
 import type { AuthPayload } from '../../types/express';
 import { asyncHandler } from '../../utils/asyncHandler';
@@ -57,11 +58,37 @@ function listScope(req: Request): issuesService.IssueListScope {
   };
 }
 
+/**
+ * The project filter of a list (AUT-66): `project`, `projectId` or `projectKey`, each an id or a key, looked
+ * up in the active workspace. A filter that names no project here gives an empty list, never every project.
+ */
+async function projectFilterOf(req: Request): Promise<string[] | null> {
+  const q = req.query as Record<string, unknown>;
+  const raw = [q.project, q.projectId, q.projectKey]
+    .flatMap((v) => (Array.isArray(v) ? v : v === undefined ? [] : [v]))
+    .flatMap((v) => String(v).split(','))
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (!raw.length) return null;
+  const ws = (req as Request & { activeOrganizationId?: string }).activeOrganizationId;
+  const ids = await Promise.all(raw.map((r) => resolveProjectRef(r, ws)));
+  return ids.filter((x): x is string => Boolean(x));
+}
+
 export async function getIssues(req: Request & { user?: AuthPayload }, res: Response): Promise<void> {
   const userId = req.user?.id;
   const page = parseInt(String(req.query.page), 10) || 1;
   const limit = Math.min(parseInt(String(req.query.limit), 10) || 20, 100);
-  const filters = issuesService.queryToFilters(req.query as import('./issue.validation').ListIssuesQuery);
+  const projects = await projectFilterOf(req);
+  if (projects && !projects.length) {
+    res.status(200).json({ success: true, data: { data: [], total: 0, page, limit, totalPages: 0 } });
+    return;
+  }
+  const query = { ...(req.query as Record<string, unknown>) };
+  delete query.projectId;
+  delete query.projectKey;
+  if (projects) query.project = projects;
+  const filters = issuesService.queryToFilters(query as import('./issue.validation').ListIssuesQuery);
   const result = await issuesService.findAll(filters, { page, limit }, userId, listScope(req));
   res.status(200).json({ success: true, data: result });
 }

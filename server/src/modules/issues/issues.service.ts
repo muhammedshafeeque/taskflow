@@ -1,4 +1,5 @@
 import { notifyIssuePeople } from '../notifications/domainNotify';
+import { createWithNextKey } from './issueKey';
 import mongoose from 'mongoose';
 import { Issue } from './issue.model';
 import { Project } from '../projects/project.model';
@@ -89,24 +90,15 @@ export async function create(
   const projectId = input.project;
   await validateParent(input.parent ?? undefined, projectId);
 
-  const project = await Project.findByIdAndUpdate(
-    projectId,
-    { $inc: { nextIssueNumber: 1 } },
-    { new: true }
-  )
-    .select('key nextIssueNumber')
-    .lean();
-
-  if (!project) {
-    throw new ApiError(404, 'Project not found');
-  }
-
-  const nextNum = project.nextIssueNumber ?? 1;
-  const issueKey = `${project.key}-${nextNum}`;
-
+  if (!(await Project.exists({ _id: projectId }))) throw new ApiError(404, 'Project not found');
   const effectiveReporter = input.reporter ?? reporterId;
+  const customFieldValues = await stripFormulaKeysFromCustomFieldValues(projectId, (input.customFieldValues ?? {}) as Record<string, unknown>);
 
-  const doc = await Issue.create({
+  // The key is "<project key>-<next number>", unique within the project; a taken number moves on (AUT-66).
+  let issueKey = '';
+  const doc = await createWithNextKey(projectId, (key) => {
+    issueKey = key;
+    return Issue.create({
     title: input.title,
     description: input.description ?? '',
     type: input.type ?? 'Task',
@@ -127,10 +119,7 @@ export async function create(
     storyPoints: input.storyPoints ?? undefined,
     timeEstimateMinutes: input.timeEstimateMinutes,
     checklist: input.checklist ?? [],
-    customFieldValues: await stripFormulaKeysFromCustomFieldValues(
-      projectId,
-      (input.customFieldValues ?? {}) as Record<string, unknown>
-    ),
+    customFieldValues,
     fixVersion: (() => {
       const ids = normalizeFixVersionsInput(input.fixVersion);
       return ids?.length ? ids : undefined;
@@ -138,6 +127,7 @@ export async function create(
     affectsVersions: input.affectsVersions ?? undefined,
     parent: input.parent ?? undefined,
     milestone: input.milestone ?? undefined,
+    });
   });
   await issueHistoryService.recordCreated(String(doc._id), effectiveReporter);
   if (projectId) notifyProjectRefresh(String(projectId));
@@ -1157,7 +1147,7 @@ export async function bulkDelete(issueRefs: string[], userId: string): Promise<{
 }
 
 export async function findByProjectAndKey(projectId: string, key: string): Promise<unknown | null> {
-  const issue = await Issue.findOne({ project: projectId, key })
+  const issue = await Issue.findOne({ project: projectId, key: String(key).trim().toUpperCase() })
     .populate('reporter', 'name email')
     .populate('assignee', 'name email')
     .populate('project', 'name key')

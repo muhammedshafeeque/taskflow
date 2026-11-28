@@ -59,6 +59,16 @@ async function tickAdoAutoSync(): Promise<void> {
     const lastMs = integration.lastAutoSyncAt?.getTime() ?? 0;
     if (now - lastMs < intervalMin * 60_000) continue;
 
+    // A sync set up for a project that has since been deleted is switched off, not retried forever (AUT-66).
+    if (!(await Project.exists({ _id: integration.projectId }))) {
+      await ProjectAdoIntegration.updateOne(
+        { _id: integration._id },
+        { $set: { autoSyncEnabled: false, enabled: false } }
+      );
+      console.warn(`[ado-auto-sync] project=${projectId} no longer exists; auto sync switched off`);
+      continue;
+    }
+
     runningProjects.add(projectId);
     try {
       const result = await runAdoPullSyncForProject(projectId);

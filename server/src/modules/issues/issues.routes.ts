@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import {
   createIssueHandler,
@@ -54,10 +54,16 @@ router.use(requireTaskflowUser);
 
 router.get('/', asyncHandler(getIssues));
 router.get('/quick-filters/counts', asyncHandler(getQuickFilterCounts));
-router.get('/search', searchIssuesQueryHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.ISSUE.READ, { query: 'project' }), asyncHandler(searchIssues));
+/** `projectId` / `projectKey` are accepted wherever `project` is (AUT-66). */
+const projectAlias = (req: Request, _res: Response, next: NextFunction) => {
+  const q = req.query as Record<string, unknown>;
+  if (!q.project && (q.projectId || q.projectKey)) q.project = q.projectId ?? q.projectKey;
+  next();
+};
+router.get('/search', projectAlias, searchIssuesQueryHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.ISSUE.READ, { query: 'project' }), asyncHandler(searchIssues));
 router.get('/jql', ...jqlQueryHandler, asyncHandler(searchByJql));
 router.get('/search-global', ...searchGlobalQueryHandler);
-router.get('/by-key', byKeyQueryHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.ISSUE.READ, { query: 'project' }), asyncHandler(getIssueByKey));
+router.get('/by-key', projectAlias, byKeyQueryHandler, requireProjectPermission(PROJECT_PERMISSIONS.ISSUE.ISSUE.READ, { query: 'project' }), asyncHandler(getIssueByKey));
 router.get('/export', ...exportIssuesHandler);
 router.get('/watching-status', asyncHandler(getWatchingStatusBatch));
 router.post('/', requireProjectPermissionFromBody(PROJECT_PERMISSIONS.ISSUE.ISSUE.CREATE), ...createIssueHandler);

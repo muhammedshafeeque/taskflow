@@ -128,3 +128,28 @@ export async function migratePayrollApproveIfNeeded(): Promise<{ roles: number; 
   if (roles || users) console.log(`[migrate] payroll approve: ${roles} role(s) and ${users} user(s)`);
   return { roles, users };
 }
+
+/**
+ * One-time (AUT-66): issue keys were unique across every workspace, so a project whose key another
+ * workspace also used could not create issues once their numbers met (E11000 on key_1). Keys are now
+ * unique per project: drop the old global unique index; the model builds { project, key } in its place.
+ */
+export async function migrateIssueKeyIndexIfNeeded(): Promise<{ dropped: boolean }> {
+  const db = mongoose.connection;
+  const done = db.collection<{ _id: string; at: Date }>('appmigrations');
+  const MARK = 'issue-key-per-project-v1';
+  if (await done.findOne({ _id: MARK })) return { dropped: false };
+  let dropped = false;
+  const issues = db.collection('issues');
+  const indexes = await issues.indexes().catch(() => [] as Array<{ name?: string; unique?: boolean; key?: Record<string, unknown> }>);
+  const old = indexes.find((i) => i.unique && i.key && Object.keys(i.key).length === 1 && 'key' in i.key);
+  if (old?.name) {
+    await issues.dropIndex(old.name);
+    dropped = true;
+  }
+  await issues.createIndex({ project: 1, key: 1 }, { unique: true, partialFilterExpression: { key: { $type: 'string' } } });
+  await issues.createIndex({ key: 1 });
+  await done.updateOne({ _id: MARK }, { $set: { at: new Date(), dropped } }, { upsert: true });
+  if (dropped) console.log('[migrate] issue keys are now unique per project (dropped the global key index)');
+  return { dropped };
+}
