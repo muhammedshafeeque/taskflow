@@ -67,6 +67,7 @@ import { customerUserRoutes } from '../modules/customer-portal/customer-user/cus
 import { customerProjectMappingRoutes } from '../modules/customer-portal/customer-project-mapping/customerProjectMapping.routes';
 import { customerRequestRoutes } from '../modules/customer-portal/customer-request/customerRequest.routes';
 import { customerStatusReportRoutes } from '../modules/projects/projectGovernance';
+import { customerRequirementRoutes } from '../modules/requirements/requirements.routes';
 import { customerKbRoutes } from '../modules/customer-portal/customer-kb/customerKb.routes';
 import { customerTicketRoutes } from '../modules/customer-portal/customer-ticket/customerTicket.routes';
 import { customerAuthRoutes } from '../modules/customer-portal/customer-auth/customerAuth.routes';
@@ -159,6 +160,7 @@ router.use('/customer/projects', customerProjectMappingRoutes);
 router.use('/customer/requests', customerRequestRoutes);
 router.use('/customer/kb', customerKbRoutes);
 router.use('/customer/status-reports', customerStatusReportRoutes);
+router.use('/customer/requirements', customerRequirementRoutes);
 router.use('/customer/tickets', customerTicketRoutes);
 router.use('/customer/quotes', crmEnabled, customerQuoteRoutes);
 router.use('/crm/commissions', crmEnabled, commissionRoutes);

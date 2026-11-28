@@ -64,6 +64,9 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
     { to: '/portal/status-reports', label: 'Status reports', icon: <FiList /> },
   ];
 
+  if (userHasPermission(perms, CUSTOMER_PERMISSIONS.REQUIREMENT.REQUIREMENT.LIST) || user?.isOrgAdmin) {
+    navItems.push({ to: '/portal/requirements', label: 'Requirements', icon: <FiCheckSquare /> });
+  }
   if (userHasPermission(perms, CUSTOMER_PERMISSIONS.QUOTE.QUOTE.LIST)) {
     navItems.push({ to: '/portal/quotes', label: 'Quotations', icon: <FiFileText /> });
   }

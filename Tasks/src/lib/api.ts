@@ -5330,3 +5330,108 @@ export const hiringApi = {
     api.get<{ departments: HiringPlanRow[]; totals: HiringPlanRow[] }>(`/hrms/hiring-plan?${new URLSearchParams(params as Record<string, string>).toString()}`, token),
 };
 
+// ── Requirements, sign-off and change requests (AUT-44) ───────────────────
+
+type PRef = { _id: string; name?: string; email?: string; key?: string; title?: string; status?: string; type?: string } | string | null | undefined;
+
+export interface RequirementVersion {
+  _id: string;
+  version: number;
+  content: string;
+  summary: string;
+  changeRequestId?: PRef;
+  createdBy?: PRef;
+  createdAt: string;
+  sentAt?: string | null;
+  sentBy?: PRef;
+  signOff?: { decision: 'signed' | 'rejected'; by?: { name?: string; email?: string }; note?: string; at: string } | null;
+}
+
+export interface Requirement {
+  _id: string;
+  key: string;
+  title: string;
+  status: 'draft' | 'awaiting_signoff' | 'signed_off' | 'rejected';
+  versions: RequirementVersion[];
+  createdBy?: PRef;
+  updatedAt?: string;
+}
+
+export interface ChangeRequestStep {
+  role: 'ba_lead' | 'pm' | 'customer';
+  status: 'waiting' | 'pending' | 'approved' | 'rejected';
+  userId?: PRef;
+  customer?: { name?: string; email?: string };
+  note?: string;
+  at?: string;
+}
+
+export interface ChangeRequest {
+  _id: string;
+  key: string;
+  title: string;
+  description: string;
+  requirementId?: PRef;
+  costImpact: number;
+  currency: string;
+  scheduleImpactDays: number;
+  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled';
+  steps: ChangeRequestStep[];
+  linkedIssueIds: Array<{ _id: string; key?: string; title?: string; status?: string; type?: string }>;
+  createdBy?: PRef;
+  submittedAt?: string;
+  decidedAt?: string;
+}
+
+export const requirementsApi = {
+  settings: (projectId: string, token: string) => api.get<{ baLeadUserId: PRef; projectManager: PRef }>(`/projects/${projectId}/requirements/settings`, token),
+  saveSettings: (projectId: string, body: { baLeadUserId: string | null }, token: string) =>
+    api.put<{ baLeadUserId: PRef; projectManager: PRef }>(`/projects/${projectId}/requirements/settings`, body, token),
+  list: (projectId: string, token: string) => api.get<Requirement[]>(`/projects/${projectId}/requirements`, token),
+  create: (projectId: string, body: Record<string, unknown>, token: string) => api.post<Requirement>(`/projects/${projectId}/requirements`, body, token),
+  update: (projectId: string, id: string, body: Record<string, unknown>, token: string) => api.patch<Requirement>(`/projects/${projectId}/requirements/${id}`, body, token),
+  newVersion: (projectId: string, id: string, body: Record<string, unknown>, token: string) => api.post<Requirement>(`/projects/${projectId}/requirements/${id}/versions`, body, token),
+  send: (projectId: string, id: string, token: string) => api.post<Requirement>(`/projects/${projectId}/requirements/${id}/send`, {}, token),
+  changes: (projectId: string, token: string) => api.get<ChangeRequest[]>(`/projects/${projectId}/change-requests`, token),
+  createChange: (projectId: string, body: Record<string, unknown>, token: string) => api.post<ChangeRequest>(`/projects/${projectId}/change-requests`, body, token),
+  updateChange: (projectId: string, id: string, body: Record<string, unknown>, token: string) => api.patch<ChangeRequest>(`/projects/${projectId}/change-requests/${id}`, body, token),
+  changeAction: (projectId: string, id: string, action: 'submit' | 'approve' | 'reject' | 'cancel', token: string, note?: string) =>
+    api.post<ChangeRequest>(`/projects/${projectId}/change-requests/${id}/${action}`, note !== undefined ? { note } : {}, token),
+  linkIssue: (projectId: string, id: string, body: { issueId?: string; issueKey?: string; title?: string }, token: string) => api.post<ChangeRequest>(`/projects/${projectId}/change-requests/${id}/issues`, body, token),
+  unlinkIssue: (projectId: string, id: string, issueId: string, token: string) => api.delete<ChangeRequest>(`/projects/${projectId}/change-requests/${id}/issues/${issueId}`, token),
+};
+
+export interface CustomerRequirementView {
+  _id: string;
+  key: string;
+  title: string;
+  project: { _id: string; name?: string; key?: string } | string;
+  status: Requirement['status'];
+  awaitingSignOff: boolean;
+  versions: Array<{ version: number; content: string; summary: string; sentAt: string; signOff: { decision: 'signed' | 'rejected'; name?: string; note?: string; at: string } | null }>;
+}
+
+export interface CustomerChangeView {
+  _id: string;
+  key: string;
+  title: string;
+  description: string;
+  project: { _id: string; name?: string; key?: string } | string;
+  requirement: { key?: string; title?: string } | null;
+  costImpact: number;
+  currency: string;
+  scheduleImpactDays: number;
+  status: ChangeRequest['status'];
+  waitingForYou: boolean;
+  yourDecision: { status: 'approved' | 'rejected'; name?: string; note?: string; at: string } | null;
+}
+
+export const customerRequirementsApi = {
+  list: (token: string) => api.get<CustomerRequirementView[]>('/customer/requirements', token),
+  signOff: (id: string, body: { decision: 'sign' | 'reject'; name: string; note?: string; version: number }, token: string) =>
+    api.post<CustomerRequirementView>(`/customer/requirements/${id}/sign-off`, body, token),
+  changes: (token: string) => api.get<CustomerChangeView[]>('/customer/requirements/change-requests', token),
+  decideChange: (id: string, body: { decision: 'approve' | 'reject'; note?: string }, token: string) =>
+    api.post<CustomerChangeView>(`/customer/requirements/change-requests/${id}/decision`, body, token),
+};
+
