@@ -88,6 +88,11 @@ const hrSettingsSchema = new Schema(
     /** Public careers page listing published openings (AUT-37). */
     careersPageEnabled: { type: Boolean, default: false },
     careersIntro: { type: String, default: '' },
+    /** Automatic employee codes (AUT-40): prefix, then the number padded to this many digits, e.g. EMP-0042. */
+    employeeCodePrefix: { type: String, default: 'EMP-' },
+    employeeCodeDigits: { type: Number, default: 4, min: 1, max: 9 },
+    /** Last number handed out; only ever goes up, so a deleted employee's code is never reused. null = not started yet. */
+    employeeCodeLastNumber: { type: Number, default: null },
   },
   { timestamps: true }
 );

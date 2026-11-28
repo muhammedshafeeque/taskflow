@@ -33,7 +33,7 @@ r.get(
   '/settings',
   requireAnyPermission([H.POLICY.MANAGE, H.LEAVE.MANAGE, H.RECRUITMENT.MANAGE, H.EMPLOYEE.CREATE, H.EMPLOYEE.UPDATE]),
   asyncHandler(async (req: R, res) => {
-    const settings = await policy.getHrSettings(ws(req));
+    const settings = await policy.getHrSettingsForEditing(ws(req));
     // Where the public careers page lives (AUT-37), to show and share.
     const org = await Organization.findById(ws(req)).select('slug').lean();
     ok(res, { ...settings, careersUrl: org?.slug ? `${env.frontendUrl.replace(/\/$/, '')}/careers/${org.slug}` : null });

@@ -4,6 +4,7 @@ import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { HrmsEmployee } from './models/hrmsEmployee.model';
 import { HrmsLeaveRequest } from './models/hrmsLeaveRequest.model';
 import { HrmsHoliday, HrmsLeaveLedger, HrmsLeaveType, HrmsSettings } from './models/hrmsPolicy.model';
+import { CODE_PREFIX_PATTERN, employeeCodeSettings, setNextEmployeeNumber } from './employeeCode';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -27,8 +28,18 @@ export async function getHrSettings(workspaceId: string | null | undefined) {
       offerLetterTemplate: '',
       careersPageEnabled: false,
       careersIntro: '',
+      employeeCodePrefix: 'EMP-',
+      employeeCodeDigits: 4,
     }
   );
+}
+
+/** HR settings as the settings screen shows them, with the next automatic employee code (AUT-40). */
+export async function getHrSettingsForEditing(workspaceId: string | null | undefined) {
+  const orgOid = toOrgOid(requireWorkspaceId(workspaceId));
+  const codes = await employeeCodeSettings(orgOid);
+  const { employeeCodeLastNumber: _counter, ...settings } = (await getHrSettings(workspaceId)) as Record<string, unknown>;
+  return { ...settings, ...codes };
 }
 
 /** Cost of one hour of an employee's time (explicit rate, else CTC / standard hours). */
@@ -79,7 +90,22 @@ export async function updateHrSettings(workspaceId: string | null | undefined, i
   if (input.careersPageEnabled !== undefined) $set.careersPageEnabled = Boolean(input.careersPageEnabled);
   if (typeof input.offerLetterTemplate === 'string') $set.offerLetterTemplate = input.offerLetterTemplate.slice(0, 20_000);
   if (typeof input.careersIntro === 'string') $set.careersIntro = input.careersIntro.slice(0, 2_000);
-  return HrmsSettings.findOneAndUpdate({ taskflowOrganizationId: orgOid }, { $set }, { upsert: true, new: true }).lean();
+  if (input.employeeCodePrefix !== undefined) {
+    const prefix = String(input.employeeCodePrefix ?? '').trim();
+    if (!CODE_PREFIX_PATTERN.test(prefix)) throw new ApiError(400, 'Employee code prefix can be up to 20 letters, digits, or - _ / .');
+    $set.employeeCodePrefix = prefix;
+  }
+  if (input.employeeCodeDigits !== undefined) {
+    const d = Number(input.employeeCodeDigits);
+    if (!Number.isInteger(d) || d < 1 || d > 9) throw new ApiError(400, 'Employee code digits must be 1–9');
+    $set.employeeCodeDigits = d;
+  }
+  // Checked before saving anything else, so a refused number leaves the settings as they were.
+  if (input.employeeCodeNextNumber !== undefined && input.employeeCodeNextNumber !== null && input.employeeCodeNextNumber !== '') {
+    await setNextEmployeeNumber(orgOid, input.employeeCodeNextNumber);
+  }
+  await HrmsSettings.findOneAndUpdate({ taskflowOrganizationId: orgOid }, { $set }, { upsert: true, new: true });
+  return getHrSettingsForEditing(workspaceId);
 }
 
 // ── Leave types ──────────────────────────────────────────────────────────

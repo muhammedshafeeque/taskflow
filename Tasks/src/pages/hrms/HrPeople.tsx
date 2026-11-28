@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
 import { canAny } from '../../utils/moduleAccess';
@@ -34,18 +34,25 @@ function useList<T = Row>(path: string | null) {
 
 // ── Settings ────────────────────────────────────────────────────────────────
 export function HrSettingsPage() {
+  // Send the next employee number only when it was changed, so saving other settings never trips over a hire made meanwhile.
+  const loadedNextNumber = useRef<unknown>(null);
   return (
     <SettingsForm
       title="HR settings"
       subtitle="Work week, leave year, cost basis and approvals — all company specific."
       endpoint="/hrms/settings"
       managePermissions={[H.policy]}
-      transformIn={(v) => ({ ...v, weekendDays: ((v.weekendDays as number[]) ?? []).map(String), leaveYearStartMonth: String(v.leaveYearStartMonth ?? 1), timesheetReminderWeekday: v.timesheetReminderWeekday ?? '', jobChangeNeedsApproval: v.jobChangeNeedsApproval !== false })}
+      transformIn={(v) => ((loadedNextNumber.current = v.employeeCodeNextNumber), { ...v, weekendDays: ((v.weekendDays as number[]) ?? []).map(String), leaveYearStartMonth: String(v.leaveYearStartMonth ?? 1), timesheetReminderWeekday: v.timesheetReminderWeekday ?? '', jobChangeNeedsApproval: v.jobChangeNeedsApproval !== false })}
       transformOut={(v) => ({
         ...v,
         weekendDays: ((v.weekendDays as string[]) ?? []).map(Number),
         leaveYearStartMonth: Number(v.leaveYearStartMonth) || 1,
         timesheetReminderWeekday: v.timesheetReminderWeekday === '' || v.timesheetReminderWeekday == null ? null : Number(v.timesheetReminderWeekday),
+        employeeCodeDigits: Number(v.employeeCodeDigits) || 4,
+        employeeCodeNextNumber:
+          v.employeeCodeNextNumber === '' || v.employeeCodeNextNumber == null || Number(v.employeeCodeNextNumber) === Number(loadedNextNumber.current)
+            ? undefined
+            : Number(v.employeeCodeNextNumber),
       })}
       fields={[
         { key: 'weekendDays', label: 'Weekend days', type: 'multiselect', options: WEEKDAYS },
@@ -56,6 +63,10 @@ export function HrSettingsPage() {
         { key: 'timesheetReminderWeekday', label: 'Timesheet reminder day', type: 'select', options: WEEKDAYS, help: 'Leave blank to disable reminders.' },
         { key: 'recruitmentStages', label: 'Default recruitment stages', type: 'list', help: 'Comma separated, in order. The last one is treated as hired.' },
         { key: 'jobChangeNeedsApproval', label: 'Job changes need a second approver', type: 'checkbox', placeholder: 'Promotions, transfers and pay changes are approved by someone other than who proposed them' },
+        { key: 'employeeCodePrefix', label: 'Employee code prefix', type: 'text', help: 'Put before each automatic employee code, e.g. EMP- or ACME/. Up to 20 letters, digits, or - _ / . Leave blank for numbers only.' },
+        { key: 'employeeCodeDigits', label: 'Employee code digits', type: 'number', help: 'The number is padded with zeros to this many digits (1 to 9). 4 gives EMP-0042.' },
+        { key: 'employeeCodeNextNumber', label: 'Next employee number', type: 'number', help: 'Used by the next automatic code. It can be moved forward but never back, so a code is never given out twice, even after a deletion.' },
+        { key: 'employeeCodePreview', label: 'Next automatic code', type: 'text', help: 'Shown for reference. Reload the page after saving to see it change.' },
         { key: 'levels', label: 'Levels', type: 'list', help: 'Seniority levels, most junior first (e.g. Intern, Junior, Senior, Lead). Set on each employee; team & level rules can use them.' },
         { key: 'leaveApproverUserIds', label: 'Fallback leave approvers', type: 'multiselect', optionsFrom: { endpoint: '/core/people' }, help: "Used when an employee has no manager linked to a user account." },
         { key: 'requireAcceptedOffer', label: 'Hiring needs an accepted offer', type: 'checkbox', placeholder: 'A candidate can be hired only after accepting an offer online' },

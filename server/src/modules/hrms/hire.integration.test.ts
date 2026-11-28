@@ -4,6 +4,8 @@ import { createEmployee } from './hrms.service';
 import { hireCandidate } from './people.service';
 import { HrmsEmployee } from './models/hrmsEmployee.model';
 import { HrmsCandidate, HrmsChecklist, HrmsChecklistTemplate, HrmsJobOpening } from './models/hrmsPeople.model';
+import { HrmsSettings } from './models/hrmsPolicy.model';
+import { getHrSettingsForEditing, updateHrSettings } from './policy.service';
 
 jest.mock('../notifications/notificationDispatch.service', () => ({ notifyUser: jest.fn().mockResolvedValue(undefined) }));
 jest.setTimeout(120_000);
@@ -25,7 +27,7 @@ beforeAll(async () => {
   await HrmsEmployee.init();
 });
 beforeEach(async () => {
-  await Promise.all([HrmsEmployee, HrmsCandidate, HrmsChecklist, HrmsChecklistTemplate, HrmsJobOpening].map((m) => (m as typeof HrmsEmployee).deleteMany({})));
+  await Promise.all([HrmsEmployee, HrmsCandidate, HrmsChecklist, HrmsChecklistTemplate, HrmsJobOpening, HrmsSettings].map((m) => (m as typeof HrmsEmployee).deleteMany({})));
   jobId = (await HrmsJobOpening.create({ taskflowOrganizationId: org, title: 'Developer', department: 'Dev', employmentType: 'intern', stages: ['Applied', 'Offer', 'Hired'], currency: 'INR' , openings: 50 }))._id as mongoose.Types.ObjectId;
 });
 afterAll(async () => {
@@ -86,6 +88,8 @@ describe('hiring a candidate (AUT-12)', () => {
 });
 
 describe('automatic employee codes', () => {
+  const add = async (name = 'New') => (await createEmployee(String(org), { name }, HR)).employeeCode;
+
   it('continue after the highest, ignoring gaps and custom codes', async () => {
     for (const employeeCode of ['EMP-0002', 'EMP-0009', 'DEV-99', 'EMP-X']) await HrmsEmployee.create({ taskflowOrganizationId: org, employeeCode, name: 'x', joinedDate: new Date() });
     expect((await hire(await candidate())).employee.employeeCode).toBe('EMP-0010');
@@ -101,5 +105,52 @@ describe('automatic employee codes', () => {
   it('still refuse a code that is taken', async () => {
     await createEmployee(String(org), { name: 'A', employeeCode: 'A1' }, HR);
     await expect(createEmployee(String(org), { name: 'B', employeeCode: 'A1' }, HR)).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('never reuse a number after the newest employee is deleted (AUT-40)', async () => {
+    expect([await add(), await add(), await add()]).toEqual(['EMP-0001', 'EMP-0002', 'EMP-0003']);
+    await HrmsEmployee.deleteOne({ taskflowOrganizationId: org, employeeCode: 'EMP-0003' });
+    expect(await add()).toBe('EMP-0004');
+    await HrmsEmployee.deleteMany({ taskflowOrganizationId: org });
+    expect(await add()).toBe('EMP-0005');
+  });
+
+  it('skip past a code someone typed ahead of the counter', async () => {
+    expect(await add()).toBe('EMP-0001');
+    await createEmployee(String(org), { name: 'Typed', employeeCode: 'EMP-0002' }, HR);
+    await createEmployee(String(org), { name: 'Typed', employeeCode: 'EMP-0003' }, HR);
+    expect(await add()).toBe('EMP-0004');
+  });
+
+  it('use the prefix and number of digits set in HR settings', async () => {
+    expect(await getHrSettingsForEditing(String(org))).toMatchObject({ employeeCodePrefix: 'EMP-', employeeCodeDigits: 4, employeeCodeNextNumber: 1, employeeCodePreview: 'EMP-0001' });
+    const saved = await updateHrSettings(String(org), { employeeCodePrefix: 'ACME/', employeeCodeDigits: 6 });
+    expect(saved).toMatchObject({ employeeCodePreview: 'ACME/000001' });
+    expect(saved).not.toHaveProperty('employeeCodeLastNumber');
+    expect(await add()).toBe('ACME/000001');
+    await updateHrSettings(String(org), { employeeCodePrefix: '', employeeCodeDigits: 1 });
+    expect(await add()).toBe('2');
+    for (const bad of [{ employeeCodePrefix: 'has space' }, { employeeCodePrefix: 'X'.repeat(21) }, { employeeCodeDigits: 0 }, { employeeCodeDigits: 10 }, { employeeCodeDigits: 2.5 }]) {
+      await expect(updateHrSettings(String(org), bad)).rejects.toMatchObject({ statusCode: 400 });
+    }
+  });
+
+  it('let HR move the next number forward but never back', async () => {
+    await add();
+    await add();
+    expect(await updateHrSettings(String(org), { employeeCodeNextNumber: 3, levels: ['A', 'B'] })).toMatchObject({ employeeCodeNextNumber: 3, levels: ['A', 'B'] });
+    expect(await updateHrSettings(String(org), { employeeCodeNextNumber: 100 })).toMatchObject({ employeeCodePreview: 'EMP-0100' });
+    expect(await add()).toBe('EMP-0100');
+    for (const n of [100, 1, 0, -5, 'x', 1.5]) {
+      await expect(updateHrSettings(String(org), { employeeCodeNextNumber: n, levels: ['Z'] })).rejects.toMatchObject({ statusCode: 400 });
+    }
+    expect(await getHrSettingsForEditing(String(org))).toMatchObject({ employeeCodeNextNumber: 101, levels: ['A', 'B'] });
+  });
+
+  it('start a workspace from before the counter after its highest code, once, even when several are added at once', async () => {
+    await HrmsEmployee.create({ taskflowOrganizationId: org, employeeCode: 'EMP-0041', name: 'old', joinedDate: new Date() });
+    const codes = await Promise.all([1, 2, 3, 4, 5].map((i) => add(`n${i}`)));
+    expect(codes.sort()).toEqual(['EMP-0042', 'EMP-0043', 'EMP-0044', 'EMP-0045', 'EMP-0046']);
+    expect(await HrmsSettings.countDocuments({ taskflowOrganizationId: org })).toBe(1);
   });
 });
