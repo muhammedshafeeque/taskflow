@@ -171,6 +171,8 @@ export const TASK_FLOW_PERMISSIONS = {
       PAYROLL: {
         READ: 'taskflow.hr.payroll.read',
         MANAGE: 'taskflow.hr.payroll.manage',
+        /** Approve (finalize) a payroll run someone else prepared (AUT-43). */
+        APPROVE: 'taskflow.hr.payroll.approve',
       },
       /** Salary (CTC) and HR notes on employee records; payroll rights include them */
       SALARY: {

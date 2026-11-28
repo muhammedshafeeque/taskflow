@@ -22,6 +22,8 @@ function periodLabel(p: string) {
 export function HrmsPayroll() {
   const { token, user } = useAuth();
   const canManage = canAny(user, 'taskflow.hr.payroll.manage');
+  // Finalizing is approving: someone with approve rights who did not prepare the run (AUT-43).
+  const canApprove = user?.role === 'admin' || canAny(user, 'taskflow.hr.payroll.approve');
   const [runs, setRuns] = useState<PayrollRun[]>([]);
   const [run, setRun] = useState<PayrollRun | null>(null);
   const [period, setPeriod] = useState(currentPeriod());
@@ -121,14 +123,20 @@ export function HrmsPayroll() {
               </div>
             ))}
             <div><p className="text-xs text-[color:var(--text-muted)]">Employees</p><p className="text-xl font-bold">{run.totals.employees}</p></div>
-            {canManage && (
-              <div className="ml-auto flex gap-2">
-                {run.status === 'draft' && (
-                  <PrimaryButton disabled={busy} onClick={() => window.confirm('Finalize this run? Payslips become read-only.') && act(() => hrmsApi.finalizePayrollRun(run._id, token))}>
-                    Finalize
+            {(canManage || canApprove) && (
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                {run.status === 'draft' && run.preparedBy === user?.id && (
+                  <p className="text-xs text-[color:var(--text-muted)] max-w-xs text-right">You prepared this run. Someone else with the approve payroll permission approves and finalizes it.</p>
+                )}
+                {run.status === 'draft' && canApprove && run.preparedBy !== user?.id && (
+                  <PrimaryButton disabled={busy} onClick={() => window.confirm('Approve and finalize this run? Payslips become read-only.') && act(() => hrmsApi.finalizePayrollRun(run._id, token))}>
+                    Approve and finalize
                   </PrimaryButton>
                 )}
-                {run.status === 'finalized' && (
+                {run.status === 'draft' && !canApprove && run.preparedBy !== user?.id && (
+                  <p className="text-xs text-[color:var(--text-muted)] max-w-xs text-right">Waiting for someone with the approve payroll permission to approve and finalize it.</p>
+                )}
+                {canManage && run.status === 'finalized' && (
                   <PrimaryButton disabled={busy} onClick={() => act(() => hrmsApi.markPayrollPaid(run._id, token))}>
                     Mark paid
                   </PrimaryButton>

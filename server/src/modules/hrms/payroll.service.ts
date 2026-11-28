@@ -1,5 +1,7 @@
 import { autoPost, postPayroll } from '../ledger/ledger.service';
-import { assertApprovedOrSubmit } from '../approvals/approvals.service';
+import { assertApprovedOrSubmit, isApprovalChainEnabled } from '../approvals/approvals.service';
+import { userHasPermission } from '../../shared/constants/legacyPermissionMap';
+import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
@@ -166,7 +168,7 @@ export async function getPayrollRunById(workspaceId: string | null | undefined, 
 }
 
 /** Create (or recalculate) the draft run for a month. Finalized runs are immutable. */
-export async function generatePayrollRun(workspaceId: string | null | undefined, period: string) {
+export async function generatePayrollRun(workspaceId: string | null | undefined, period: string, preparedBy?: string) {
   if (!isValidPeriod(period)) throw new ApiError(400, 'Period must be YYYY-MM');
   const orgOid = toOrgOid(requireWorkspaceId(workspaceId));
   const existing = await HrmsPayrollRun.findOne({ taskflowOrganizationId: orgOid, period });
@@ -236,7 +238,7 @@ export async function generatePayrollRun(workspaceId: string | null | undefined,
 
   return HrmsPayrollRun.findOneAndUpdate(
     { _id: run._id },
-    { $set: { payslips, ...summarize(payslips), status: 'draft' } },
+    { $set: { payslips, ...summarize(payslips), status: 'draft', ...(preparedBy ? { preparedBy: new mongoose.Types.ObjectId(preparedBy), preparedAt: new Date() } : {}) } },
     { upsert: true, new: true }
   ).lean();
 }
@@ -278,7 +280,8 @@ export async function setPayslipAdjustments(
   workspaceId: string | null | undefined,
   runId: string,
   employeeId: string,
-  adjustments: Array<{ name: string; amount: number; kind: 'earning' | 'deduction' }>
+  adjustments: Array<{ name: string; amount: number; kind: 'earning' | 'deduction' }>,
+  preparedBy?: string
 ) {
   const run = await getPayrollRunById(workspaceId, runId);
   if (run.status !== 'draft') throw new ApiError(409, 'Only draft runs can be adjusted');
@@ -295,20 +298,34 @@ export async function setPayslipAdjustments(
     { _id: run._id, 'payslips.employeeId': new mongoose.Types.ObjectId(employeeId) },
     { $set: { 'payslips.$.adjustments': clean } }
   );
-  return generatePayrollRun(workspaceId, run.period);
+  return generatePayrollRun(workspaceId, run.period, preparedBy);
 }
 
 export async function setPayrollRunStatus(
   workspaceId: string | null | undefined,
   runId: string,
   status: 'finalized' | 'paid',
-  userId: string
+  userId: string,
+  /** The caller's rights; checked when given (the routes always give them). */
+  actor?: { permissions: string[]; role?: string }
 ) {
   const run = await getPayrollRunById(workspaceId, runId);
   if (status === 'finalized' && run.status !== 'draft') throw new ApiError(409, 'Only a draft can be finalized');
   if (status === 'finalized') {
-    // With a payroll approval chain on, the run must be approved first (the first try sends it for approval).
-    await assertApprovedOrSubmit(String(run.taskflowOrganizationId), 'payroll', String(run._id), userId, 'finalize this payroll run');
+    const orgId = String(run.taskflowOrganizationId);
+    if (await isApprovalChainEnabled(orgId, 'payroll')) {
+      // With a payroll approval chain on, the chain approves (the first try sends it for approval).
+      await assertApprovedOrSubmit(orgId, 'payroll', String(run._id), userId, 'finalize this payroll run');
+    } else {
+      // Otherwise finalizing is the approval, and it is kept apart from preparing (AUT-43): someone with the
+      // approve permission who did not prepare this draft.
+      if (actor && actor.role !== 'admin' && !userHasPermission(actor.permissions, TASK_FLOW_PERMISSIONS.TASKFLOW.HR.PAYROLL.APPROVE)) {
+        throw new ApiError(403, 'Finalizing payroll needs the approve payroll permission');
+      }
+      if (run.preparedBy && String(run.preparedBy) === userId) {
+        throw new ApiError(403, 'You prepared this payroll run, so someone else with the approve payroll permission must approve and finalize it');
+      }
+    }
   }
   if (status === 'finalized') {
     // What the payslips pay must still be what the commission screen says: approved, same amount, held by this run.

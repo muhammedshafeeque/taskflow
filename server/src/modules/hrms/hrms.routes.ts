@@ -27,7 +27,7 @@ const leaveRead = [H.LEAVE.READ, H.LEAVE.MANAGE, H.DASHBOARD.READ];
 const leaveManage = [H.LEAVE.MANAGE];
 const attRead = [H.ATTENDANCE.READ, H.ATTENDANCE.MANAGE, H.DASHBOARD.READ];
 const attManage = [H.ATTENDANCE.MANAGE];
-const payrollRead = [H.PAYROLL.READ, H.PAYROLL.MANAGE];
+const payrollRead = [H.PAYROLL.READ, H.PAYROLL.MANAGE, H.PAYROLL.APPROVE];
 
 const router = Router();
 router.use(authMiddleware);
@@ -80,7 +80,7 @@ router.get('/payroll', requireAnyPermission(payrollRead), asyncHandler(ctrl.getP
 
 // Payroll v2: settings, monthly runs, adjustments, payslips
 const payrollManage = [H.PAYROLL.MANAGE];
-type WsReq = Request & { activeOrganizationId?: string; user?: { id: string } };
+type WsReq = Request & { activeOrganizationId?: string; user?: { id: string; role?: string; permissions?: string[] } };
 router.get('/payroll/settings', requireAnyPermission(payrollRead), asyncHandler(async (req: WsReq, res: Response) => {
   res.json({ success: true, data: await payroll.getPayrollSettings(req.activeOrganizationId) });
 }));
@@ -91,17 +91,18 @@ router.get('/payroll/runs', requireAnyPermission(payrollRead), asyncHandler(asyn
   res.json({ success: true, data: await payroll.listPayrollRuns(req.activeOrganizationId) });
 }));
 router.post('/payroll/runs', requireAnyPermission(payrollManage), asyncHandler(async (req: WsReq, res: Response) => {
-  res.json({ success: true, data: await payroll.generatePayrollRun(req.activeOrganizationId, String(req.body?.period ?? '')) });
+  res.json({ success: true, data: await payroll.generatePayrollRun(req.activeOrganizationId, String(req.body?.period ?? ''), req.user!.id) });
 }));
 router.get('/payroll/runs/:id', requireAnyPermission(payrollRead), asyncHandler(async (req: WsReq, res: Response) => {
   res.json({ success: true, data: await payroll.getPayrollRunById(req.activeOrganizationId, req.params.id) });
 }));
 router.put('/payroll/runs/:id/payslips/:employeeId/adjustments', requireAnyPermission(payrollManage), asyncHandler(async (req: WsReq, res: Response) => {
-  const data = await payroll.setPayslipAdjustments(req.activeOrganizationId, req.params.id, req.params.employeeId, req.body?.adjustments ?? []);
+  const data = await payroll.setPayslipAdjustments(req.activeOrganizationId, req.params.id, req.params.employeeId, req.body?.adjustments ?? [], req.user!.id);
   res.json({ success: true, data });
 }));
-router.post('/payroll/runs/:id/finalize', requireAnyPermission(payrollManage), asyncHandler(async (req: WsReq, res: Response) => {
-  res.json({ success: true, data: await payroll.setPayrollRunStatus(req.activeOrganizationId, req.params.id, 'finalized', req.user!.id) });
+// Finalizing is approving: prepared by one person, approved by another (AUT-43).
+router.post('/payroll/runs/:id/finalize', requireAnyPermission([H.PAYROLL.MANAGE, H.PAYROLL.APPROVE]), asyncHandler(async (req: WsReq, res: Response) => {
+  res.json({ success: true, data: await payroll.setPayrollRunStatus(req.activeOrganizationId, req.params.id, 'finalized', req.user!.id, { permissions: req.user?.permissions ?? [], role: req.user?.role }) });
 }));
 router.post('/payroll/runs/:id/paid', requireAnyPermission(payrollManage), asyncHandler(async (req: WsReq, res: Response) => {
   res.json({ success: true, data: await payroll.setPayrollRunStatus(req.activeOrganizationId, req.params.id, 'paid', req.user!.id) });

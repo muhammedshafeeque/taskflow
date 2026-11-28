@@ -235,6 +235,7 @@ export function buildHrmsNav(user: NavUser): NavItem[] {
       'taskflow.hr.attendance.read',
       'taskflow.hr.leave.read',
       'taskflow.hr.payroll.read',
+      'taskflow.hr.payroll.approve',
       'taskflow.hr.policy.manage',
       'taskflow.hr.onboarding.read',
       'taskflow.hr.recruitment.read',
@@ -261,7 +262,7 @@ export function buildHrmsNav(user: NavUser): NavItem[] {
   if (allow(user, 'taskflow.hr.leave.read', 'taskflow.hr.leave.manage')) {
     nav.push({ to: '/hrms/leave', label: 'Leave', icon: <IssuesIcon /> });
   }
-  if (allow(user, 'taskflow.hr.payroll.read', 'taskflow.hr.payroll.manage')) {
+  if (allow(user, 'taskflow.hr.payroll.read', 'taskflow.hr.payroll.manage', 'taskflow.hr.payroll.approve')) {
     nav.push({ to: '/hrms/payroll', label: 'Payroll', icon: <PackageIcon /> });
   }
   if (allow(user, 'taskflow.hr.onboarding.read', 'taskflow.hr.onboarding.manage')) {

@@ -90,6 +90,9 @@ const payrollRunSchema = new Schema(
       type: [new Schema({ currency: String, gross: Number, deductions: Number, net: Number, employees: Number }, { _id: false })],
       default: [],
     },
+    /** Who generated or last recalculated the draft; they can't also approve it (AUT-43). */
+    preparedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    preparedAt: Date,
     finalizedAt: Date,
     finalizedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     paidAt: Date,

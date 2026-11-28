@@ -87,3 +87,44 @@ export async function migrateCrmScopesIfNeeded(): Promise<{ roles: number; users
   if (roles || users) console.log(`[migrate] CRM scopes: ${roles} role(s) and ${users} user(s) keep reaching every lead and deal`);
   return { roles, users };
 }
+
+const PAYROLL_MARKER = 'payroll-approve-v1';
+const PAYROLL_MANAGE = 'taskflow.hr.payroll.manage';
+const PAYROLL_APPROVE = 'taskflow.hr.payroll.approve';
+
+/** Payroll approval to add so roles that ran payroll can still approve it (someone else's run). */
+export function payrollApproveToKeep(permissions: string[]): string[] {
+  const dots = permissions.map(permissionToDot);
+  if (dots.includes(PAYROLL_APPROVE) || dots.includes('taskflow.hr.payroll.*') || dots.includes('taskflow.hr.*')) return [];
+  return dots.includes(PAYROLL_MANAGE) ? [PAYROLL_APPROVE] : [];
+}
+
+/**
+ * One-time (AUT-43): finalizing payroll used to need only payroll manage. Now it needs the new approve
+ * permission and must be someone other than whoever prepared the run. Roles that managed payroll get the
+ * approve permission so a second payroll person can approve; nobody can approve their own run either way.
+ */
+export async function migratePayrollApproveIfNeeded(): Promise<{ roles: number; users: number }> {
+  const db = mongoose.connection;
+  const done = db.collection<{ _id: string; at: Date }>('appmigrations');
+  if (await done.findOne({ _id: PAYROLL_MARKER })) return { roles: 0, users: 0 };
+  let roles = 0;
+  let users = 0;
+  for await (const r of db.collection('roles').find({}, { projection: { permissions: 1 } })) {
+    const add = payrollApproveToKeep((r.permissions as string[]) ?? []);
+    if (add.length) {
+      await db.collection('roles').updateOne({ _id: r._id }, { $addToSet: { permissions: { $each: add } } });
+      roles++;
+    }
+  }
+  for await (const u of db.collection('users').find({ 'permissionOverrides.granted.0': { $exists: true } }, { projection: { permissionOverrides: 1 } })) {
+    const add = payrollApproveToKeep((u.permissionOverrides?.granted as string[]) ?? []);
+    if (add.length) {
+      await db.collection('users').updateOne({ _id: u._id }, { $addToSet: { 'permissionOverrides.granted': { $each: add } } });
+      users++;
+    }
+  }
+  await done.updateOne({ _id: PAYROLL_MARKER }, { $set: { at: new Date(), roles, users } }, { upsert: true });
+  if (roles || users) console.log(`[migrate] payroll approve: ${roles} role(s) and ${users} user(s)`);
+  return { roles, users };
+}

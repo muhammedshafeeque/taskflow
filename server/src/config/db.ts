@@ -9,7 +9,7 @@ import { migrateProjectMemberCommentPermissionsIfNeeded } from '../migrations/mi
 import { migrateAttendanceDaysIfNeeded } from '../migrations/migrateAttendanceDays';
 import { migrateExpenseApprovePermissionIfNeeded } from '../migrations/migrateExpenseApprovePermission';
 import { migrateSalesRolePermissionsIfNeeded } from '../migrations/migrateSalesRolePermissions';
-import { migrateCrmScopesIfNeeded, migrateDataScopesIfNeeded } from '../migrations/migrateDataScopes';
+import { migrateCrmScopesIfNeeded, migrateDataScopesIfNeeded, migratePayrollApproveIfNeeded } from '../migrations/migrateDataScopes';
 import '../modules/projects/projectDesignation.model';
 import '../modules/organizations/organization.model';
 import '../modules/organizations/organizationMember.model';
@@ -34,6 +34,7 @@ export async function connectDb(): Promise<void> {
   await migrateSalesRolePermissionsIfNeeded().catch((e) => console.error('[migrate] sales role permissions failed:', e));
   await migrateDataScopesIfNeeded().catch((e) => console.error('[migrate] data scopes failed:', e));
   await migrateCrmScopesIfNeeded().catch((e) => console.error('[migrate] CRM scopes failed:', e));
+  await migratePayrollApproveIfNeeded().catch((e) => console.error('[migrate] payroll approve failed:', e));
   await migrateExpenseApprovePermissionIfNeeded().catch((e) => console.error('[migrate] expense approve permission failed:', e));
 }
 

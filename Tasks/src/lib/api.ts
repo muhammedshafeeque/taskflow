@@ -4169,6 +4169,9 @@ export interface PayrollRun {
   totalsByCurrency?: Array<{ currency: string; gross: number; deductions: number; net: number; employees: number }>;
   finalizedAt?: string;
   paidAt?: string;
+  /** Who generated or last recalculated the draft; someone else approves it (AUT-43). */
+  preparedBy?: string;
+  preparedAt?: string;
 }
 
 export interface MonitorOnCall {
