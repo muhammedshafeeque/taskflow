@@ -29,6 +29,7 @@ type BillingDash = {
     overdue: number;
     taxRules: number;
     unbilledProjects: number;
+    unbilledProjectsWithoutRate?: number;
   };
   mrr: number;
   arr: number;
@@ -36,6 +37,7 @@ type BillingDash = {
   collected: number;
   unbilledHours: number;
   unbilledValue: number;
+  unbilledHoursWithoutRate?: number;
   byStatus: Array<{ name: string; count: number; value: number }>;
   byCycle: Array<{ name: string; count: number; mrr: number }>;
   invoiceTrend: Array<{ month: string; invoiced: number; paid: number; count: number }>;
@@ -136,7 +138,7 @@ export default function BillingDashboard() {
           <MetricCard
             title="Unbilled time"
             value={`${data.unbilledHours}h`}
-            helperText={`≈ ${money(data.unbilledValue)} · ${data.counts.unbilledProjects} projects`}
+            helperText={`≈ ${money(data.unbilledValue)} · ${data.counts.unbilledProjects} projects${data.unbilledHoursWithoutRate ? ` · ${data.unbilledHoursWithoutRate}h with no rate` : ''}`}
           />
         </Link>
       </div>

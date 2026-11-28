@@ -111,3 +111,14 @@ export async function createFromTime(req: Request & { user?: AuthPayload }, res:
   const data = await billing.createInvoiceFromTime(ws(req), req.body, uid(req));
   res.status(201).json({ success: true, data });
 }
+
+export async function getSettings(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  res.json({ success: true, data: await billing.getBillingSettings(ws(req)) });
+}
+
+export async function updateSettings(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  res.json({ success: true, data: await billing.updateBillingSettings(ws(req), req.body ?? {}) });
+}
+

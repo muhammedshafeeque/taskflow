@@ -300,10 +300,17 @@ export async function runCommercialHandoff(opts: CommercialHandoffOpts): Promise
   return { customerOrgId, projectId, skipped, warnings: warningsFromSkipped(skipped) };
 }
 
+export type ProjectRateSource = 'contract' | 'quote' | 'default';
+
+/**
+ * The hourly rate to bill a project's time at: its live contract's rate, else the hourly line of its
+ * accepted quote, else the workspace's default rate from billing settings. `rate: null` when none of
+ * these exists (AUT-42): there is no built-in fallback, so callers must ask for a rate.
+ */
 export async function resolveProjectHourlyRate(
   workspaceId: string,
   projectId: string
-): Promise<number> {
+): Promise<{ rate: number | null; source: ProjectRateSource | null }> {
   const orgOid = toOrgOid(workspaceId);
   const contract = await CrmContract.findOne({
     taskflowOrganizationId: orgOid,
@@ -313,7 +320,7 @@ export async function resolveProjectHourlyRate(
   })
     .sort({ createdAt: -1 })
     .lean();
-  if (contract?.hourlyRate) return Number(contract.hourlyRate);
+  if (contract?.hourlyRate) return { rate: Number(contract.hourlyRate), source: 'contract' };
 
   const quote = await CrmQuote.findOne({
     taskflowOrganizationId: orgOid,
@@ -323,6 +330,10 @@ export async function resolveProjectHourlyRate(
     .sort({ createdAt: -1 })
     .lean();
   const fromQuote = hourlyRateFromQuoteLines(quote?.lineItems);
-  if (fromQuote) return fromQuote;
-  return 100;
+  if (fromQuote) return { rate: fromQuote, source: 'quote' };
+
+  const { BillingSettings } = await import('../billing/models/billingSettings.model');
+  const settings = await BillingSettings.findOne({ taskflowOrganizationId: orgOid }).select('defaultHourlyRate').lean();
+  if (settings?.defaultHourlyRate != null && settings.defaultHourlyRate > 0) return { rate: settings.defaultHourlyRate, source: 'default' };
+  return { rate: null, source: null };
 }

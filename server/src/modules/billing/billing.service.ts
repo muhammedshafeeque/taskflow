@@ -13,6 +13,7 @@ import { BillingSubscription } from './models/billingSubscription.model';
 import { BillingInvoice, type IBillingInvoiceLine, type BillingInvoiceLineType } from './models/billingInvoice.model';
 import { BillingTaxRule } from './models/billingTaxRule.model';
 import { resolveProjectHourlyRate } from '../crm/commercialHandoff.service';
+import { BillingSettings } from './models/billingSettings.model';
 import { emitWorkspaceEvent } from '../webhooks/workspaceEvents';
 
 function asDate(value: unknown): Date | undefined {
@@ -229,6 +230,8 @@ export async function getBillingDashboard(workspaceId: string | null | undefined
       overdue: overdue.length,
       taxRules: taxRules.filter((t) => t.enabled).length,
       unbilledProjects: unbilled.projects.length,
+      /** Projects with unbilled time but no hourly rate (AUT-42); their hours are not in unbilledValue. */
+      unbilledProjectsWithoutRate: unbilled.projects.filter((p) => p.rateMissing).length,
     },
     mrr,
     arr,
@@ -236,6 +239,7 @@ export async function getBillingDashboard(workspaceId: string | null | undefined
     collected: Math.round(collected * 100) / 100,
     unbilledHours: unbilled.totalHours,
     unbilledValue: unbilled.estimatedValue,
+    unbilledHoursWithoutRate: unbilled.hoursWithoutRate ?? 0,
     byStatus,
     byCycle,
     invoiceTrend,
@@ -729,6 +733,23 @@ export async function getUnbilledWorkLogsForProject(
   return { from: start, to: end, logs, hours, workLogIds: logs.map((l) => String(l._id)) };
 }
 
+/** One project's unbilled time in the time-to-invoice summary. */
+export type UnbilledProjectRow = {
+  projectId: string;
+  projectName: string;
+  projectKey: string;
+  accountId?: string;
+  hours: number;
+  /** null when the project has no hourly rate (AUT-42). */
+  estimatedValue: number | null;
+  rate: number | null;
+  rateSource: 'contract' | 'quote' | 'default' | null;
+  rateMissing: boolean;
+  periodFrom: string;
+  periodTo: string;
+  workLogIds: string[];
+};
+
 export async function getUnbilledTimeSummary(workspaceId: string | null | undefined) {
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
@@ -739,7 +760,7 @@ export async function getUnbilledTimeSummary(workspaceId: string | null | undefi
     .select('name key crmAccountId')
     .lean();
   if (projects.length === 0) {
-    return { from, to, totalHours: 0, estimatedValue: 0, projects: [] as Array<Record<string, unknown>> };
+    return { from, to, totalHours: 0, estimatedValue: 0, projectsWithoutRate: 0, hoursWithoutRate: 0, defaultRate: null, projects: [] as UnbilledProjectRow[] };
   }
 
   const projectIds = projects.map((p) => p._id);
@@ -765,21 +786,25 @@ export async function getUnbilledTimeSummary(workspaceId: string | null | undefi
     workLogIdsByProject.set(pid, ids);
   }
 
-  const defaultRate = 100;
-  const projectRows = [];
+  // No built-in rate (AUT-42): a project without a contract, quote or default rate shows as missing a rate.
+  const settings = await BillingSettings.findOne({ taskflowOrganizationId: orgOid }).select('defaultHourlyRate').lean();
+  const defaultRate = settings?.defaultHourlyRate != null && settings.defaultHourlyRate > 0 ? settings.defaultHourlyRate : null;
+  const projectRows: UnbilledProjectRow[] = [];
   for (const p of projects) {
     const minutes = minutesByProject.get(String(p._id)) ?? 0;
     const hours = Math.round((minutes / 60) * 10) / 10;
     if (hours <= 0) continue;
-    const rate = await resolveProjectHourlyRate(orgId, String(p._id)).catch(() => defaultRate);
+    const { rate, source } = await resolveProjectHourlyRate(orgId, String(p._id));
     projectRows.push({
       projectId: String(p._id),
       projectName: p.name,
       projectKey: p.key,
       accountId: p.crmAccountId ? String(p.crmAccountId) : undefined,
       hours,
-      estimatedValue: Math.round(hours * rate * 100) / 100,
+      estimatedValue: rate == null ? null : Math.round(hours * rate * 100) / 100,
       rate,
+      rateSource: source,
+      rateMissing: rate == null,
       periodFrom: from.toISOString(),
       periodTo: to.toISOString(),
       workLogIds: workLogIdsByProject.get(String(p._id)) ?? [],
@@ -788,9 +813,12 @@ export async function getUnbilledTimeSummary(workspaceId: string | null | undefi
   projectRows.sort((a, b) => b.hours - a.hours);
 
   const totalHours = Math.round(projectRows.reduce((s, p) => s + p.hours, 0) * 10) / 10;
-  const estimatedValue = Math.round(projectRows.reduce((s, p) => s + p.estimatedValue, 0) * 100) / 100;
+  /** Value of the time that has a rate; hours without one are counted separately, not guessed. */
+  const estimatedValue = Math.round(projectRows.reduce((s, p) => s + (p.estimatedValue ?? 0), 0) * 100) / 100;
+  const missing = projectRows.filter((p) => p.rateMissing);
+  const hoursWithoutRate = Math.round(missing.reduce((s, p) => s + p.hours, 0) * 10) / 10;
 
-  return { from, to, totalHours, estimatedValue, defaultRate, projects: projectRows };
+  return { from, to, totalHours, estimatedValue, defaultRate, projectsWithoutRate: missing.length, hoursWithoutRate, projects: projectRows };
 }
 
 export async function createInvoiceFromTime(
@@ -815,7 +843,21 @@ export async function createInvoiceFromTime(
   const project = await Project.findOne({ _id: input.projectId, taskflowOrganizationId: orgOid });
   if (!project) throw new ApiError(404, 'Project not found');
 
-  const rate = Number(input.rate ?? (await resolveProjectHourlyRate(orgId, input.projectId)));
+  // A rate given by the caller wins; otherwise the project's own. There is no built-in fallback (AUT-42).
+  let rate: number;
+  if (input.rate !== undefined && input.rate !== null && String(input.rate) !== '') {
+    rate = Number(input.rate);
+    if (!Number.isFinite(rate) || rate <= 0) throw new ApiError(400, 'Hourly rate must be greater than zero');
+  } else {
+    const resolved = await resolveProjectHourlyRate(orgId, input.projectId);
+    if (resolved.rate == null) {
+      throw new ApiError(
+        400,
+        `${project.name} has no hourly rate. Set one on its contract or accepted quote, set a default rate in billing settings, or enter the rate for this invoice.`
+      );
+    }
+    rate = resolved.rate;
+  }
   const hours = Number(input.hours);
   if (hours <= 0) throw new ApiError(400, 'Hours must be greater than zero');
 
@@ -923,3 +965,29 @@ ${payLink ? `<p><a href="${escapeHtml(payLink)}" style="display:inline-block;pad
   if (inv.status === 'draft') return updateInvoice(id, orgId, { status: 'sent' }, actorUserId);
   return populateInvoice(inv._id);
 }
+
+// ── Settings ──────────────────────────────────────────────────────────────
+
+export async function getBillingSettings(workspaceId: string | null | undefined) {
+  const orgOid = toOrgOid(requireWorkspaceId(workspaceId));
+  const doc = await BillingSettings.findOne({ taskflowOrganizationId: orgOid }).lean();
+  return { defaultHourlyRate: doc?.defaultHourlyRate ?? null };
+}
+
+/** `defaultHourlyRate`: a positive number, or null / '' for no default (AUT-42). */
+export async function updateBillingSettings(workspaceId: string | null | undefined, input: Record<string, unknown>) {
+  const orgOid = toOrgOid(requireWorkspaceId(workspaceId));
+  const $set: Record<string, unknown> = {};
+  if ('defaultHourlyRate' in input) {
+    const v = input.defaultHourlyRate;
+    if (v === null || v === '') $set.defaultHourlyRate = null;
+    else {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n <= 0) throw new ApiError(400, 'Default hourly rate must be greater than zero, or empty for none');
+      $set.defaultHourlyRate = Math.round(n * 100) / 100;
+    }
+  }
+  await BillingSettings.findOneAndUpdate({ taskflowOrganizationId: orgOid }, { $set }, { upsert: true });
+  return getBillingSettings(workspaceId);
+}
+

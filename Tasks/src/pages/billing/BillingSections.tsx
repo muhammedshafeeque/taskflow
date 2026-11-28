@@ -545,6 +545,20 @@ export function BillingInvoices() {
   );
 }
 
+type TimeRow = {
+  projectId: string;
+  projectName: string;
+  projectKey: string;
+  accountId?: string;
+  hours: number;
+  estimatedValue: number | null;
+  rate: number | null;
+  rateSource: 'contract' | 'quote' | 'default' | null;
+  rateMissing: boolean;
+  workLogIds?: string[];
+};
+const RATE_SOURCE: Record<string, string> = { contract: 'contract', quote: 'accepted quote', default: 'default rate' };
+
 export function BillingTimeToInvoice() {
   const { token, user } = useAuth();
   const navigate = useNavigate();
@@ -554,30 +568,29 @@ export function BillingTimeToInvoice() {
     'taskflow.billing.invoice.create',
     'taskflow.billing.invoice.manage'
   );
+  const canSetDefault = canAny(user, 'taskflow.billing.time_to_invoice.manage', 'taskflow.billing.invoice.manage');
   const accounts = useAccounts(token);
   const [summary, setSummary] = useState<{
     from: string;
     to: string;
     totalHours: number;
     estimatedValue: number;
-    defaultRate: number;
-    projects: Array<{
-      projectId: string;
-      projectName: string;
-      projectKey: string;
-      accountId?: string;
-      hours: number;
-      estimatedValue: number;
-      rate: number;
-      workLogIds?: string[];
-    }>;
+    defaultRate: number | null;
+    projectsWithoutRate: number;
+    hoursWithoutRate: number;
+    projects: TimeRow[];
   } | null>(null);
   const [message, setMessage] = useState('');
+  const [defaultRate, setDefaultRate] = useState('');
+  const [rateError, setRateError] = useState('');
 
   const load = () => {
     if (!token) return;
     billingApi.timeToInvoice(token).then((res) => {
-      if (res.success && res.data) setSummary(res.data as typeof summary);
+      if (!res.success || !res.data) return;
+      const data = res.data as NonNullable<typeof summary>;
+      setSummary(data);
+      setDefaultRate(data.defaultRate != null ? String(data.defaultRate) : '');
     });
   };
 
@@ -585,15 +598,17 @@ export function BillingTimeToInvoice() {
     load();
   }, [token]);
 
-  function invoiceProject(row: {
-    projectId: string;
-    projectKey: string;
-    accountId?: string;
-    hours: number;
-    rate: number;
-    workLogIds?: string[];
-  }) {
-    if (!canManage) return;
+  async function saveDefaultRate(e: FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    setRateError('');
+    const res = await billingApi.saveSettings({ defaultHourlyRate: defaultRate.trim() === '' ? null : Number(defaultRate) }, token);
+    if (!res.success) return setRateError(res.message ?? 'Could not save the default rate');
+    load();
+  }
+
+  function invoiceProject(row: TimeRow) {
+    if (!canManage || row.rate == null) return;
     let accountId = row.accountId;
     if (!accountId) {
       accountId = accounts[0]?._id;
@@ -622,7 +637,7 @@ export function BillingTimeToInvoice() {
         </Link>
         <h1 className="text-xl font-semibold mt-1">Time to invoice</h1>
         <p className="text-[13px] text-[color:var(--text-muted)]">
-          Convert logged project time (last 30 days) into draft invoice lines.
+          Convert logged project time (last 30 days) into draft invoice lines. Each project is billed at its contract rate, else its accepted quote's hourly rate, else the default rate below.
         </p>
       </div>
 
@@ -635,11 +650,39 @@ export function BillingTimeToInvoice() {
           <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-4">
             <p className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">Estimated value</p>
             <p className="text-2xl font-semibold mt-1">{money(summary.estimatedValue)}</p>
+            {summary.hoursWithoutRate > 0 && (
+              <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">Excludes {summary.hoursWithoutRate}h with no rate</p>
+            )}
           </div>
-          <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-4">
-            <p className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">Default rate</p>
-            <p className="text-2xl font-semibold mt-1">${summary.defaultRate}/h</p>
-          </div>
+          <form onSubmit={saveDefaultRate} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-4">
+            <p className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">Default hourly rate</p>
+            {canSetDefault ? (
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  aria-label="Default hourly rate"
+                  placeholder="None"
+                  value={defaultRate}
+                  onChange={(e) => setDefaultRate(e.target.value)}
+                  className="w-28 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-2 py-1 text-sm"
+                />
+                <button type="submit" className="text-xs text-[color:var(--accent)] hover:underline">Save</button>
+              </div>
+            ) : (
+              <p className="text-2xl font-semibold mt-1">{summary.defaultRate != null ? `${money(summary.defaultRate)}/h` : 'None'}</p>
+            )}
+            <p className="mt-1 text-[11px] text-[color:var(--text-muted)]">Used only for projects with no contract or quote rate. Leave empty to require a rate on each project.</p>
+            {rateError && <p className="mt-1 text-[11px] text-red-500">{rateError}</p>}
+          </form>
+        </div>
+      )}
+
+      {summary && summary.projectsWithoutRate > 0 && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm" role="alert">
+          <strong>{summary.projectsWithoutRate} project{summary.projectsWithoutRate === 1 ? ' has' : 's have'} no hourly rate</strong> ({summary.hoursWithoutRate}h).
+          Their time cannot be invoiced until you set a rate on the project's contract or accepted quote, or set a default rate above.
         </div>
       )}
 
@@ -658,13 +701,14 @@ export function BillingTimeToInvoice() {
             <tr>
               <th className="text-left px-4 py-3 font-medium">Project</th>
               <th className="text-right px-4 py-3 font-medium">Hours</th>
+              <th className="text-right px-4 py-3 font-medium">Rate</th>
               <th className="text-right px-4 py-3 font-medium">Est. value</th>
               <th className="text-right px-4 py-3 font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
             {(summary?.projects ?? []).map((p) => (
-              <tr key={p.projectId} className="border-t border-[color:var(--border-subtle)]">
+              <tr key={p.projectId} className="border-t border-[color:var(--border-subtle)]" data-testid="time-row">
                 <td className="px-4 py-3">
                   <span className="font-medium">{p.projectKey}</span>
                   <span className="text-[color:var(--text-muted)]"> — {p.projectName}</span>
@@ -673,19 +717,34 @@ export function BillingTimeToInvoice() {
                   )}
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">{p.hours}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{money(p.estimatedValue)}</td>
-                <td className="px-4 py-3 text-right">
-                  {canManage && (
-                    <button type="button" className="text-xs text-[color:var(--accent)] hover:underline" onClick={() => invoiceProject(p)}>
-                      Create draft
-                    </button>
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {p.rate == null ? (
+                    <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400">No rate</span>
+                  ) : (
+                    <>
+                      {money(p.rate)}/h
+                      {p.rateSource && <span className="block text-[10px] text-[color:var(--text-muted)]">{RATE_SOURCE[p.rateSource]}</span>}
+                    </>
                   )}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums">{p.estimatedValue == null ? '—' : money(p.estimatedValue)}</td>
+                <td className="px-4 py-3 text-right">
+                  {canManage &&
+                    (p.rate == null ? (
+                      <span className="text-[11px] text-[color:var(--text-muted)]" title="Set a rate on the contract or accepted quote, or a default rate, first">
+                        Set a rate first
+                      </span>
+                    ) : (
+                      <button type="button" className="text-xs text-[color:var(--accent)] hover:underline" onClick={() => invoiceProject(p)}>
+                        Create draft
+                      </button>
+                    ))}
                 </td>
               </tr>
             ))}
             {(!summary || summary.projects.length === 0) && (
               <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-[color:var(--text-muted)]">
+                <td colSpan={5} className="px-4 py-10 text-center text-[color:var(--text-muted)]">
                   No logged time in the last 30 days.
                 </td>
               </tr>

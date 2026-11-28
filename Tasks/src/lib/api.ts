@@ -3376,6 +3376,10 @@ export const billingApi = {
   timeToInvoice: (token: string) => api.get('/billing/time-to-invoice', token),
   createFromTime: (data: Record<string, unknown>, token: string) =>
     api.post<BillingInvoice>('/billing/time-to-invoice', data, token),
+  /** Default hourly rate for time to invoice; null = none (AUT-42). */
+  settings: (token: string) => api.get<{ defaultHourlyRate: number | null }>('/billing/settings', token),
+  saveSettings: (data: { defaultHourlyRate: number | null }, token: string) =>
+    api.put<{ defaultHourlyRate: number | null }>('/billing/settings', data, token),
 };
 
 // ── Core (company, currencies, ROE) ─────────────────────────────────────────

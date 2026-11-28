@@ -70,5 +70,8 @@ router.delete('/tax/:id', requireAnyPermission(taxManage), asyncHandler(ctrl.del
 
 router.get('/time-to-invoice', requireAnyPermission(ttiRead), asyncHandler(ctrl.getTimeToInvoice));
 router.post('/time-to-invoice', requireAnyPermission(ttiManage), asyncHandler(ctrl.createFromTime));
+// Default hourly rate for time to invoice (AUT-42).
+router.get('/settings', requireAnyPermission([...ttiRead, ...invList]), asyncHandler(ctrl.getSettings));
+router.put('/settings', requireAnyPermission([B.TIME_TO_INVOICE.MANAGE, B.INVOICE.MANAGE]), asyncHandler(ctrl.updateSettings));
 
 export const billingRoutes = router;

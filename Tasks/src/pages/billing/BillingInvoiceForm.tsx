@@ -191,11 +191,20 @@ export default function BillingInvoiceForm() {
     }
   }, [defaultTax, isEdit, lines.length, searchParams]);
 
+  /** Opened from Time to invoice (AUT-42): its hourly lines need a rate before saving. */
+  const fromTime = !isEdit && Boolean(searchParams.get('projectId') && searchParams.get('hours'));
+  const timeRateMissing = fromTime && !(Number(searchParams.get('rate')) > 0);
+
   async function save(andPdf = false) {
     if (!token) return;
     const payload = linesToPayload(lines);
     if (!header.accountId || payload.length === 0) {
       setError('Account and at least one line item are required.');
+      return;
+    }
+    // Time brought over from Time to invoice must be billed at a real rate, never 0 (AUT-42).
+    if (fromTime && lines.some((l) => l.billingType === 'hourly' && Number(l.quantity) > 0 && !(Number(l.unitPrice) > 0))) {
+      setError('Enter the hourly rate for the time on this invoice. This project has no contract, quote or default rate.');
       return;
     }
     setSaving(true);
@@ -250,6 +259,11 @@ export default function BillingInvoiceForm() {
         </p>
       </div>
 
+      {timeRateMissing && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm" role="alert">
+          This project has no hourly rate (no contract, accepted quote or default rate). Enter the rate on the time line before saving.
+        </div>
+      )}
       {error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>
       )}
