@@ -24,6 +24,7 @@ const TYPE_LABEL: Record<ApprovalRecordType, string> = {
   leave: 'Leave',
   payroll: 'Payroll run',
   offer: 'Job offer',
+  hiring_request: 'Hiring request',
 };
 const RECORD_TYPES = Object.keys(TYPE_LABEL) as ApprovalRecordType[];
 

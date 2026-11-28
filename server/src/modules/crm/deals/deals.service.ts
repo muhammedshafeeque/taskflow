@@ -180,6 +180,14 @@ async function afterStatusChange(orgId: string, deal: DealDoc, previous: string)
       link: `/crm/deals/${id}`,
     });
   }
+  // Sales-to-delivery handover (AUT-41): starts on a win, and no longer applies once the deal is reopened or lost.
+  try {
+    const handover = await import('../handover/handover.service');
+    if (deal.status === 'won') await handover.startHandover(orgId, id);
+    else if (previous === 'won') await handover.cancelHandover(orgId, id);
+  } catch (err) {
+    console.error('[handover]', err);
+  }
   if (deal.status === 'won') {
     try {
       const { dispatchWebhook } = await import('../ecosystem/ecosystem.service');
@@ -300,6 +308,9 @@ export async function createProjectFromDeal(
   await deal.save();
   // Same steps as any other win: won stage, commission, alert and webhook (AUT-32).
   await winDeal(orgId, deal._id, 'Delivery project created');
+  // The deal may have been won before the project existed: its handover now goes to the project's lead.
+  const { linkHandoverProject } = await import('../handover/handover.service');
+  await linkHandoverProject(orgId, deal._id, projectId);
   // Links the customer, quotes, contracts and invoices of the deal to the project.
   await runCommercialHandoff({
     workspaceId: orgId,

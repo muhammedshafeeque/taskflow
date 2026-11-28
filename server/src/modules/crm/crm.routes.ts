@@ -7,6 +7,7 @@ import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as crm from './crm.controller';
+import { handoverRouter } from './handover/handover.routes';
 
 const P = TASK_FLOW_PERMISSIONS.TASKFLOW.CRM;
 const router = Router();
@@ -23,6 +24,9 @@ router.get('/ingest/projects', paIngestLimiter, requirePaInternalService, asyncH
 
 router.use(authMiddleware);
 router.use(requireTaskflowUser);
+
+// Sales-to-delivery handover (AUT-41).
+router.use(handoverRouter);
 
 router.get('/dashboard', requirePermission(P.REPORT.READ), asyncHandler(crm.getDashboard));
 router.get('/executive-metrics', requirePermission(P.REPORT.READ), asyncHandler(crm.getExecutiveMetrics));

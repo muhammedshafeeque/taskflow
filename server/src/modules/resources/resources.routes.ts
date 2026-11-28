@@ -4,6 +4,7 @@ import { requirePermission, requireAnyPermission } from '../../middleware/requir
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as ctrl from './resources.controller';
+import { openJobFromDemand } from '../hrms/hiringRequests.service';
 
 const R = TASK_FLOW_PERMISSIONS.TASKFLOW.RESOURCES;
 const ANY_READ = [
@@ -63,6 +64,16 @@ router.delete('/demands/:id', requirePermission(R.FORECAST.MANAGE), asyncHandler
 router.get('/demands/:id/candidates', requireAnyPermission([R.FORECAST.MANAGE, R.ALLOCATION.MANAGE]), asyncHandler(ctrl.getDemandCandidates));
 // Booking someone creates an allocation, so it needs allocation rights too.
 router.post('/demands/:id/fulfil', requirePermission(R.ALLOCATION.MANAGE), asyncHandler(ctrl.fulfilDemand));
+// Unfilled demand → job opening in Recruitment (AUT-41). Opening jobs is a recruiter's call.
+router.post(
+  '/demands/:id/open-job',
+  requirePermission(TASK_FLOW_PERMISSIONS.TASKFLOW.HR.RECRUITMENT.MANAGE),
+  asyncHandler(async (req, res) => {
+    const r = req as typeof req & { activeOrganizationId?: string; user?: { id: string; permissions?: string[] } };
+    const data = await openJobFromDemand(r.activeOrganizationId, req.params.id, { id: r.user!.id, permissions: r.user!.permissions ?? [] }, req.body ?? {});
+    res.status(201).json({ success: true, data });
+  })
+);
 
 router.get(
   '/profiles',

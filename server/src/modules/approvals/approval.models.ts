@@ -1,7 +1,7 @@
 import mongoose, { Schema } from 'mongoose';
 
 /** Record types that can go through the shared approval engine. */
-export const APPROVAL_RECORD_TYPES = ['invoice', 'quote', 'purchase_order', 'expense', 'leave', 'payroll', 'offer'] as const;
+export const APPROVAL_RECORD_TYPES = ['invoice', 'quote', 'purchase_order', 'expense', 'leave', 'payroll', 'offer', 'hiring_request'] as const;
 export type ApprovalRecordType = (typeof APPROVAL_RECORD_TYPES)[number];
 
 /** How a step finds its approvers. */

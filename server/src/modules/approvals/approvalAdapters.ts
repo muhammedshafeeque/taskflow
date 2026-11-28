@@ -16,6 +16,7 @@ import { BillingInvoice } from '../billing/models/billingInvoice.model';
 import { CrmQuote } from '../crm/models/crmQuote.model';
 import { HrmsOffer } from '../hrms/models/hrmsOffer.model';
 import { HrmsCandidate } from '../hrms/models/hrmsPeople.model';
+import { HrmsHiringRequest } from '../hrms/models/hrmsHiringRequest.model';
 import { quoteDiscountPercent } from '../crm/quotes/discountLimits';
 
 const valid = (id: string) => mongoose.Types.ObjectId.isValid(id);
@@ -148,5 +149,32 @@ registerApprovalAdapter({
   onRejected: async (orgId, id, userId, note) => {
     const { applyOfferDecision } = await import('../hrms/offers.service');
     await applyOfferDecision(orgId, id, 'rejected', userId, note);
+  },
+});
+
+registerApprovalAdapter({
+  type: 'hiring_request',
+  label: 'Hiring requests',
+  mode: 'decision',
+  amountLabel: 'Annual budget (headcount × top of band)',
+  async load(orgId, id) {
+    if (!valid(id)) return null;
+    const r = await HrmsHiringRequest.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) }).select('title department headcount budgetMin budgetMax currency requestedBy').lean();
+    if (!r) return null;
+    return {
+      title: `Hiring request: ${r.headcount} × ${r.title}${r.department ? ` (${r.department})` : ''}`,
+      amount: r.headcount * (r.budgetMax ?? r.budgetMin ?? 0),
+      currency: r.currency ?? undefined,
+      requesterUserId: str(r.requestedBy),
+      link: '/hrms/hiring-requests',
+    };
+  },
+  onApproved: async (orgId, id, userId) => {
+    const { applyHiringRequestDecision } = await import('../hrms/hiringRequests.service');
+    await applyHiringRequestDecision(orgId, id, 'approved', userId);
+  },
+  onRejected: async (orgId, id, userId, note) => {
+    const { applyHiringRequestDecision } = await import('../hrms/hiringRequests.service');
+    await applyHiringRequestDecision(orgId, id, 'rejected', userId, note);
   },
 });

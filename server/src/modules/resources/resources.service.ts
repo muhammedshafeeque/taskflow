@@ -210,6 +210,8 @@ export interface DemandRow {
   remainingHours: number;
   fillPct: number;
   allocationCount: number;
+  /** Job opening raised in Recruitment for it (AUT-41). */
+  jobId: string | null;
 }
 
 function toDemandRow(d: Record<string, unknown> & DemandLean, progress: ReturnType<typeof demandProgress>): DemandRow {
@@ -228,6 +230,7 @@ function toDemandRow(d: Record<string, unknown> & DemandLean, progress: ReturnTy
     notes: d.notes as string | undefined,
     createdAt: d.createdAt as Date | undefined,
     updatedAt: d.updatedAt as Date | undefined,
+    jobId: d.jobId ? String(d.jobId) : null,
     ...progress,
   };
 }

@@ -7,7 +7,7 @@ import { canAny } from '../../utils/moduleAccess';
 import ConfirmModal from '../../components/ConfirmModal';
 import SectionCard from '../../components/SectionCard';
 import { chartTooltipProps, getChartColor } from '../../lib/chartTheme';
-import { resourcesApi, type DemandCandidate, type ResourceDemand, type ResourceWeekRow } from '../../lib/api';
+import { hiringApi, resourcesApi, type DemandCandidate, type ResourceDemand, type ResourceWeekRow } from '../../lib/api';
 import {
   Chip,
   EmptyState,
@@ -84,6 +84,9 @@ export default function ResourcesForecast() {
   const { token, user } = useAuth();
   const canManage = canAny(user, 'taskflow.resources.forecast.manage');
   const canBook = canAny(user, 'taskflow.resources.allocation.manage');
+  // Unfilled demand → Recruitment (AUT-41): recruiters open a job; others with hiring rights raise a request.
+  const canOpenJob = canAny(user, 'taskflow.hr.recruitment.manage');
+  const canRequestHire = canAny(user, 'taskflow.hr.hiring_request.create');
   const workspaceKey = user?.activeOrganizationId ?? '';
   const { options, reloadOptions } = useResourceOptions(token, workspaceKey);
   const [forecast, setForecast] = useState<ForecastReport | null>(null);
@@ -112,6 +115,20 @@ export default function ResourcesForecast() {
   useEffect(() => {
     load();
   }, [load, workspaceKey]);
+
+  const openJob = async (d: ResourceDemand) => {
+    if (!token) return;
+    const answer = window.prompt(`Open a job in Recruitment for "${d.roleLabel || d.title}". How many openings?`, '1');
+    if (answer === null) return;
+    const res = await resourcesApi.openJobForDemand(d._id, { headcount: Number(answer) || 1 }, token);
+    setToast(res.success ? 'Job opened in Recruitment.' : errorOf(res, 'Could not open a job'));
+    if (res.success) load();
+  };
+  const requestHire = async (d: ResourceDemand) => {
+    if (!token) return;
+    const res = await hiringApi.create({ demandId: d._id }, token);
+    setToast(res.success ? 'Draft hiring request created: add the budget and send it in HRMS → Hiring requests.' : errorOf(res, 'Could not create a hiring request'));
+  };
 
   const counts = useMemo(() => {
     const c = { active: 0, filled: 0, cancelled: 0, all: demands.length };
@@ -284,6 +301,17 @@ export default function ResourcesForecast() {
                             <FiUserPlus /> Find people
                           </button>
                         )}
+                        {d.jobId ? (
+                          <a href="/hrms/recruitment" className="px-2 text-[color:var(--accent)] hover:underline">Job open in Recruitment</a>
+                        ) : d.status !== 'cancelled' && d.status !== 'filled' && canOpenJob ? (
+                          <button type="button" className={btnSecondary} onClick={() => void openJob(d)}>
+                            Open job
+                          </button>
+                        ) : d.status !== 'cancelled' && d.status !== 'filled' && canRequestHire ? (
+                          <button type="button" className={btnSecondary} onClick={() => void requestHire(d)}>
+                            Request hire
+                          </button>
+                        ) : null}
                         {canManage && (
                           <>
                             <button type="button" className="p-1.5 rounded-md hover:bg-[color:var(--bg-elevated)]" title="Edit" aria-label="Edit" onClick={() => edit(d)}>

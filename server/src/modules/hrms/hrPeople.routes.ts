@@ -1,5 +1,6 @@
 import { Role } from '../roles/role.model';
 import * as offers from './offers.service';
+import * as hiring from './hiringRequests.service';
 import { Organization } from '../organizations/organization.model';
 import { env } from '../../config/env';
 import { Router, type Request, type Response } from 'express';
@@ -111,6 +112,21 @@ r.post('/offers/:id/approve', asyncHandler(async (req: R, res) => ok(res, await 
 r.post('/offers/:id/reject', asyncHandler(async (req: R, res) => ok(res, await offers.decideOffer(ws(req), req.params.id, 'reject', req.user!.id, req.user!.permissions ?? [], (req.body as { note?: string } | undefined)?.note))));
 r.post('/offers/:id/send', RM, asyncHandler(async (req: R, res) => ok(res, await offers.sendOffer(ws(req), req.params.id, req.user!.id))));
 r.post('/offers/:id/withdraw', RM, asyncHandler(async (req: R, res) => ok(res, await offers.withdrawOffer(ws(req), req.params.id, req.user!.id))));
+
+// Hiring requests and the hiring plan (AUT-41). Reading is open to members: the service shows each
+// person only their own requests unless they approve or recruit.
+const actorOf = (req: R) => ({ id: req.user!.id, permissions: req.user!.permissions ?? [] });
+const HR_REQ = requireAnyPermission([H.HIRING_REQUEST.CREATE, H.RECRUITMENT.MANAGE]);
+r.get('/hiring-requests', asyncHandler(async (req: R, res) => ok(res, await hiring.listHiringRequests(ws(req), { status: req.query.status as string | undefined, department: req.query.department as string | undefined, mine: req.query.mine === '1' }, actorOf(req)))));
+r.get('/hiring-plan', requireAnyPermission([H.HIRING_REQUEST.APPROVE, H.RECRUITMENT.READ, H.RECRUITMENT.MANAGE]), asyncHandler(async (req: R, res) => ok(res, await hiring.hiringPlan(ws(req), { from: req.query.from as string | undefined, to: req.query.to as string | undefined }))));
+r.get('/hiring-requests/:id', asyncHandler(async (req: R, res) => ok(res, await hiring.getHiringRequest(ws(req), req.params.id, actorOf(req)))));
+r.post('/hiring-requests', HR_REQ, asyncHandler(async (req: R, res) => ok(res, await hiring.createHiringRequest(ws(req), req.body ?? {}, actorOf(req)))));
+r.patch('/hiring-requests/:id', HR_REQ, asyncHandler(async (req: R, res) => ok(res, await hiring.updateHiringRequest(ws(req), req.params.id, req.body ?? {}, actorOf(req)))));
+r.post('/hiring-requests/:id/submit', HR_REQ, asyncHandler(async (req: R, res) => ok(res, await hiring.submitHiringRequest(ws(req), req.params.id, actorOf(req)))));
+r.post('/hiring-requests/:id/approve', asyncHandler(async (req: R, res) => ok(res, await hiring.decideHiringRequest(ws(req), req.params.id, 'approve', actorOf(req), (req.body as { note?: unknown } | undefined)?.note))));
+r.post('/hiring-requests/:id/reject', asyncHandler(async (req: R, res) => ok(res, await hiring.decideHiringRequest(ws(req), req.params.id, 'reject', actorOf(req), (req.body as { note?: unknown } | undefined)?.note))));
+r.post('/hiring-requests/:id/cancel', asyncHandler(async (req: R, res) => ok(res, await hiring.cancelHiringRequest(ws(req), req.params.id, actorOf(req)))));
+r.post('/hiring-requests/:id/open-job', requireAnyPermission([H.RECRUITMENT.MANAGE]), asyncHandler(async (req: R, res) => ok(res, await hiring.openJobFromRequest(ws(req), req.params.id, actorOf(req), req.body ?? {}))));
 
 /** Roles a hirer can suggest for the new hire's account (AUT-35): names only. */
 r.get(

@@ -43,6 +43,7 @@ import {
   refName,
 } from './crmKit';
 import RecordLinksPanel from '../../components/RecordLinksPanel';
+import { DealHandoverPanel } from './HandoverPanel';
 
 const ACTIVITY_TYPES = ['call', 'meeting', 'email', 'task', 'note', 'demo', 'follow_up'];
 type LineItem = NonNullable<CrmDeal['lineItems']>[number];
@@ -262,6 +263,7 @@ export default function CrmDealDetail() {
 
       <div className="grid gap-5 xl:grid-cols-3">
         <div className="xl:col-span-2 space-y-5">
+          {deal.status === 'won' && <DealHandoverPanel key={deal._id} dealId={deal._id} canEdit={canUpdate} />}
           <ActivityPanel dealId={deal._id} activities={activities} canLog={canLog} onChange={load} onError={setNotice} />
           <LineItemsPanel deal={deal} canEdit={canUpdate} onSave={(lineItems, value) => patch({ lineItems, ...(value != null ? { value } : {}) })} />
         </div>

@@ -213,6 +213,7 @@ export function buildInboxNav(_user: NavUser): NavItem[] {
   return [
     { to: '/inbox', label: 'Inbox', icon: <InboxIcon />, end: true },
     { to: '/approvals', label: 'Approvals', icon: <IssuesIcon /> },
+    { to: '/handovers', label: 'Handovers', icon: <BoardsIcon /> },
     ...(canAny(_user, 'taskflow.self.profile.read', 'taskflow.self.leave.apply', 'taskflow.self.attendance.mark', 'taskflow.self.payslip.read', 'taskflow.self.expense.claim', 'taskflow.self.asset.read', 'taskflow.self.directory.read')
       ? [{ to: '/me', label: 'Me (HR self-service)', icon: <UsersIcon /> }]
       : []),
@@ -237,7 +238,9 @@ export function buildHrmsNav(user: NavUser): NavItem[] {
       'taskflow.hr.policy.manage',
       'taskflow.hr.onboarding.read',
       'taskflow.hr.recruitment.read',
-      'taskflow.hr.appraisal.read'
+      'taskflow.hr.appraisal.read',
+      'taskflow.hr.hiring_request.create',
+      'taskflow.hr.hiring_request.approve'
     )
   ) {
     return nav;
@@ -263,6 +266,9 @@ export function buildHrmsNav(user: NavUser): NavItem[] {
   }
   if (allow(user, 'taskflow.hr.onboarding.read', 'taskflow.hr.onboarding.manage')) {
     nav.push({ to: '/hrms/onboarding', label: 'On/offboarding', icon: <BoardsIcon /> });
+  }
+  if (allow(user, 'taskflow.hr.hiring_request.create', 'taskflow.hr.hiring_request.approve', 'taskflow.hr.recruitment.read', 'taskflow.hr.recruitment.manage')) {
+    nav.push({ to: '/hrms/hiring-requests', label: 'Hiring requests', icon: <PackageIcon /> });
   }
   if (allow(user, 'taskflow.hr.recruitment.read', 'taskflow.hr.recruitment.manage')) {
     nav.push({ to: '/hrms/recruitment', label: 'Recruitment', icon: <UsersIcon /> });

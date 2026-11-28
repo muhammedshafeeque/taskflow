@@ -3775,7 +3775,7 @@ export const accountsApi = {
 
 // ── Approvals (shared approval engine) ─────────────────────────────────────────
 
-export type ApprovalRecordType = 'invoice' | 'quote' | 'purchase_order' | 'expense' | 'leave' | 'payroll' | 'offer';
+export type ApprovalRecordType = 'invoice' | 'quote' | 'purchase_order' | 'expense' | 'leave' | 'payroll' | 'offer' | 'hiring_request';
 export type ApproverKind = 'manager' | 'role' | 'users' | 'permission' | 'discount_limit';
 type PersonRef = string | { _id: string; name?: string; email?: string };
 
@@ -4387,6 +4387,8 @@ export interface ResourceDemand {
   fillPct?: number;
   allocationCount?: number;
   assignees?: Array<{ allocationId: string; userId: string; name?: string; percent: number; softBooked: boolean }>;
+  /** Job opening raised in Recruitment for it (AUT-41). */
+  jobId?: string | null;
 }
 
 export interface DemandCandidate {
@@ -4743,6 +4745,8 @@ export const resourcesApi = {
       `/resources/demands/${id}/candidates`,
       token
     ),
+  openJobForDemand: (id: string, data: Record<string, unknown>, token: string) =>
+    api.post<{ _id: string; title: string; openings: number }>(`/resources/demands/${id}/open-job`, data, token),
   fulfilDemand: (id: string, data: Record<string, unknown>, token: string) =>
     api.post<{ allocation: ResourceAllocation; conflicts: AllocationCheck; demand: ResourceDemand }>(
       `/resources/demands/${id}/fulfil`,
@@ -5224,3 +5228,101 @@ export const updatesApi = {
   acknowledge: (updateIds: string[], token: string) =>
     api.post<{ acknowledged: string[] }>('/updates/acknowledge', { updateIds }, token),
 };
+
+// ── Sales-to-delivery handover, hiring requests (AUT-41) ─────────────────────
+
+type Ref = { _id: string; name?: string; email?: string } | string | null | undefined;
+
+export interface HandoverItem {
+  _id: string;
+  title: string;
+  required: boolean;
+  done: boolean;
+  doneBy?: Ref;
+  doneAt?: string;
+  note?: string;
+}
+
+export interface DealHandover {
+  _id: string;
+  dealId: { _id: string; title: string; value?: number; currency?: string; ownerId?: string; status?: string } | string;
+  projectId?: { _id: string; name?: string; key?: string } | string | null;
+  status: 'open' | 'submitted' | 'returned' | 'accepted' | 'cancelled';
+  items: HandoverItem[];
+  notes: string;
+  pmUserId?: Ref;
+  submittedBy?: Ref;
+  submittedAt?: string;
+  acceptedBy?: Ref;
+  acceptedAt?: string;
+  returnedBy?: Ref;
+  returnedAt?: string;
+  returnNote?: string;
+  updatedAt?: string;
+}
+
+export const handoverApi = {
+  forDeal: (dealId: string, token: string) => api.get<DealHandover | null>(`/crm/deals/${dealId}/handover`, token),
+  update: (dealId: string, body: Record<string, unknown>, token: string) => api.patch<DealHandover>(`/crm/deals/${dealId}/handover`, body, token),
+  submit: (dealId: string, token: string) => api.post<DealHandover>(`/crm/deals/${dealId}/handover/submit`, {}, token),
+  list: (token: string, params: { mine?: boolean; status?: string } = {}) =>
+    api.get<DealHandover[]>(`/crm/handovers?${new URLSearchParams({ ...(params.mine ? { mine: '1' } : {}), ...(params.status ? { status: params.status } : {}) }).toString()}`, token),
+  get: (id: string, token: string) => api.get<DealHandover>(`/crm/handovers/${id}`, token),
+  decide: (id: string, decision: 'accept' | 'return', note: string, token: string) => api.post<DealHandover>(`/crm/handovers/${id}/${decision}`, { note }, token),
+  template: (token: string) => api.get<{ items: Array<{ title: string; required: boolean }> }>('/crm/handover-template', token),
+  saveTemplate: (items: Array<{ title: string; required: boolean }>, token: string) =>
+    api.put<{ items: Array<{ title: string; required: boolean }> }>('/crm/handover-template', { items }, token),
+};
+
+export interface HiringRequest {
+  _id: string;
+  title: string;
+  department?: string;
+  location?: string;
+  employmentType: string;
+  level?: string;
+  headcount: number;
+  budgetMin?: number | null;
+  budgetMax?: number | null;
+  currency: string;
+  targetStartDate?: string | null;
+  justification: string;
+  status: 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'opened' | 'cancelled';
+  requestedBy: Ref;
+  submittedAt?: string;
+  decidedBy?: Ref;
+  decidedAt?: string;
+  decisionNote?: string;
+  jobId?: { _id: string; title: string; status: string; openings: number; filled?: number } | string | null;
+  demandId?: { _id: string; title: string; status: string } | string | null;
+  projectId?: { _id: string; name?: string; key?: string } | string | null;
+  createdAt?: string;
+}
+
+export interface HiringPlanRow {
+  department?: string;
+  currency: string;
+  requested: number;
+  approved: number;
+  opened: number;
+  hired: number;
+  requestedBudget: number;
+  approvedBudget: number;
+}
+
+export const hiringApi = {
+  list: (token: string, params: { status?: string; department?: string; mine?: boolean } = {}) =>
+    api.get<HiringRequest[]>(
+      `/hrms/hiring-requests?${new URLSearchParams({ ...(params.status ? { status: params.status } : {}), ...(params.department ? { department: params.department } : {}), ...(params.mine ? { mine: '1' } : {}) }).toString()}`,
+      token
+    ),
+  create: (body: Record<string, unknown>, token: string) => api.post<HiringRequest>('/hrms/hiring-requests', body, token),
+  update: (id: string, body: Record<string, unknown>, token: string) => api.patch<HiringRequest>(`/hrms/hiring-requests/${id}`, body, token),
+  submit: (id: string, token: string) => api.post<HiringRequest>(`/hrms/hiring-requests/${id}/submit`, {}, token),
+  decide: (id: string, decision: 'approve' | 'reject', note: string, token: string) => api.post<HiringRequest>(`/hrms/hiring-requests/${id}/${decision}`, { note }, token),
+  cancel: (id: string, token: string) => api.post<HiringRequest>(`/hrms/hiring-requests/${id}/cancel`, {}, token),
+  openJob: (id: string, token: string) => api.post<{ _id: string; title: string }>(`/hrms/hiring-requests/${id}/open-job`, {}, token),
+  plan: (token: string, params: { from?: string; to?: string } = {}) =>
+    api.get<{ departments: HiringPlanRow[]; totals: HiringPlanRow[] }>(`/hrms/hiring-plan?${new URLSearchParams(params as Record<string, string>).toString()}`, token),
+};
+

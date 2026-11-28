@@ -15,6 +15,8 @@ export interface IResourceDemand extends Document {
   status: ResourceDemandStatus;
   skills: string[];
   notes?: string;
+  /** Job opening raised in Recruitment for this demand (AUT-41). */
+  jobId?: mongoose.Types.ObjectId | null;
   createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -37,6 +39,7 @@ const resourceDemandSchema = new Schema<IResourceDemand>(
     },
     skills: { type: [String], default: [] },
     notes: { type: String },
+    jobId: { type: Schema.Types.ObjectId, ref: 'HrmsJobOpening', default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

@@ -139,6 +139,8 @@ import ServiceSla from './pages/service/ServiceSla';
 import HrmsDashboard from './pages/hrms/HrmsDashboard';
 import OrgChart from './pages/hrms/OrgChart';
 import { HrmsJobChanges } from './pages/hrms/JobChange';
+import { HiringRequestsPage } from './pages/hrms/HiringRequests';
+import { HandoversPage, HandoverDetailPage } from './pages/crm/HandoverPanel';
 import { HrmsEmployees, HrmsAttendance, HrmsLeave, HrmsPayroll } from './pages/hrms/HrmsSections';
 import AccountsDashboard from './pages/accounts/AccountsDashboard';
 import {
@@ -391,6 +393,7 @@ function AppRoutes() {
           <Route path="/hrms/leave-types" element={<HrLeaveTypesPage />} />
           <Route path="/hrms/holidays" element={<HrHolidaysPage />} />
           <Route path="/hrms/onboarding" element={<HrOnboardingPage />} />
+          <Route path="/hrms/hiring-requests" element={<HiringRequestsPage />} />
           <Route path="/hrms/recruitment" element={<HrRecruitmentPage />} />
           <Route path="/hrms/appraisals" element={<HrAppraisalsPage />} />
         </Route>
@@ -530,6 +533,8 @@ function AppRoutes() {
         <Route element={<InboxModuleLayout />}>
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/approvals" element={<Approvals />} />
+        <Route path="/handovers" element={<HandoversPage />} />
+        <Route path="/handovers/:id" element={<HandoverDetailPage />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/profile/notifications" element={<NotificationPreferences />} />
         <Route path="/me" element={<SelfService />} />

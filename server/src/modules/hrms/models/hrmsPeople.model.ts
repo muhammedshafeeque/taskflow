@@ -79,6 +79,9 @@ const jobOpeningSchema = new Schema(
     salaryMin: { type: Number },
     salaryMax: { type: Number },
     currency: { type: String },
+    /** Where the opening came from (AUT-41): an approved hiring request, or an unfilled resource demand. */
+    hiringRequestId: { type: Schema.Types.ObjectId, ref: 'HrmsHiringRequest', index: true, sparse: true },
+    demandId: { type: Schema.Types.ObjectId, ref: 'ResourceDemand', index: true, sparse: true },
   },
   { timestamps: true }
 );

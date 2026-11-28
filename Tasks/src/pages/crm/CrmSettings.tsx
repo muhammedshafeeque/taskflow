@@ -6,6 +6,7 @@ import { crmApi, type CrmPipeline, type CrmWebhook } from '../../lib/api';
 import ConfirmModal from '../../components/ConfirmModal';
 import DiscountLimitsSection from './DiscountLimitsSection';
 import StageRulesSection from './StageRulesSection';
+import HandoverTemplateSection from './HandoverTemplateSection';
 import { Chip, CrmShell, EmptyState, Field, Notice, btnDanger, btnPrimary, btnSecondary, errorOf, inputCls } from './crmKit';
 
 type Stage = CrmPipeline['stages'][number];
@@ -148,6 +149,8 @@ export default function CrmSettings() {
       </section>
 
       <StageRulesSection onError={setError} />
+
+      <HandoverTemplateSection onError={setError} />
 
       <DiscountLimitsSection onError={setError} />
 
