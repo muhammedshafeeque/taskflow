@@ -497,6 +497,14 @@ export const CUSTOMER_PERMISSIONS = {
     },
   },
 
+  /** Sign off requirement versions and approve change requests for mapped projects (AUT-44). */
+  REQUIREMENT: {
+    REQUIREMENT: {
+      LIST: 'customer.requirement.requirement.list',
+      APPROVE: 'customer.requirement.requirement.approve',
+    },
+  },
+
   /** Quotations sent to the customer's organisation (AUT-32). */
   QUOTE: {
     QUOTE: {
@@ -673,6 +681,13 @@ export const PROJECT_PERMISSIONS = {
     STATUS_REPORT: {
       READ: 'project.status_report.read',
       MANAGE: 'project.status_report.manage',
+    },
+  },
+  /** Requirements with customer sign-off, and change requests (AUT-44). */
+  REQUIREMENT: {
+    REQUIREMENT: {
+      READ: 'project.requirement.read',
+      MANAGE: 'project.requirement.manage',
     },
   },
 

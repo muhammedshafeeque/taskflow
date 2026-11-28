@@ -34,13 +34,13 @@ export function defaultTemplates() {
   ]);
   return [
     { name: 'Dev Lead', description: 'Leads the delivery team: plans sprints, approves estimates, sees reports.', levels: ['Lead', 'Manager'], keywords: ['tech lead', 'dev lead', 'development lead', 'engineering manager'],
-      permissions: only([...member, 'issue.issue.assign', 'issue.issue.close', 'issue.issue.reopen', 'issue.estimate.approve', 'sprint.sprint.create', 'sprint.sprint.update', 'sprint.sprint.start', 'sprint.sprint.close', 'report.report.read', 'report.report.list', 'work_log.work_log.read', 'timesheet.timesheet.read', 'project.risk.read', 'project.risk.manage', 'project.status_report.read']) },
+      permissions: only([...member, 'issue.issue.assign', 'issue.issue.close', 'issue.issue.reopen', 'issue.estimate.approve', 'sprint.sprint.create', 'sprint.sprint.update', 'sprint.sprint.start', 'sprint.sprint.close', 'report.report.read', 'report.report.list', 'work_log.work_log.read', 'timesheet.timesheet.read', 'project.risk.read', 'project.risk.manage', 'project.status_report.read', 'project.requirement.read']) },
     { name: 'Senior Developer', description: 'Builds and reviews; can assign and close work.', levels: ['Senior'], keywords: [],
       permissions: only([...memberNoAdmin, 'issue.issue.assign', 'issue.issue.close', 'issue.issue.reopen', 'report.report.read', 'report.report.list', 'work_log.work_log.read']) },
     { name: 'Developer', description: 'Builds features and fixes.', levels: ['Junior'], keywords: [], permissions: memberNoAdmin },
     { name: 'Intern', description: 'Works on assigned issues, comments and logs time.', levels: ['Intern'], keywords: ['intern', 'trainee'], permissions: reader },
     { name: 'Business Analyst', description: 'Writes requirements, keeps the roadmap and milestones.', levels: [], keywords: ['business analyst', 'functional analyst', 'ba'],
-      permissions: only([...memberNoAdmin, 'roadmap.roadmap.update', 'milestone.milestone.create', 'milestone.milestone.update', 'report.report.read', 'report.report.list', 'project.status_report.read']) },
+      permissions: only([...memberNoAdmin, 'roadmap.roadmap.update', 'milestone.milestone.create', 'milestone.milestone.update', 'report.report.read', 'report.report.list', 'project.status_report.read', 'project.requirement.read', 'project.requirement.manage']) },
     { name: 'QA Engineer', description: 'Tests, raises bugs, keeps test suites, closes and reopens issues.', levels: [], keywords: ['qa', 'qa analyst', 'quality', 'test', 'tester', 'test analyst'],
       permissions: only([...memberNoAdmin, 'test_management.suite.update', 'issue.issue.close', 'issue.issue.reopen', 'report.report.read']) },
     { name: 'Designer', description: 'Designs; works on issues and comments.', levels: [], keywords: ['designer', 'design', 'ux', 'ui'], permissions: memberNoAdmin },

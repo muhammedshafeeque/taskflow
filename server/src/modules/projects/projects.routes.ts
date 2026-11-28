@@ -41,6 +41,7 @@ import { importsRoutes } from '../imports/imports.routes';
 import { adoIntegrationRoutes } from '../integrations/ado/adoIntegration.routes';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { milestonesRoutes } from '../milestones/milestones.routes';
+import { changeRequestsRouter, requirementsRouter } from '../requirements/requirements.routes';
 import { roadmapsRoutes } from '../roadmaps/roadmaps.routes';
 import { testCasesRoutes } from '../testCases/testCases.routes';
 import { testPlansRoutes } from '../testPlans/testPlans.routes';
@@ -106,6 +107,8 @@ router.delete('/:projectId/designations/:id', requireProjectPermission(PROJECT_P
 
 router.use('/:id/milestones', idParamHandler[0], milestonesRoutes);
 router.use('/:id/governance', idParamHandler[0], governanceRouter);
+router.use('/:id/requirements', idParamHandler[0], requirementsRouter);
+router.use('/:id/change-requests', idParamHandler[0], changeRequestsRouter);
 router.use('/:id/roadmaps', idParamHandler[0], roadmapsRoutes);
 router.use('/:id/test-cases', idParamHandler[0], testCasesRoutes);
 router.use('/:id/test-plans', idParamHandler[0], testPlansRoutes);

@@ -221,6 +221,8 @@ import PublicSign from './pages/PublicSign';
 import PublicQuote from './pages/PublicQuote';
 import { PublicCareers, PublicOffer } from './pages/PublicHiring';
 import PortalQuotes from './pages/portal/PortalQuotes';
+import PortalRequirements from './pages/portal/PortalRequirements';
+import ProjectRequirements from './pages/ProjectRequirements';
 import { I18nProvider } from './i18n/I18nProvider';
 import { UploadProgressTray } from './components/attachment/UploadProgress';
 import { WhatsNewChecker } from './components/WhatsNewModal';
@@ -272,6 +274,7 @@ function AppRoutes() {
         <Route path="/portal/projects" element={<PortalProjects />} />
         <Route path="/portal/tickets" element={<PortalTickets />} />
         <Route path="/portal/quotes" element={<PortalQuotes />} />
+        <Route path="/portal/requirements" element={<PortalRequirements />} />
         <Route path="/portal/tickets/:id" element={<PortalTicketDetail />} />
         <Route path="/portal/approval-queue" element={<PortalApprovalQueue />} />
         <Route path="/portal/status-reports" element={<PortalStatusReports />} />
@@ -329,6 +332,7 @@ function AppRoutes() {
           <Route path="test-plans/:planId/cycles/:cycleId/run" element={<TestCycleRun />} />
           <Route path="traceability" element={<Traceability />} />
           <Route path="governance" element={<ProjectGovernance />} />
+          <Route path="requirements" element={<ProjectRequirements />} />
           <Route path="defect-metrics" element={<DefectMetrics />} />
           <Route path="timesheet" element={<Timesheet />} />
         </Route>
